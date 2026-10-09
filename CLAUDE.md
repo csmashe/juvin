@@ -55,7 +55,8 @@ The solution does not exist yet. These are the commands the layout in `docs/mvp-
 
 TypeWhisper for Linux is a GPL-3.0 derivative of an upstream project. Only files original to the Linux port may be copied into Juvin, under Juvin's own copyright notice. Before copying any file, confirm from the TypeWhisper repository's git history that it was created there and not adapted from upstream.
 
-- Safe to copy (verified Linux-only): hotkey backends and `ShortcutMatcher`/`ShortcutDispatcher`, desktop-environment shortcut writers, `ISetupTask` and setup tasks, control socket and JSON protocol, `AtomicJsonStore`, `ApiKeyProtection`, `SseEventDecoder`, `ThinkingBlockFilter`, `LlmStreamPump`, `ILlmProviderRole`, `PromptProcessingService`, `LlmCallProvenance`, AT-SPI and Wayland detection code, and the Avalonia UI (main window, wizard, section views).
+- Safe to copy (verified Linux-only by git history, see `docs/spikes/copy-history.md`): hotkey backends and `ShortcutMatcher`/`ShortcutDispatcher`, desktop-environment shortcut writers, `ISetupTask` and setup tasks, control socket and JSON protocol, `AtomicJsonStore`, `ApiKeyProtection`, `SseEventDecoder`, `ThinkingBlockFilter`, `LlmStreamPump`, `PromptProcessingService`, `LlmCallProvenance`, AT-SPI and Wayland detection code, and the Avalonia UI (main window, wizard, section `.axaml` files).
+- Never copy (git traces them to upstream Windows files): `ILlmProviderRole.cs` and the code-behind files of the General, History, Appearance, Shortcuts, and Advanced sections. Write Juvin's own.
 - Never copy (exist upstream): `SettingsService`, `AppSettings`, `AtomicFileWrite`, `TypeWhisperEnvironment`, `OpenAiChatHelper`, `Loc.cs`, and the Authenticated CLI plugin. Write Juvin's equivalents fresh.
 - Rename everything on the way in. No `TypeWhisper` namespaces, class prefixes, paths, or strings survive the copy.
 
