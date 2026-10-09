@@ -35,3 +35,6 @@ dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# Spike publish output
+spikes/**/publish*/
