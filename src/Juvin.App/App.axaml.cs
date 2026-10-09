@@ -79,11 +79,15 @@ public class App : Application
         commands.ShowRequested += () => Dispatcher.UIThread.Post(() => ShowMainWindow(main));
         _ = StartControlSocketAsync(services.GetRequiredService<ILocalSocketServer>(), commands);
 
+        var connector = services.GetRequiredService<ConnectorService>();
+        _ = StartConnectorAsync(connector);
+
         desktop.Exit += (_, _) =>
         {
             _exiting = true;
             _socketLifetime.Cancel();
             services.GetRequiredService<ILocalSocketServer>().StopAsync().GetAwaiter().GetResult();
+            connector.StopAsync().GetAwaiter().GetResult();
             tray.Dispose();
         };
 
@@ -111,6 +115,19 @@ public class App : Application
         catch (Exception ex) when (ex is IOException or OperationCanceledException or UnauthorizedAccessException)
         {
             Trace.WriteLine($"[App] Control socket did not start: {ex.Message}");
+        }
+    }
+
+    private async Task StartConnectorAsync(ConnectorService connector)
+    {
+        try
+        {
+            await connector.StartAsync(_socketLifetime.Token);
+            Trace.WriteLine($"[App] Browser connector ready at {connector.Address}");
+        }
+        catch (Exception ex) when (ex is IOException or OperationCanceledException or UnauthorizedAccessException)
+        {
+            Trace.WriteLine($"[App] Browser connector did not start: {ex.Message}");
         }
     }
 

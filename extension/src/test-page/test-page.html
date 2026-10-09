@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Juvin test page</title>
+    <link rel="stylesheet" href="test-page.css" />
+  </head>
+  <body>
+    <main>
+      <p class="note">Juvin test page. Select text in the reply below and press the Juvin shortcut.</p>
+      <h1 id="juvin-test-subject">Planning the spring team offsite</h1>
+
+      <article data-juvin-message>
+        <header>
+          <span class="from">Robin Example &lt;robin@example.com&gt;</span>
+          <span class="to">team@example.com</span>
+          <time datetime="2026-10-06T09:15:00Z">Oct 6, 2026, 9:15 AM</time>
+        </header>
+        <div class="body">Hi all,
+
+I'd like to lock in dates for the spring offsite. Could everyone reply with the weeks in April that do not work for you? I'm aiming to book the venue by the end of the month.
+
+Thanks,
+Robin</div>
+      </article>
+
+      <article data-juvin-message>
+        <header>
+          <span class="from">Sam Sample &lt;sam@example.com&gt;</span>
+          <span class="to">team@example.com</span>
+          <time datetime="2026-10-07T14:02:00Z">Oct 7, 2026, 2:02 PM</time>
+        </header>
+        <div class="body">The second week of April is out for me because of the product launch. Any other week works.
+
+Sam</div>
+      </article>
+
+      <article data-juvin-message>
+        <header>
+          <span class="from">Robin Example &lt;robin@example.com&gt;</span>
+          <span class="to">team@example.com, me@example.com</span>
+          <time datetime="2026-10-08T08:40:00Z">Oct 8, 2026, 8:40 AM</time>
+        </header>
+        <div class="body">Thanks, Sam. Still waiting to hear from a few people. If you haven't answered yet, please do so by Friday.
+
+Robin</div>
+      </article>
+
+      <section class="reply">
+        <h2>Reply</h2>
+        <div id="juvin-test-editor" contenteditable="true" role="textbox" aria-label="Message Body" aria-multiline="true"></div>
+        <button id="reset" type="button">Reset draft</button>
+      </section>
+    </main>
+
+    <script src="test-page.js"></script>
+    <script src="content.js"></script>
+  </body>
+</html>

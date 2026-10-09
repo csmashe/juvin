@@ -33,6 +33,7 @@ public static class ServiceRegistrations
 
         services.AddSingleton<TrayIconService>();
         services.AddSingleton<ControlCommandHandler>();
+        services.AddSingleton<ConnectorService>();
 
         services.AddSingleton<HomeSectionViewModel>();
         services.AddSingleton<ShortcutsSectionViewModel>();

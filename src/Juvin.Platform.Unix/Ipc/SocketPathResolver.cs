@@ -5,17 +5,18 @@ using Juvin.Core;
 namespace Juvin.Platform.Unix.Ipc;
 
 /// <summary>
-///     Resolves the path to the Juvin control socket and ensures the containing directory exists
-///     with user-only permissions.
+///     Resolves the paths to the Juvin control and connector sockets and ensures the containing
+///     directory exists with user-only permissions.
 /// </summary>
 /// <remarks>
-///     Linux prefers <c>$XDG_RUNTIME_DIR/juvin/control.sock</c> (the runtime dir is already 0700
-///     via systemd-logind) and falls back to <c>&lt;data&gt;/Runtime/control.sock</c> when
+///     Linux prefers <c>$XDG_RUNTIME_DIR/juvin/</c> (the runtime dir is already 0700 via
+///     systemd-logind) and falls back to <c>&lt;data&gt;/Runtime/</c> when
 ///     <c>XDG_RUNTIME_DIR</c> is absent or unusable. macOS always uses the data directory.
 /// </remarks>
 internal static partial class SocketPathResolver
 {
     private const string ControlSocketFileName = "control.sock";
+    private const string ConnectorSocketFileName = "connector.sock";
 
     private const UnixFileMode OwnerOnlyDirectoryMode =
         UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
@@ -30,10 +31,50 @@ internal static partial class SocketPathResolver
 
     public static string ResolveControlSocketPath()
     {
-        return ResolveControlSocketPath(JuvinEnvironment.RuntimePath);
+        return ResolveSocketPath(ControlSocketFileName, JuvinEnvironment.RuntimePath);
     }
 
-    private static string ResolveControlSocketPath(string fallbackDirectory)
+    public static string ResolveConnectorSocketPath()
+    {
+        return ResolveSocketPath(ConnectorSocketFileName, JuvinEnvironment.RuntimePath);
+    }
+
+    /// <summary>
+    ///     The connector path the native host connects to. Inside a Flatpak sandbox the host
+    ///     cannot see the app's runtime directory, so it uses the per-app directory the app
+    ///     exposes to that sandbox instead.
+    /// </summary>
+    public static string ResolveConnectorClientPath()
+    {
+        return FlatpakConnectorPath(
+                Environment.GetEnvironmentVariable("FLATPAK_ID"),
+                Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR")
+            )
+            ?? ResolveConnectorSocketPath();
+    }
+
+    /// <summary>
+    ///     <c>$XDG_RUNTIME_DIR/app/&lt;FLATPAK_ID&gt;/juvin/connector.sock</c>, or null outside a
+    ///     sandbox or when the id is not a plain application id.
+    /// </summary>
+    internal static string? FlatpakConnectorPath(string? flatpakId, string? runtimeDirectory)
+    {
+        if (string.IsNullOrEmpty(flatpakId) || string.IsNullOrEmpty(runtimeDirectory))
+        {
+            return null;
+        }
+
+        // ReSharper disable once InvertIf -- a guard clause reads better than the success case nested in an if
+        if (!flatpakId.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-') || flatpakId.Contains(".."))
+        {
+            Trace.WriteLine("[SocketPathResolver] Ignoring a FLATPAK_ID that is not an application id.");
+            return null;
+        }
+
+        return Path.Join(runtimeDirectory, "app", flatpakId, "juvin", ConnectorSocketFileName);
+    }
+
+    private static string ResolveSocketPath(string fileName, string fallbackDirectory)
     {
         var xdg = OperatingSystem.IsLinux()
             ? Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR")
@@ -44,7 +85,7 @@ internal static partial class SocketPathResolver
             try
             {
                 PreparePrivateDirectory(dir);
-                return Path.Join(dir, ControlSocketFileName);
+                return Path.Join(dir, fileName);
             }
             catch (Exception ex)
             {
@@ -55,7 +96,7 @@ internal static partial class SocketPathResolver
         }
 
         PreparePrivateDirectory(fallbackDirectory);
-        return Path.Join(fallbackDirectory, ControlSocketFileName);
+        return Path.Join(fallbackDirectory, fileName);
     }
 
     private static void PreparePrivateDirectory(string directory)
@@ -70,7 +111,7 @@ internal static partial class SocketPathResolver
         catch (Exception ex)
         {
             throw new IOException(
-                $"Could not create private control socket directory {directory}.",
+                $"Could not create private socket directory {directory}.",
                 ex
             );
         }
@@ -78,7 +119,7 @@ internal static partial class SocketPathResolver
         if (!IsDirectoryPrivateAndOwned(directory))
         {
             throw new IOException(
-                $"Could not secure private control socket directory {directory} with owner-only mode 0700."
+                $"Could not secure private socket directory {directory} with owner-only mode 0700."
             );
         }
     }

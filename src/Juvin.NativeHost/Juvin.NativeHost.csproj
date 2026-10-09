@@ -4,5 +4,14 @@
         <TargetFramework>net10.0</TargetFramework>
         <RootNamespace>Juvin.NativeHost</RootNamespace>
         <AssemblyName>juvin-host</AssemblyName>
+        <!-- Sandboxed browsers can launch the host without access to the system ICU libraries. -->
+        <InvariantGlobalization>true</InvariantGlobalization>
     </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Juvin.Core\Juvin.Core.csproj"/>
+        <ProjectReference Include="..\Juvin.Platform\Juvin.Platform.csproj"/>
+        <ProjectReference Include="..\Juvin.Platform.Unix\Juvin.Platform.Unix.csproj"/>
+        <ProjectReference Include="..\Juvin.Platform.Windows\Juvin.Platform.Windows.csproj"/>
+    </ItemGroup>
 </Project>

@@ -12,6 +12,7 @@ public static class PlatformServices
     {
         services.AddSingleton<ISecretStore, KeychainSecretStore>();
         services.AddUnixLocalSocket();
+        services.AddUnixConnectorSocket();
         services.AddSingleton<ITrayHostProbe, MenuBarTrayHostProbe>();
         return services;
     }

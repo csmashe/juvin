@@ -1,0 +1,25 @@
+{
+  "name": "juvin-extension",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Juvin browser extension for Chrome and Firefox.",
+  "license": "GPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit && node build.mjs",
+    "watch": "node build.mjs --watch",
+    "test": "vitest run",
+    "lint:firefox": "web-ext lint --source-dir dist/firefox"
+  },
+  "dependencies": {
+    "webextension-polyfill": "0.12.0"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.4",
+    "@types/webextension-polyfill": "0.12.6",
+    "esbuild": "0.28.2",
+    "jsdom": "30.1.2",
+    "typescript": "7.0.2",
+    "vitest": "5.0.3"
+  }
+}
