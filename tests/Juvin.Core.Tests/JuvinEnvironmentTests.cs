@@ -13,7 +13,10 @@ public sealed class JuvinEnvironmentTests : IDisposable
     public void DataPath_IsJuvinUnderLocalApplicationData()
     {
         var expected = Path.Join(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            Environment.GetFolderPath(
+                Environment.SpecialFolder.LocalApplicationData,
+                Environment.SpecialFolderOption.DoNotVerify
+            ),
             "Juvin"
         );
 

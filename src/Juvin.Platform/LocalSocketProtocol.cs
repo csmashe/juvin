@@ -121,10 +121,13 @@ public static class LocalSocketProtocol
         }
     }
 
+    /// <summary>
+    ///     Writes one line without flushing: a named pipe flush blocks until the peer has read,
+    ///     which deadlocks against a peer still writing, and sockets deliver without it.
+    /// </summary>
     public static async Task WriteLineAsync(Stream stream, string line, CancellationToken ct)
     {
         await stream.WriteAsync(s_utf8NoBom.GetBytes(line + "\n"), ct).ConfigureAwait(false);
-        await stream.FlushAsync(ct).ConfigureAwait(false);
     }
 
     /// <summary>Rejects lines the server would refuse, before anything is sent.</summary>

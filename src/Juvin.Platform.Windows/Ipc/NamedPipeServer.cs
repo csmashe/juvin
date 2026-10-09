@@ -171,14 +171,13 @@ public sealed class NamedPipeServer : ILocalSocketServer, IDisposable
 
     private NamedPipeServerStream CreatePipe(bool firstInstance)
     {
-        var user =
-            WindowsIdentity.GetCurrent().User
-            ?? throw new InvalidOperationException("The current user has no SID.");
+        var identity = WindowsIdentity.GetCurrent();
+        var user = identity.User ?? throw new InvalidOperationException("The current user has no SID.");
         var security = new PipeSecurity();
         security.AddAccessRule(new PipeAccessRule(user, PipeAccessRights.FullControl, AccessControlType.Allow));
-        // An elevated token's default owner is the Administrators group, which would fail the
-        // client's CurrentUserOnly owner check.
-        security.SetOwner(user);
+        // The client's CurrentUserOnly check compares the pipe owner with the token's default
+        // owner, which is the Administrators group for an elevated token, not the user SID.
+        security.SetOwner(identity.Owner ?? user);
 
         var options = PipeOptions.Asynchronous;
         if (firstInstance)
@@ -192,8 +191,10 @@ public sealed class NamedPipeServer : ILocalSocketServer, IDisposable
             NamedPipeServerStream.MaxAllowedServerInstances,
             PipeTransmissionMode.Byte,
             options,
-            inBufferSize: 0,
-            outBufferSize: 0,
+            // Zero-size buffers make every write block until the peer reads, which deadlocks an
+            // oversized request against the error reply; 4x the line cap holds either side.
+            inBufferSize: 4 * LocalSocketProtocol.MaxLineBytes,
+            outBufferSize: 4 * LocalSocketProtocol.MaxLineBytes,
             security
         );
     }
