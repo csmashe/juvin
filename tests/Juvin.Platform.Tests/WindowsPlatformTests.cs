@@ -1,4 +1,5 @@
 using System.Runtime.Versioning;
+using Juvin.Core.Connector;
 using Juvin.Platform.Windows;
 using Juvin.Platform.Windows.Ipc;
 using Juvin.Platform.Windows.Secrets;
@@ -61,6 +62,58 @@ public sealed class WindowsPlatformTests : IDisposable
 
         Assert.True(new NamedPipeClient(_pipeName).IsLivePeer());
         await Assert.ThrowsAsync<IOException>(() => second.StartAsync((_, _) => Task.FromResult("ok"), CancellationToken.None));
+    }
+
+    [WindowsFact]
+    public async Task ConnectorPipe_CarriesFramesBothWaysIncludingLargeOnes()
+    {
+        using var server = new NamedPipeConnectorServer(_pipeName);
+        await server.StartAsync(
+            async (stream, ct) =>
+            {
+                while (await NativeMessagingFraming.ReadFrameAsync(stream, ct) is { } frame)
+                {
+                    await NativeMessagingFraming.WriteFrameAsync(stream, frame, ct);
+                }
+            },
+            CancellationToken.None
+        );
+        var large = "\"" + new string('x', 300 * 1024) + "\"";
+
+        await using var stream = await new NamedPipeConnectorClient(_pipeName).ConnectAsync(s_timeout);
+        Assert.NotNull(stream);
+        await NativeMessagingFraming.WriteFrameAsync(stream, large, CancellationToken.None);
+        await NativeMessagingFraming.WriteFrameAsync(stream, "1", CancellationToken.None);
+
+        Assert.Equal(large, await NativeMessagingFraming.ReadFrameAsync(stream, CancellationToken.None).WaitAsync(s_timeout));
+        Assert.Equal("1", await NativeMessagingFraming.ReadFrameAsync(stream, CancellationToken.None).WaitAsync(s_timeout));
+    }
+
+    [WindowsFact]
+    public async Task ConnectorPipe_StopAsyncClosesOpenConnections()
+    {
+        var server = new NamedPipeConnectorServer(_pipeName);
+        await server.StartAsync(
+            async (stream, ct) =>
+            {
+                while (await NativeMessagingFraming.ReadFrameAsync(stream, ct) is not null)
+                {
+                }
+            },
+            CancellationToken.None
+        );
+
+        await using var stream = await new NamedPipeConnectorClient(_pipeName).ConnectAsync(s_timeout);
+        Assert.NotNull(stream);
+        await server.StopAsync();
+
+        Assert.Null(await NativeMessagingFraming.ReadFrameAsync(stream, CancellationToken.None).WaitAsync(s_timeout));
+    }
+
+    [WindowsFact]
+    public async Task ConnectorPipe_ClientReturnsNullWhenNothingIsListening()
+    {
+        Assert.Null(await new NamedPipeConnectorClient(_pipeName).ConnectAsync(TimeSpan.FromMilliseconds(300)));
     }
 
     [WindowsFact]

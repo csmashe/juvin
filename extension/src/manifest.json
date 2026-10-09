@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "Juvin",
+  "version": "0.1.0",
+  "description": "Rewrites the selected email draft with the Juvin desktop app, using the whole conversation as context.",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "permissions": ["nativeMessaging", "activeTab", "scripting"],
+  "host_permissions": ["https://mail.google.com/*"],
+  "optional_host_permissions": ["<all_urls>"],
+  "action": {
+    "default_title": "Juvin",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
+  },
+  "commands": {
+    "rewrite": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+Y",
+        "mac": "Command+Shift+Y"
+      },
+      "description": "Rewrite the selected draft with Juvin"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://mail.google.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

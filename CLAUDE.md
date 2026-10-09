@@ -12,19 +12,21 @@ Design reference: `/home/csmashe/RiderProjects/typewhisper-linux` (a Linux-only 
 
 ## Development Commands
 
-The solution is `Juvin.slnx` at the repo root (the extension does not exist yet, update this list as it lands).
+The solution is `Juvin.slnx` at the repo root. The protocol between the app and the extension is specified in `docs/connector-protocol.md`; change both sides and the spec together.
 
 ### Build and Test
 - `dotnet build Juvin.slnx` - Build the entire solution (0 warnings is the bar)
 - `dotnet run --project src/Juvin.App` - Run the desktop app; set `XDG_DATA_HOME` to a temp dir to keep `~/.local/share/Juvin` clean
 - `dotnet test Juvin.slnx` - Run all tests (Windows-only tests are skipped elsewhere and run in CI)
 - `dotnet run --project src/Juvin.Cli -- rewrite --stdin` - Exercise the rewrite pipeline without the extension
+- `scripts/dev/register-host.sh` (Linux) or `scripts/dev/register-host.ps1` (Windows) - Register the Debug build of `juvin-host` with native Firefox and Chrome for development; the setup wizard does this for users
 - Package versions live in `Directory.Packages.props` (central package management); `nuget.config` pins nuget.org as the only feed.
 
 ### Browser extension (in `extension/`)
 - `npm install` - Install dependencies
 - `npm run build` - Build both Chrome and Firefox outputs
 - `npm test` - Run extension tests
+- Load `extension/dist/chrome` as an unpacked extension, or `npx web-ext run --source-dir dist/firefox`; the app must be running and the host registered. See `extension/README.md`.
 
 ### Brand assets
 - `assets/brand/` holds the mark, icons, and lockups; its README explains each file. Regenerate PNGs from the SVGs, never edit PNGs by hand.

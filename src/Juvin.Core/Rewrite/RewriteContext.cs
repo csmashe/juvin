@@ -11,7 +11,6 @@ public enum ThreadCompleteness
 {
     EntireThread,
     LoadedMessagesOnly,
-    // ReSharper disable once UnusedMember.Global -- reported by the generic page adapter in Phase 3
     VisibleTextOnly,
     DraftOnly,
     TruncatedForModelLimit,
