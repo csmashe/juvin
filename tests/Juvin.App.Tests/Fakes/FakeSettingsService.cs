@@ -9,6 +9,8 @@ public sealed class FakeSettingsService : ISettingsService
 
     public Exception? UpdateFailure { get; set; }
 
+    public int SaveCount { get; private set; }
+
     public event Action<AppSettings>? SettingsChanged;
 
     public void Load()
@@ -29,6 +31,7 @@ public sealed class FakeSettingsService : ISettingsService
         }
 
         Current = next;
+        SaveCount++;
         SettingsChanged?.Invoke(next);
     }
 }
