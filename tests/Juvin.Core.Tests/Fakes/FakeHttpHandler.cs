@@ -74,6 +74,7 @@ internal sealed class FakeHttpHandler : HttpMessageHandler
     {
         private readonly Queue<byte[]> _chunks;
         private readonly TimeSpan _pause;
+        private ReadOnlyMemory<byte> _remainder;
 
         public TricklingStream(TimeSpan pause, IEnumerable<string> chunks)
         {
@@ -93,15 +94,21 @@ internal sealed class FakeHttpHandler : HttpMessageHandler
 
         public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
         {
-            if (_chunks.Count == 0)
+            if (_remainder.IsEmpty)
             {
-                return 0;
+                if (_chunks.Count == 0)
+                {
+                    return 0;
+                }
+
+                await Task.Delay(_pause, cancellationToken);
+                _remainder = _chunks.Dequeue();
             }
 
-            await Task.Delay(_pause, cancellationToken);
-            var chunk = _chunks.Dequeue();
-            chunk.CopyTo(buffer);
-            return chunk.Length;
+            var count = Math.Min(buffer.Length, _remainder.Length);
+            _remainder[..count].CopyTo(buffer);
+            _remainder = _remainder[count..];
+            return count;
         }
 
         public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
