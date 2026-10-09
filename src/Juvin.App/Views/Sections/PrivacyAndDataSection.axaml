@@ -1,0 +1,83 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Juvin.App.ViewModels.Sections"
+             xmlns:loc="using:Juvin.App.Localization"
+             x:Class="Juvin.App.Views.Sections.PrivacyAndDataSection"
+             x:DataType="vm:PrivacyAndDataSectionViewModel">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="32,28" MaxWidth="860" Spacing="22">
+            <StackPanel Spacing="6">
+                <TextBlock Classes="page-title" Text="{loc:Str PrivacyAndData.Title}" />
+                <TextBlock Classes="page-subtitle" Text="{loc:Str PrivacyAndData.Subtitle}" />
+            </StackPanel>
+
+            <StackPanel Spacing="8">
+                <TextBlock Classes="section-label" Text="{loc:Str PrivacyAndData.HistoryLabel}" />
+                <Border Classes="panel">
+                    <StackPanel>
+                        <Border Classes="section-row">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Classes="row-title" Text="{loc:Str PrivacyAndData.History}" />
+                                    <TextBlock Classes="row-hint" Text="{loc:Str PrivacyAndData.HistoryHint}" />
+                                </StackPanel>
+                                <Border Grid.Column="1" Classes="badge">
+                                    <TextBlock Classes="badge-text" Text="{loc:Str Common.ComingSoon}" />
+                                </Border>
+                            </Grid>
+                        </Border>
+                        <Border Classes="section-row divided">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Classes="row-title" Text="{loc:Str PrivacyAndData.Provenance}" />
+                                    <TextBlock Classes="row-hint" Text="{loc:Str PrivacyAndData.ProvenanceHint}" />
+                                </StackPanel>
+                                <Border Grid.Column="1" Classes="badge">
+                                    <TextBlock Classes="badge-text" Text="{loc:Str Common.ComingSoon}" />
+                                </Border>
+                            </Grid>
+                        </Border>
+                        <Border Classes="section-row divided">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Classes="row-title" Text="{loc:Str PrivacyAndData.Crash}" />
+                                    <TextBlock Classes="row-hint" Text="{loc:Str PrivacyAndData.CrashHint}" />
+                                </StackPanel>
+                                <Border Grid.Column="1" Classes="badge">
+                                    <TextBlock Classes="badge-text" Text="{loc:Str Common.ComingSoon}" />
+                                </Border>
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+            <StackPanel Spacing="8">
+                <TextBlock Classes="section-label" Text="{loc:Str PrivacyAndData.StorageLabel}" />
+                <Border Classes="panel">
+                    <StackPanel>
+                        <Border Classes="section-row">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Classes="row-title" Text="{loc:Str PrivacyAndData.DataFolder}" />
+                                    <TextBlock Classes="row-hint" Text="{Binding DataFolder}" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                        <Border Classes="section-row divided">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Classes="row-title" Text="{loc:Str PrivacyAndData.DeleteAll}" />
+                                    <TextBlock Classes="row-hint" Text="{loc:Str PrivacyAndData.DeleteAllHint}" />
+                                </StackPanel>
+                                <Border Grid.Column="1" Classes="badge">
+                                    <TextBlock Classes="badge-text" Text="{loc:Str Common.ComingSoon}" />
+                                </Border>
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

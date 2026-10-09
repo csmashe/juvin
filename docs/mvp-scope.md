@@ -236,6 +236,8 @@ Goal: remove the unknowns before building anything permanent. Each spike is a th
 
 Exit: a written go/no-go per platform and the decisions recorded in this document.
 
+Result (October 8, 2026): done. All seven spikes returned go with written results in `docs/spikes/`; the per-platform summaries are in the "Phase 0 results so far" list in section 7.
+
 ### Phase 1: solution skeleton and shared UI (2 weeks)
 
 - Solution layout from section 5, CI build on all three OSes.
@@ -245,6 +247,8 @@ Exit: a written go/no-go per platform and the decisions recorded in this documen
 - Tray icon, single instance, local socket on Unix and named pipe on Windows.
 
 Exit: app launches on all three OSes with the settings window navigable and settings persisting.
+
+Result (October 8, 2026, CI green October 9): done. `Juvin.slnx` builds with 0 warnings and 73 tests pass on Ubuntu, Windows, and macOS in CI (the first Windows CI run exposed two named-pipe bugs on elevated tokens, fixed the same day); the app launched on Fedora (GNOME Wayland), Ubuntu 25.04 (GNOME Wayland) and Windows 11 with the sidebar navigable, the wizard opening on first launch, the tray icon shown where a host exists, and the control socket or named pipe answering `ping`. Settings round-tripped on Fedora. macOS is verified only as far as CI goes: the Unix socket tests pass there, but the Keychain store has no test and the app has never been launched on a Mac (none is available). A shared `Juvin.Platform.Unix` package holds the socket code Linux and macOS share. Launch-at-login is saved but not yet registered with any OS.
 
 ### Phase 2: model providers and rewrite pipeline (2 weeks)
 

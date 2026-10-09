@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <OutputType>WinExe</OutputType>
+        <TargetFramework>net10.0</TargetFramework>
+        <RootNamespace>Juvin.App</RootNamespace>
+        <AssemblyName>juvin</AssemblyName>
+        <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="Juvin.App.Tests"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Avalonia"/>
+        <PackageReference Include="Avalonia.Desktop"/>
+        <PackageReference Include="Avalonia.Themes.Fluent"/>
+        <PackageReference Include="Avalonia.Fonts.Inter"/>
+        <PackageReference Include="FluentIcons.Avalonia"/>
+        <PackageReference Include="CommunityToolkit.Mvvm"/>
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <AvaloniaResource Include="Assets\*.png"/>
+        <Content Include="Assets\juvin-mark-color-32.png" CopyToOutputDirectory="PreserveNewest"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Juvin.Core\Juvin.Core.csproj"/>
+        <ProjectReference Include="..\Juvin.Platform\Juvin.Platform.csproj"/>
+        <ProjectReference Include="..\Juvin.Platform.Linux\Juvin.Platform.Linux.csproj"/>
+        <ProjectReference Include="..\Juvin.Platform.Mac\Juvin.Platform.Mac.csproj"/>
+        <ProjectReference Include="..\Juvin.Platform.Windows\Juvin.Platform.Windows.csproj"/>
+    </ItemGroup>
+</Project>
