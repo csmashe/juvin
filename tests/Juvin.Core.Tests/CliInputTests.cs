@@ -121,4 +121,12 @@ public sealed class CliInputTests
         Assert.True(CliOptions.Parse(["--help"], out _)?.Help);
         Assert.True(CliOptions.Parse(["rewrite", "--help"], out _)?.Help);
     }
+
+    [Fact]
+    public void Json_TreatsANullThreadAsNoThread()
+    {
+        var context = StdinInput.Parse("""{"draft":"hi","thread":null}""");
+
+        Assert.Empty(context.Thread);
+    }
 }

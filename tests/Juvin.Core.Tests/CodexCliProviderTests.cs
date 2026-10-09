@@ -267,4 +267,24 @@ public sealed class CodexCliProviderTests : IDisposable
         Assert.Equal(["--version"], info.ArgumentList);
         Assert.Equal("/usr/bin/codex.cmd", unix.FileName);
     }
+
+    [Fact]
+    public async Task ArgumentsTheShellCannotTake_AreAConfigurationFailureAndANotInstalledProbe()
+    {
+        var runner = new FakeProcessRunner(_ => throw new ArgumentException("bad"));
+        var provider = Provider(runner);
+
+        var ex = await Assert.ThrowsAsync<ProviderException>(() => provider.CompleteAsync(s_request, null, CancellationToken.None));
+
+        Assert.Equal(ProviderFailureKind.Configuration, ex.Kind);
+        Assert.Equal(ProviderStatusKind.NotInstalled, (await provider.ProbeAsync(CancellationToken.None)).Kind);
+    }
+
+    [Fact]
+    public void BuildStartInfo_QuotesAnEmptyArgument()
+    {
+        var info = ProcessRunner.BuildStartInfo(@"C:\npm\codex.cmd", ["-m", "", "-"], isWindows: true);
+
+        Assert.Contains(@"-m """" -", info.Arguments);
+    }
 }

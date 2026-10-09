@@ -14,6 +14,7 @@ public interface IProcessRunner
     ///     closing its input. Cancelling kills the whole process tree.
     /// </summary>
     /// <exception cref="Win32Exception">The executable could not be started.</exception>
+    /// <exception cref="ArgumentException">An argument cannot be passed through the Windows command interpreter.</exception>
     Task<ProcessResult> RunAsync(
         string fileName,
         IReadOnlyList<string> arguments,
@@ -100,7 +101,7 @@ public sealed class ProcessRunner : IProcessRunner
             throw new ArgumentException("Argument contains characters that cannot be passed through cmd.exe.", nameof(token));
         }
 
-        return token.Any(char.IsWhiteSpace) ? "\"" + token + "\"" : token;
+        return token.Length == 0 || token.Any(char.IsWhiteSpace) ? "\"" + token + "\"" : token;
     }
 
     private static async Task WriteInputAsync(Process process, string? input, CancellationToken ct)

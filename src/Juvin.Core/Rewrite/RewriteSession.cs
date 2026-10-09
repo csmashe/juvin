@@ -73,7 +73,7 @@ public sealed class RewriteSession
         {
             SystemPrompt = _systemPrompt,
             Messages = [.. _history, userTurn],
-            Model = _settings.ProcessingMode == ProcessingMode.Local ? _settings.LocalModel : _settings.CodexModel,
+            Model = NullIfBlank(_settings.ProcessingMode == ProcessingMode.Local ? _settings.LocalModel : _settings.CodexModel),
             DisableThinking = _settings.LocalThinkingDisabled,
         };
 
@@ -109,6 +109,9 @@ public sealed class RewriteSession
             throw;
         }
     }
+
+    private static string? NullIfBlank(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private RewriteProvenance CreateProvenance(
         ChatRequest request,

@@ -91,7 +91,7 @@ public sealed class CodexCliProvider : IModelProvider
                 ? new ProviderStatus(ProviderStatusKind.Ready, "Provider.Status.Ready", models, versionText)
                 : new ProviderStatus(ProviderStatusKind.NotSignedIn, "Provider.Status.NotSignedIn", models, versionText);
         }
-        catch (Win32Exception)
+        catch (Exception ex) when (ex is Win32Exception or ArgumentException)
         {
             return new ProviderStatus(ProviderStatusKind.NotInstalled, "Provider.Status.NotInstalled", []);
         }
@@ -154,6 +154,14 @@ public sealed class CodexCliProvider : IModelProvider
         catch (Win32Exception ex)
         {
             throw new ProviderException(ProviderFailureKind.Configuration, "The Codex CLI could not be started.", ex);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new ProviderException(
+                ProviderFailureKind.Configuration,
+                "The Codex path or model name has characters that cannot be passed to the Codex CLI on Windows.",
+                ex
+            );
         }
         catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
         {
