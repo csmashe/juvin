@@ -91,7 +91,7 @@ public sealed partial class OpenAiCompatibleProvider : IModelProvider
     )
     {
         using var deadline = Deadline(ct);
-        await using var deltas = StreamCoreAsync(request, new StreamUsage(), deadline.Token).GetAsyncEnumerator(deadline.Token);
+        await using var deltas = StreamCoreAsync(request, new StreamUsage(), deadline).GetAsyncEnumerator(deadline.Token);
         while (true)
         {
             bool more;
@@ -128,7 +128,7 @@ public sealed partial class OpenAiCompatibleProvider : IModelProvider
         {
             try
             {
-                text = (await pump.RunAsync(StreamCoreAsync(request, usage, deadline.Token), deadline.Token)).TrimEnd();
+                text = (await pump.RunAsync(StreamCoreAsync(request, usage, deadline), deadline.Token)).TrimEnd();
             }
             catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
             {
@@ -204,17 +204,23 @@ public sealed partial class OpenAiCompatibleProvider : IModelProvider
 
     /// <summary>
     ///     <see cref="HttpClient.Timeout" /> only covers the headers once a response is streamed, so
-    ///     the same budget is applied to the whole exchange through this token.
+    ///     the same budget is applied through this token: whole for a probe, and as an idle limit
+    ///     for a chat, re-armed by <see cref="Touch" /> on every delta so a slow but live reply is
+    ///     never cut off.
     /// </summary>
     private CancellationTokenSource Deadline(CancellationToken ct)
     {
         var source = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        Touch(source);
+        return source;
+    }
+
+    private void Touch(CancellationTokenSource deadline)
+    {
         if (_http.Timeout != Timeout.InfiniteTimeSpan)
         {
-            source.CancelAfter(_http.Timeout);
+            deadline.CancelAfter(_http.Timeout);
         }
-
-        return source;
     }
 
     private static ProviderException TimedOut(Exception ex) =>
@@ -223,9 +229,10 @@ public sealed partial class OpenAiCompatibleProvider : IModelProvider
     private async IAsyncEnumerable<string> StreamCoreAsync(
         ChatRequest request,
         StreamUsage usage,
-        [EnumeratorCancellation] CancellationToken ct
+        CancellationTokenSource deadline
     )
     {
+        var ct = deadline.Token;
         var model = ResolveModel(request);
         var isOllama = await IsOllamaAsync(ct);
         if (isOllama)
@@ -240,6 +247,7 @@ public sealed partial class OpenAiCompatibleProvider : IModelProvider
         var filter = new ThinkingBlockStreamFilter();
         await foreach (var delta in deltas.WithCancellation(ct))
         {
+            Touch(deadline);
             var visible = filter.Push(delta);
             if (visible.Length > 0)
             {

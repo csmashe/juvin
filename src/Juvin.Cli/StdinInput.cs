@@ -43,7 +43,10 @@ internal static class StdinInput
 
     private static List<ThreadMessage> ParseThread(JsonElement root)
     {
-        if (!root.TryGetProperty("thread", out var array) && !root.TryGetProperty("messages", out array))
+        if (
+            !root.TryGetProperty("thread", out var array) && !root.TryGetProperty("messages", out array)
+            || array.ValueKind == JsonValueKind.Null
+        )
         {
             return [];
         }

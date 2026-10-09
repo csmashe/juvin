@@ -60,6 +60,14 @@ public sealed class RewriteSessionTests
     }
 
     [Fact]
+    public async Task ABlankSavedModel_IsSentAsNoModel()
+    {
+        await Session(new AppSettings { LocalModel = "  " }).RunAsync(RewriteAction.Clearer, null, null, CancellationToken.None);
+
+        Assert.Null(_local.Requests[0].Model);
+    }
+
+    [Fact]
     public async Task EmptyReply_IsAFailureAndLeavesHistoryUntouched()
     {
         var session = Session(new AppSettings());

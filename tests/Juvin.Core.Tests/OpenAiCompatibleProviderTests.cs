@@ -269,6 +269,28 @@ public sealed class OpenAiCompatibleProviderTests
     }
 
     [Fact]
+    public async Task Stream_StaysAliveWhileDeltasKeepArrivingSlowerThanTheTimeoutInTotal()
+    {
+        var handler = new FakeHttpHandler().Trickle(
+            "/v1/chat/completions",
+            TimeSpan.FromMilliseconds(120),
+            "data: {\"choices\":[{\"delta\":{\"content\":\"a\"}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"b\"}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"c\"}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"d\"}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"e\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"
+        );
+        var provider = new OpenAiCompatibleProvider(
+            new HttpClient(handler) { Timeout = TimeSpan.FromMilliseconds(300) },
+            new AppSettings { LocalServerUrl = "http://localhost:1234", LocalModel = "m" }
+        );
+
+        var result = await provider.CompleteAsync(s_request, null, CancellationToken.None);
+
+        Assert.Equal("abcde", result.Text);
+    }
+
+    [Fact]
     public async Task Probe_TimesOutWhenTheBodyStallsAfterTheHeaders()
     {
         var handler = new FakeHttpHandler().Stall("/api/version");

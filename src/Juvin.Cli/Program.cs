@@ -136,7 +136,13 @@ public static class Program
         }
         catch (OperationCanceledException)
         {
+            if (printed > 0)
+            {
+                Console.Out.WriteLine();
+            }
+
             Console.Error.WriteLine("Cancelled.");
+            WriteProvenance(options, session);
             return 1;
         }
     }

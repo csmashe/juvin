@@ -39,6 +39,16 @@ internal sealed class FakeHttpHandler : HttpMessageHandler
         return this;
     }
 
+    /// <summary>Sends each chunk after a pause, so the body outlasts a timeout without ever stalling for it.</summary>
+    public FakeHttpHandler Trickle(string path, TimeSpan pause, params string[] chunks)
+    {
+        _routes[path] = _ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StreamContent(new TricklingStream(pause, chunks)),
+        };
+        return this;
+    }
+
     public FakeHttpHandler Fail(string path, Exception exception)
     {
         _routes[path] = _ => throw exception;
@@ -58,6 +68,50 @@ internal sealed class FakeHttpHandler : HttpMessageHandler
         return _routes.TryGetValue(path, out var respond)
             ? respond(body)
             : new HttpResponseMessage(HttpStatusCode.NotFound) { Content = new StringContent("") };
+    }
+
+    private sealed class TricklingStream : Stream
+    {
+        private readonly Queue<byte[]> _chunks;
+        private readonly TimeSpan _pause;
+
+        public TricklingStream(TimeSpan pause, IEnumerable<string> chunks)
+        {
+            _pause = pause;
+            _chunks = new Queue<byte[]>(chunks.Select(Encoding.UTF8.GetBytes));
+        }
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            if (_chunks.Count == 0)
+            {
+                return 0;
+            }
+
+            await Task.Delay(_pause, cancellationToken);
+            var chunk = _chunks.Dequeue();
+            chunk.CopyTo(buffer);
+            return chunk.Length;
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
     private sealed class StallingStream : Stream
