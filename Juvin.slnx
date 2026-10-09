@@ -1,0 +1,18 @@
+<Solution>
+    <Folder Name="/src/">
+        <Project Path="src/Juvin.Core/Juvin.Core.csproj"/>
+        <Project Path="src/Juvin.Platform/Juvin.Platform.csproj"/>
+        <Project Path="src/Juvin.Platform.Unix/Juvin.Platform.Unix.csproj"/>
+        <Project Path="src/Juvin.Platform.Linux/Juvin.Platform.Linux.csproj"/>
+        <Project Path="src/Juvin.Platform.Mac/Juvin.Platform.Mac.csproj"/>
+        <Project Path="src/Juvin.Platform.Windows/Juvin.Platform.Windows.csproj"/>
+        <Project Path="src/Juvin.App/Juvin.App.csproj"/>
+        <Project Path="src/Juvin.NativeHost/Juvin.NativeHost.csproj"/>
+        <Project Path="src/Juvin.Cli/Juvin.Cli.csproj"/>
+    </Folder>
+    <Folder Name="/tests/">
+        <Project Path="tests/Juvin.Core.Tests/Juvin.Core.Tests.csproj"/>
+        <Project Path="tests/Juvin.Platform.Tests/Juvin.Platform.Tests.csproj"/>
+        <Project Path="tests/Juvin.App.Tests/Juvin.App.Tests.csproj"/>
+    </Folder>
+</Solution>

@@ -1,0 +1,144 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:Juvin.App.ViewModels"
+        xmlns:ic="using:FluentIcons.Avalonia"
+        xmlns:loc="using:Juvin.App.Localization"
+        mc:Ignorable="d" d:DesignWidth="640" d:DesignHeight="640"
+        x:Class="Juvin.App.Views.SetupWizard"
+        x:DataType="vm:SetupWizardViewModel"
+        Title="{loc:Str Wizard.Title}"
+        Icon="/Assets/juvin-mark-color-256.png"
+        Width="640" Height="640"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False">
+    <Grid RowDefinitions="Auto,*,Auto">
+        <StackPanel Grid.Row="0" HorizontalAlignment="Center" Margin="0,32,0,20" Spacing="6">
+            <TextBlock Classes="wordmark" Text="{loc:Str App.Name}" HorizontalAlignment="Center" />
+            <TextBlock Classes="tagline" Text="{loc:Str App.Tagline}" HorizontalAlignment="Center" />
+            <ItemsControl Margin="0,10,0,0" HorizontalAlignment="Center" ItemsSource="{Binding StepDots}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal" Spacing="6" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:StepDot">
+                        <Border Classes="step-dot" Classes.active="{Binding IsActive}" />
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock Classes="tagline" Text="{Binding StepText}" HorizontalAlignment="Center" FontSize="11" />
+        </StackPanel>
+
+        <!-- The tab strip is hidden; StepIndex picks the page. Tabs follow SetupWizardStep order. -->
+        <TabControl Grid.Row="1" Classes="steps" SelectedIndex="{Binding StepIndex}" Margin="32,0">
+
+            <TabItem>
+                <StackPanel Spacing="14">
+                    <TextBlock Classes="page-title" Text="{loc:Str Wizard.Welcome.Title}" />
+                    <TextBlock Classes="page-subtitle" Text="{loc:Str Wizard.Welcome.Body}" />
+                </StackPanel>
+            </TabItem>
+
+            <TabItem>
+                <StackPanel Spacing="14">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Classes="page-title"
+                                   Text="{loc:Str Wizard.Checklist.Title}"
+                                   VerticalAlignment="Center" />
+                        <Button Grid.Column="1"
+                                Content="{loc:Str Common.CheckAgain}"
+                                Command="{Binding RecheckSetupCommand}"
+                                IsVisible="{Binding HasSetupItems}" />
+                    </Grid>
+                    <TextBlock Classes="page-subtitle" Text="{loc:Str Wizard.Checklist.Body}" />
+                    <Border Classes="panel">
+                        <Grid>
+                            <Border Classes="section-row" IsVisible="{Binding !HasSetupItems}">
+                                <TextBlock Classes="row-hint" Margin="0" Text="{loc:Str Wizard.Checklist.Empty}" />
+                            </Border>
+                            <ScrollViewer MaxHeight="300" IsVisible="{Binding HasSetupItems}">
+                                <ItemsControl ItemsSource="{Binding SetupItems}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:SetupTaskRow">
+                                            <Border Classes="section-row">
+                                                <StackPanel Spacing="6">
+                                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                                                        <ic:SymbolIcon Classes="status"
+                                                                       Classes.satisfied="{Binding IsSatisfied}"
+                                                                       Classes.attention="{Binding NeedsAttention}"
+                                                                       Symbol="{Binding StatusSymbol}"
+                                                                       VerticalAlignment="Top" />
+                                                        <StackPanel Grid.Column="1" Spacing="2">
+                                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                                <TextBlock Classes="row-title" Text="{Binding Title}" />
+                                                                <Border Classes="badge">
+                                                                    <TextBlock Classes="badge-text" Text="{Binding RequirementLabel}" />
+                                                                </Border>
+                                                            </StackPanel>
+                                                            <TextBlock Classes="row-hint" Text="{Binding Summary}" />
+                                                            <TextBlock Classes="row-hint"
+                                                                       Text="{Binding Detail}"
+                                                                       IsVisible="{Binding HasDetail}" />
+                                                        </StackPanel>
+                                                        <StackPanel Grid.Column="2" Spacing="4" VerticalAlignment="Center" MinWidth="90">
+                                                            <ProgressBar IsIndeterminate="True" Height="4" IsVisible="{Binding IsBusy}" />
+                                                            <Button Content="{Binding ActionLabel}"
+                                                                    HorizontalAlignment="Stretch"
+                                                                    IsVisible="{Binding CanRunAction}"
+                                                                    Command="{Binding $parent[ItemsControl].((vm:SetupWizardViewModel)DataContext).RunSetupActionCommand, FallbackValue={x:Null}}"
+                                                                    CommandParameter="{Binding}" />
+                                                        </StackPanel>
+                                                    </Grid>
+                                                    <TextBox Text="{Binding CopyCommand}"
+                                                             IsReadOnly="True"
+                                                             FontFamily="monospace"
+                                                             FontSize="11"
+                                                             IsVisible="{Binding HasCopyCommand}" />
+                                                    <TextBlock Classes="row-hint"
+                                                               Text="{Binding ActionMessage}"
+                                                               IsVisible="{Binding HasActionMessage}" />
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </Grid>
+                    </Border>
+                </StackPanel>
+            </TabItem>
+
+            <TabItem>
+                <StackPanel Spacing="14">
+                    <TextBlock Classes="page-title" Text="{loc:Str Wizard.Done.Title}" />
+                    <TextBlock Classes="page-subtitle" Text="{Binding DoneBody}" />
+                </StackPanel>
+            </TabItem>
+        </TabControl>
+
+        <Grid Grid.Row="2" Margin="32,16,32,24" ColumnDefinitions="Auto,*,Auto,Auto" RowDefinitions="Auto,Auto">
+            <TextBlock Grid.Row="0" Grid.ColumnSpan="4"
+                       Classes="row-hint"
+                       Foreground="{StaticResource JuvinAccentBrush}"
+                       Text="{Binding SaveError}"
+                       IsVisible="{Binding SaveError, Converter={x:Static ObjectConverters.IsNotNull}}"
+                       Margin="0,0,0,12" />
+            <Button Grid.Row="1" Grid.Column="0"
+                    Content="{loc:Str Common.Back}"
+                    Command="{Binding BackCommand}"
+                    IsEnabled="{Binding !IsFirstStep}" />
+            <Button Grid.Row="1" Grid.Column="2"
+                    Content="{loc:Str Common.Skip}"
+                    Command="{Binding SkipCommand}"
+                    Margin="0,0,8,0" />
+            <Button Grid.Row="1" Grid.Column="3"
+                    Classes="accent"
+                    Content="{Binding NextLabel}"
+                    Command="{Binding NextCommand}"
+                    IsEnabled="{Binding CanAdvance}" />
+        </Grid>
+    </Grid>
+</Window>

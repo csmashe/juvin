@@ -1,0 +1,65 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Juvin.App.ViewModels.Sections"
+             xmlns:loc="using:Juvin.App.Localization"
+             x:Class="Juvin.App.Views.Sections.AboutSection"
+             x:DataType="vm:AboutSectionViewModel">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="32,28" MaxWidth="860" Spacing="22">
+            <StackPanel Spacing="6">
+                <TextBlock Classes="page-title" Text="{loc:Str About.Title}" />
+                <TextBlock Classes="page-subtitle" Text="{loc:Str App.Tagline}" />
+            </StackPanel>
+
+            <StackPanel Spacing="8">
+                <TextBlock Classes="section-label" Text="{loc:Str About.VersionLabel}" />
+                <Border Classes="panel">
+                    <StackPanel>
+                        <Border Classes="section-row">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Classes="row-title" Text="{loc:Str About.Version}" />
+                                    <TextBlock Classes="row-hint" Text="{loc:Str App.Tagline}" />
+                                </StackPanel>
+                                <TextBlock Grid.Column="1"
+                                           VerticalAlignment="Center"
+                                           FontWeight="SemiBold"
+                                           Text="{Binding Version}" />
+                            </Grid>
+                        </Border>
+                        <Border Classes="section-row divided">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Classes="row-title" Text="{loc:Str About.License}" />
+                                    <TextBlock Classes="row-hint" Text="{loc:Str About.LicenseHint}" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                        <Border Classes="section-row divided">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Classes="row-title" Text="{loc:Str About.Diagnostics}" />
+                                    <TextBlock Classes="row-hint" Text="{loc:Str About.DiagnosticsHint}" />
+                                </StackPanel>
+                                <Border Grid.Column="1" Classes="badge">
+                                    <TextBlock Classes="badge-text" Text="{loc:Str Common.ComingSoon}" />
+                                </Border>
+                            </Grid>
+                        </Border>
+                        <Border Classes="section-row divided">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Classes="row-title" Text="{loc:Str About.Backup}" />
+                                    <TextBlock Classes="row-hint" Text="{loc:Str About.BackupHint}" />
+                                </StackPanel>
+                                <Border Grid.Column="1" Classes="badge">
+                                    <TextBlock Classes="badge-text" Text="{loc:Str Common.ComingSoon}" />
+                                </Border>
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
