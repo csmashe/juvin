@@ -1,5 +1,7 @@
 src/Core/Models/LlmCallProvenance.cs|01e967b7|2026-07-08
 src/Core/Services/AtomicJsonStore.cs|3e228d69|2026-07-28
+src/Linux/MainWindow.axaml|4d1dbc6b|2026-04-21
+src/Linux/MainWindow.axaml.cs|4d1dbc6b|2026-04-21
 src/Linux/Services/ActiveWindow/AtSpiEventClient.cs|47ad0ab3|2026-07-06
 src/Linux/Services/ActiveWindow/AtSpiEventClientExtensions.cs|f83d77f5|2026-09-11
 src/Linux/Services/ActiveWindow/AtSpiUrlExtractor.cs|cd6c055e|2026-05-28
@@ -53,6 +55,7 @@ src/Linux/Services/Setup/ISetupTask.cs|997ed6b7|2026-06-08
 src/Linux/Services/Setup/KwinActiveWindowSetupTask.cs|8479e7b2|2026-06-08
 src/Linux/Services/Setup/PackageInstaller.cs|997ed6b7|2026-06-08
 src/Linux/Services/WaylandSessionDetector.cs|b4b7b20f|2026-07-17
+src/Linux/ViewModels/MainWindowViewModel.cs|b7ab2cd5|2026-04-21
 src/Linux/Views/Sections/AboutSection.axaml|4f3a75df|2026-04-21
 src/Linux/Views/Sections/AboutSection.axaml.cs|4f3a75df|2026-04-21
 src/Linux/Views/Sections/AdvancedSection.axaml|613f8d6c|2026-04-22

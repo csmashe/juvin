@@ -1,12 +1,14 @@
 # Spike: origin check of files slated for copying
 
-Date: October 8, 2026. Phase 0 item 7 of `docs/mvp-scope.md`. Result: **86 of 92 files confirmed original to the Linux repository; 6 files trace back to upstream Windows code and must not be copied.**
+Date: October 8, 2026. Phase 0 item 7 of `docs/mvp-scope.md`. Result: **89 of 95 files confirmed original to the Linux repository; 6 files trace back to upstream Windows code and must not be copied.**
 
 The check script and the raw list live in `spikes/copy-history/`.
 
 ## Method
 
 The reference repository's history starts with the upstream Windows application (the initial commit of February 15, 2026 is the upstream Windows application: 101 files, WPF views under the Windows project). The Linux port begins on April 21, 2026 ("Port plugin loader + core Linux services"). For every file matching the reuse list in section 2.7, `git log --follow --diff-filter=A` finds the commit that first added it, following renames. Any file whose history reaches a commit before April 21, 2026 was carried over from the Windows code, whatever its current name.
+
+Correction on October 9, 2026: the first run searched for `Views/MainWindow`, but the reference keeps `MainWindow.axaml` at the project root, so the main window was missing from the inventory while the scope claimed it was checked. The pattern is now `MainWindow`, which adds `MainWindow.axaml`, its code-behind, and `MainWindowViewModel.cs`; all three were first added by the Linux port on April 21, 2026, and the Windows project has no main window of that name, so the verdict is unchanged.
 
 A plain file-name comparison, which is what section 2.7 relied on, misses exactly these cases: git detected the files as renames of Windows files because more than half of their content survived the port.
 
@@ -38,6 +40,8 @@ Two files were added by a commit titled "Port plugin loader + core Linux service
 | --- | --- | --- | --- |
 | `Core/Models/LlmCallProvenance.cs` | 01e967b7 | 2026-07-08 | Linux original |
 | `Core/Services/AtomicJsonStore.cs` | 3e228d69 | 2026-07-28 | Linux original |
+| `Linux/MainWindow.axaml` | 4d1dbc6b | 2026-04-21 | Linux original |
+| `Linux/MainWindow.axaml.cs` | 4d1dbc6b | 2026-04-21 | Linux original |
 | `Linux/Services/ActiveWindow/AtSpiEventClient.cs` | 47ad0ab3 | 2026-07-06 | Linux original |
 | `Linux/Services/ActiveWindow/AtSpiEventClientExtensions.cs` | f83d77f5 | 2026-09-11 | Linux original |
 | `Linux/Services/ActiveWindow/AtSpiUrlExtractor.cs` | cd6c055e | 2026-05-28 | Linux original |
@@ -91,6 +95,7 @@ Two files were added by a commit titled "Port plugin loader + core Linux service
 | `Linux/Services/Setup/KwinActiveWindowSetupTask.cs` | 8479e7b2 | 2026-06-08 | Linux original |
 | `Linux/Services/Setup/PackageInstaller.cs` | 997ed6b7 | 2026-06-08 | Linux original |
 | `Linux/Services/WaylandSessionDetector.cs` | b4b7b20f | 2026-07-17 | Linux original |
+| `Linux/ViewModels/MainWindowViewModel.cs` | b7ab2cd5 | 2026-04-21 | Linux original |
 | `Linux/Views/Sections/AboutSection.axaml` | 4f3a75df | 2026-04-21 | Linux original |
 | `Linux/Views/Sections/AboutSection.axaml.cs` | 4f3a75df | 2026-04-21 | Linux original |
 | `Linux/Views/Sections/AdvancedSection.axaml` | 613f8d6c | 2026-04-22 | Linux original |

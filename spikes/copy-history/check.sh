@@ -5,7 +5,7 @@
 set -u
 repo="$1"
 cd "$repo" || exit 1
-for pat in "Hotkey/" "ShortcutMatcher" "ShortcutDispatcher" "DeSetup/" "ISetupTask" "Services/Setup/" "Ipc/" "AtomicJsonStore" "ApiKeyProtection" "SseEventDecoder" "ThinkingBlockFilter" "LlmStreamPump" "ILlmProviderRole" "PromptProcessingService" "LlmCallProvenance" "AtSpi" "Wayland" "Views/MainWindow" "Views/WelcomeWizard" "Views/Sections/"; do
+for pat in "Hotkey/" "ShortcutMatcher" "ShortcutDispatcher" "DeSetup/" "ISetupTask" "Services/Setup/" "Ipc/" "AtomicJsonStore" "ApiKeyProtection" "SseEventDecoder" "ThinkingBlockFilter" "LlmStreamPump" "ILlmProviderRole" "PromptProcessingService" "LlmCallProvenance" "AtSpi" "Wayland" "MainWindow" "Views/WelcomeWizard" "Views/Sections/"; do
   git ls-files "src/*${pat}*" | grep -v -E "obj/|bin/"
 done | sort -u | while read -r f; do
   first=$(git log --diff-filter=A --follow --format="%h %ad" --date=short -- "$f" | tail -1)
