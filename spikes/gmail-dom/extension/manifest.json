@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Juvin Gmail DOM spike",
+  "version": "0.0.1",
+  "description": "Throwaway: measures Gmail thread capture, selection read, replacement, and Undo. Records lengths and counts only.",
+  "permissions": ["activeTab", "scripting"],
+  "host_permissions": ["https://mail.google.com/*", "http://127.0.0.1/*"],
+  "background": { "scripts": ["background.js"] },
+  "content_scripts": [{ "matches": ["https://mail.google.com/*"], "js": ["content.js"], "run_at": "document_idle" }],
+  "commands": { "run-spike": { "suggested_key": { "default": "Ctrl+Shift+Y" }, "description": "Run the Gmail spike in the current thread" } },
+  "action": { "default_title": "Run Juvin Gmail spike" },
+  "browser_specific_settings": { "gecko": { "id": "gmail-spike@juvin.app", "strict_min_version": "128.0" } }
+}

@@ -1,0 +1,11 @@
+{
+  "subject": "Re: Q4 onboarding timeline for Harbor Logistics",
+  "messages": [
+    {"from": "Dana Whitfield <dana@harborlogistics.example>", "date": "2026-09-29 09:12", "body": "Hi Chris,\n\nThanks for the proposal. Our ops team is excited but we have a hard cutover date of November 17 because the old vendor contract ends then. Can you confirm the integration with our TMS can be live by November 10 so we have a week of parallel running?\n\nAlso, Priya asked whether the per-seat pricing covers warehouse staff who only scan, or only office users.\n\nBest,\nDana"},
+    {"from": "Chris Smashe <chris@excelontheweb.example>", "date": "2026-09-29 14:40", "body": "Hi Dana,\n\nNovember 10 is doable if we get API credentials for the TMS by October 10. Per-seat pricing covers office users; scan-only staff fall under the device licence, which is flat per warehouse.\n\nI'll send the revised SOW tomorrow.\n\nChris"},
+    {"from": "Priya Nair <priya@harborlogistics.example>", "date": "2026-10-02 11:05", "body": "Chris, jumping in. Our TMS vendor says credentials need a security review on their side, which takes two to three weeks. So October 10 is unlikely; October 20 is realistic. Does that still work for a November 10 go-live? If not, what is the minimum you need?\n\nAlso we counted 14 warehouses, not 11 as in the SOW."},
+    {"from": "Dana Whitfield <dana@harborlogistics.example>", "date": "2026-10-06 16:30", "body": "Following up on Priya's note. We need an answer before our steering meeting Thursday. If November 10 slips, the whole deal has to go back to procurement.\n\nDana"}
+  ],
+  "collapsed": 0,
+  "draft": "hi dana, sorry for the delay. so october 20 for credentials is tight but we can still make nov 10 if we do the TMS mapping in parallel using your sandbox, we need sandbox access by oct 13 for that. the 14 warehouses is fine, i'll fix the SOW, device licence goes up accordingly. let me know if thursday works for a quick call before your meeting"
+}
