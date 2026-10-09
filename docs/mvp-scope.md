@@ -246,6 +246,8 @@ Exit: a written go/no-go per platform and the decisions recorded in this documen
 
 Exit: app launches on all three OSes with the settings window navigable and settings persisting.
 
+Result (October 8, 2026): done for Linux and Windows. `Juvin.slnx` builds with 0 warnings and 73 tests pass; the app launched on Fedora (GNOME Wayland), Ubuntu 25.04 (GNOME Wayland) and Windows 11 with the sidebar navigable, the wizard opening on first launch, the tray icon shown where a host exists, and the control socket or named pipe answering `ping`. Settings round-tripped on Fedora. macOS is built in CI only; the Keychain store and the app launch there are still unverified (no Mac is available; GitHub Actions is the only macOS check until one is). A shared `Juvin.Platform.Unix` package holds the socket code Linux and macOS share. Launch-at-login is saved but not yet registered with any OS.
+
 ### Phase 2: model providers and rewrite pipeline (2 weeks)
 
 - Provider interface, OpenAI-compatible (local) implementation with streaming, Codex CLI implementation with process supervision and output parsing.

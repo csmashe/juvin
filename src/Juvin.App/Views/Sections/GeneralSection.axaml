@@ -1,0 +1,87 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Juvin.App.ViewModels.Sections"
+             xmlns:loc="using:Juvin.App.Localization"
+             x:Class="Juvin.App.Views.Sections.GeneralSection"
+             x:DataType="vm:GeneralSectionViewModel">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="32,28" MaxWidth="860" Spacing="22">
+            <StackPanel Spacing="6">
+                <TextBlock Classes="page-title" Text="{loc:Str General.Title}" />
+                <TextBlock Classes="page-subtitle" Text="{loc:Str General.Subtitle}" />
+            </StackPanel>
+
+            <StackPanel Spacing="8">
+                <TextBlock Classes="section-label" Text="{loc:Str General.StartupLabel}" />
+                <Border Classes="panel">
+                    <StackPanel>
+                        <Border Classes="section-row">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Classes="row-title" Text="{loc:Str General.LaunchAtLogin}" />
+                                    <TextBlock Classes="row-hint" Text="{loc:Str General.LaunchAtLoginHint}" />
+                                </StackPanel>
+                                <Border Grid.Column="1" Classes="badge">
+                                    <TextBlock Classes="badge-text" Text="{loc:Str Common.ComingSoon}" />
+                                </Border>
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+            <StackPanel Spacing="8">
+                <TextBlock Classes="section-label" Text="{loc:Str General.WindowLabel}" />
+                <Border Classes="panel">
+                    <StackPanel>
+                        <Border Classes="section-row">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Classes="row-title" Text="{loc:Str General.CloseToTray}" />
+                                    <TextBlock Classes="row-hint" Text="{loc:Str General.CloseToTrayHint}" />
+                                </StackPanel>
+                                <ToggleSwitch Grid.Column="1"
+                                              VerticalAlignment="Center"
+                                              IsEnabled="{Binding IsTrayAvailable}"
+                                              IsChecked="{Binding CloseToTray}" />
+                            </Grid>
+                        </Border>
+                        <Border Classes="section-row divided" IsVisible="{Binding !IsTrayAvailable}">
+                            <TextBlock Classes="row-hint" Margin="0" Text="{loc:Str General.NoTrayHint}" />
+                        </Border>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+            <StackPanel Spacing="8">
+                <TextBlock Classes="section-label" Text="{loc:Str General.MoreLabel}" />
+                <Border Classes="panel">
+                    <StackPanel>
+                        <Border Classes="section-row">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Classes="row-title" Text="{loc:Str General.Language}" />
+                                    <TextBlock Classes="row-hint" Text="{loc:Str General.LanguageHint}" />
+                                </StackPanel>
+                                <Border Grid.Column="1" Classes="badge">
+                                    <TextBlock Classes="badge-text" Text="{loc:Str Common.ComingSoon}" />
+                                </Border>
+                            </Grid>
+                        </Border>
+                        <Border Classes="section-row divided">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Classes="row-title" Text="{loc:Str General.Updates}" />
+                                    <TextBlock Classes="row-hint" Text="{loc:Str General.UpdatesHint}" />
+                                </StackPanel>
+                                <Border Grid.Column="1" Classes="badge">
+                                    <TextBlock Classes="badge-text" Text="{loc:Str Common.ComingSoon}" />
+                                </Border>
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

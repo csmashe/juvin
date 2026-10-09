@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <RootNamespace>Juvin.Core</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="Juvin.Core.Tests"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <Content Include="Resources\Localization\*.json" CopyToOutputDirectory="PreserveNewest"/>
+    </ItemGroup>
+</Project>

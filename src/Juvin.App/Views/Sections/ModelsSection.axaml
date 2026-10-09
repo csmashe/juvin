@@ -1,0 +1,75 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Juvin.App.ViewModels.Sections"
+             xmlns:loc="using:Juvin.App.Localization"
+             x:Class="Juvin.App.Views.Sections.ModelsSection"
+             x:DataType="vm:ModelsSectionViewModel">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="32,28" MaxWidth="860" Spacing="22">
+            <StackPanel Spacing="6">
+                <TextBlock Classes="page-title" Text="{loc:Str Models.Title}" />
+                <TextBlock Classes="page-subtitle" Text="{loc:Str Models.Subtitle}" />
+            </StackPanel>
+
+            <StackPanel Spacing="8">
+                <TextBlock Classes="section-label" Text="{loc:Str Models.ModeLabel}" />
+                <Border Classes="panel">
+                    <StackPanel>
+                        <Border Classes="section-row">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Classes="row-title" Text="{loc:Str Models.Mode}" />
+                                    <TextBlock Classes="row-hint" Text="{loc:Str Models.ModeHint}" />
+                                </StackPanel>
+                                <Border Grid.Column="1" Classes="badge">
+                                    <TextBlock Classes="badge-text" Text="{loc:Str Common.ComingSoon}" />
+                                </Border>
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+            <StackPanel Spacing="8">
+                <TextBlock Classes="section-label" Text="{loc:Str Models.LocalLabel}" />
+                <Border Classes="panel">
+                    <StackPanel>
+                        <Border Classes="section-row">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Classes="row-title" Text="{loc:Str Models.LocalServer}" />
+                                    <TextBlock Classes="row-hint" Text="{Binding LocalServerUrl}" />
+                                </StackPanel>
+                                <Border Grid.Column="1" Classes="badge">
+                                    <TextBlock Classes="badge-text" Text="{loc:Str Common.ComingSoon}" />
+                                </Border>
+                            </Grid>
+                        </Border>
+                        <Border Classes="section-row divided">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Classes="row-title" Text="{loc:Str Models.LocalModel}" />
+                                    <TextBlock Classes="row-hint" Text="{loc:Str Models.LocalModelHint}" />
+                                </StackPanel>
+                                <Border Grid.Column="1" Classes="badge">
+                                    <TextBlock Classes="badge-text" Text="{loc:Str Common.ComingSoon}" />
+                                </Border>
+                            </Grid>
+                        </Border>
+                        <Border Classes="section-row divided">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Classes="row-title" Text="{loc:Str Models.Codex}" />
+                                    <TextBlock Classes="row-hint" Text="{loc:Str Models.CodexHint}" />
+                                </StackPanel>
+                                <Border Grid.Column="1" Classes="badge">
+                                    <TextBlock Classes="badge-text" Text="{loc:Str Common.ComingSoon}" />
+                                </Border>
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

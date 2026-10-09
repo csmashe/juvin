@@ -1,0 +1,13 @@
+<Project>
+    <PropertyGroup>
+        <Version Condition="'$(Version)' == ''">0.1.0</Version>
+        <Company>Excel on the Web</Company>
+        <Product>Juvin</Product>
+        <Authors>Excel on the Web</Authors>
+        <Copyright>Copyright 2026 Excel on the Web</Copyright>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <LangVersion>latest</LangVersion>
+        <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    </PropertyGroup>
+</Project>
