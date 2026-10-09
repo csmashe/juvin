@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "Juvin native messaging spike",
+  "version": "0.0.1",
+  "description": "Throwaway: connects to the juvin-nm-spike host and records a round trip.",
+  "permissions": [
+    "nativeMessaging",
+    "storage"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "scripts": [
+      "background.js"
+    ]
+  },
+  "action": {
+    "default_title": "Juvin spike"
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAiGx/4UL9sCDTbNd8WE4WKt0XLFfKX44VkUy9dM56wz3VEybHcYGwXA1lixH308ftdaTY2RnE8T0gDMM1m7+br26GTYtSor8bda/rjvTPNIESjf3xPXndqkUk3HhaBbzaMd3oaDbdlHA37ngkUTCtwdw4MMglzMgSiajhFVFGtQtGai/YcvEQZpEyPVz1FVeuIx8OBfEZYIdRc0ueXo+tVAQ2UwnZWVF8Hj0ycx190BhRGhkDE/aRbxVSMqbJTrcT8CCpSnVC1/ED4Zm8C9lkicfuOgPJTj+HbUtfD+nnyJqmRCqWAE+nebFhUnqoFn1WIAELAfniqV5N156rMB4/VQIDAQAB",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "spike@juvin.app",
+      "strict_min_version": "128.0"
+    }
+  },
+  "host_permissions": [
+    "http://127.0.0.1/*"
+  ]
+}

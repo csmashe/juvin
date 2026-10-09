@@ -1,0 +1,5 @@
+host/bin/
+host/obj/
+host/publish/
+chrome-dev.pem
+chrome-dev.pub.der
