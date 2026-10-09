@@ -51,6 +51,7 @@ The solution is `Juvin.slnx` at the repo root (Phase 1 skeleton; the extension a
 - Invoke them through the Skill tool by name. Do not reproduce their steps by hand.
 - If a review has to be run manually for some reason, follow `/review-short`'s order exactly: the adversarial Codex review first, wait for it to finish and apply the agreed changes, then the standard Codex review. Never run the two together.
 - After the three reviews pass, report that the section is done and wait for the commit instruction.
+- Pull requests: CI only runs on a PR that carries the `ci` label (see `.github/workflows/ci.yml`). Open the PR without the label, work through the CodeRabbit review loop until it is clean, then add the label so CI runs once. Remove the label while iterating again. Merges to `main` always build.
 
 ## Reusing TypeWhisper code
 
