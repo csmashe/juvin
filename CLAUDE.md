@@ -6,19 +6,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Juvin is an open-source (GPL-3.0) desktop AI assistant for Linux, macOS, and Windows, built with .NET 10 and Avalonia, plus a browser extension for Firefox and Chrome. The MVP is one workflow: the user selects an email draft in Gmail, presses a shortcut, the extension captures the draft and the whole conversation, and the desktop app rewrites the draft with a local model by default. The user reviews and applies the result back into the editor.
 
-Status: pre-implementation. The product definition and plan live in `docs/`. Read `docs/mvp-scope.md` before any work; it is the source of truth for scope, architecture, decisions, and phases. `docs/research/desktop-ai-assistant-research.md` is the market research behind it.
+Status: Phase 0 (spikes) and Phase 1 (solution skeleton and shared UI) are done; Phase 2 (model providers and rewrite pipeline) is next. The product definition and plan live in `docs/`. Read `docs/mvp-scope.md` before any work; it is the source of truth for scope, architecture, decisions, and phases. `docs/research/desktop-ai-assistant-research.md` is the market research behind it.
 
 Design reference: `/home/csmashe/RiderProjects/typewhisper-linux` (a Linux-only Avalonia app by the same author). Its settings window, setup wizard, and Linux platform services are the model for Juvin's. See "Reusing TypeWhisper code" below for what may be copied.
 
 ## Development Commands
 
-The solution does not exist yet. These are the commands the layout in `docs/mvp-scope.md` section 5 implies; update them as the projects are created.
+The solution is `Juvin.slnx` at the repo root (Phase 1 skeleton; the extension and the CLI commands do not exist yet, update this list as they land).
 
 ### Build and Test
-- `dotnet build` - Build the entire solution
-- `dotnet run --project src/Juvin.App` - Run the desktop app
-- `dotnet test` - Run all tests
-- `dotnet run --project src/Juvin.Cli -- rewrite --stdin` - Exercise the rewrite pipeline without the extension
+- `dotnet build Juvin.slnx` - Build the entire solution (0 warnings is the bar)
+- `dotnet run --project src/Juvin.App` - Run the desktop app; set `XDG_DATA_HOME` to a temp dir to keep `~/.local/share/Juvin` clean
+- `dotnet test Juvin.slnx` - Run all tests (Windows-only tests are skipped elsewhere and run in CI)
+- `dotnet run --project src/Juvin.Cli -- rewrite --stdin` - Exercise the rewrite pipeline without the extension (Phase 2)
+- Package versions live in `Directory.Packages.props` (central package management); `nuget.config` pins nuget.org as the only feed.
 
 ### Browser extension (in `extension/`)
 - `npm install` - Install dependencies
@@ -50,6 +51,7 @@ The solution does not exist yet. These are the commands the layout in `docs/mvp-
 - Invoke them through the Skill tool by name. Do not reproduce their steps by hand.
 - If a review has to be run manually for some reason, follow `/review-short`'s order exactly: the adversarial Codex review first, wait for it to finish and apply the agreed changes, then the standard Codex review. Never run the two together.
 - After the three reviews pass, report that the section is done and wait for the commit instruction.
+- Pull requests: CI only runs on a PR that carries the `ci` label (see `.github/workflows/ci.yml`). Open the PR without the label, work through the CodeRabbit review loop until it is clean, then add the label so CI runs once. Remove the label while iterating again. Merges to `main` always build.
 
 ## Reusing TypeWhisper code
 

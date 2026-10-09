@@ -1,0 +1,82 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:Juvin.App.ViewModels"
+        xmlns:vms="using:Juvin.App.ViewModels.Sections"
+        xmlns:sections="using:Juvin.App.Views.Sections"
+        xmlns:ic="using:FluentIcons.Avalonia"
+        xmlns:loc="using:Juvin.App.Localization"
+        mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="720"
+        x:Class="Juvin.App.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="{loc:Str App.Name}"
+        Icon="/Assets/juvin-mark-color-256.png"
+        Width="1100" Height="720"
+        MinWidth="820" MinHeight="520"
+        WindowStartupLocation="CenterScreen">
+
+    <Grid ColumnDefinitions="256,1,*">
+        <Grid Grid.Column="0" Margin="18,18,14,18" RowDefinitions="Auto,*">
+            <StackPanel Grid.Row="0" Margin="4,6,0,22" Spacing="2">
+                <TextBlock Classes="wordmark" Text="{loc:Str App.Name}" />
+                <TextBlock Classes="tagline" Text="{loc:Str App.Tagline}" />
+            </StackPanel>
+
+            <ScrollViewer Grid.Row="1"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+                <ItemsControl ItemsSource="{Binding NavItems}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:NavItem">
+                            <Button Classes="nav"
+                                    Classes.selected="{Binding IsSelected}"
+                                    Command="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).NavigateToCommand, FallbackValue={x:Null}}"
+                                    CommandParameter="{Binding}">
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <ic:SymbolIcon Symbol="{Binding Symbol}"
+                                                   FontSize="16"
+                                                   VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding Label}"
+                                               FontSize="13"
+                                               VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Grid>
+
+        <Border Grid.Column="1" Classes="divider" />
+
+        <ContentControl Grid.Column="2" Content="{Binding CurrentSection}">
+            <ContentControl.DataTemplates>
+                <DataTemplate DataType="vms:HomeSectionViewModel">
+                    <sections:HomeSection />
+                </DataTemplate>
+                <DataTemplate DataType="vms:ShortcutsSectionViewModel">
+                    <sections:ShortcutsSection />
+                </DataTemplate>
+                <DataTemplate DataType="vms:RewriteActionsSectionViewModel">
+                    <sections:RewriteActionsSection />
+                </DataTemplate>
+                <DataTemplate DataType="vms:BrowserConnectorSectionViewModel">
+                    <sections:BrowserConnectorSection />
+                </DataTemplate>
+                <DataTemplate DataType="vms:ModelsSectionViewModel">
+                    <sections:ModelsSection />
+                </DataTemplate>
+                <DataTemplate DataType="vms:PrivacyAndDataSectionViewModel">
+                    <sections:PrivacyAndDataSection />
+                </DataTemplate>
+                <DataTemplate DataType="vms:GeneralSectionViewModel">
+                    <sections:GeneralSection />
+                </DataTemplate>
+                <DataTemplate DataType="vms:AboutSectionViewModel">
+                    <sections:AboutSection />
+                </DataTemplate>
+            </ContentControl.DataTemplates>
+        </ContentControl>
+    </Grid>
+</Window>

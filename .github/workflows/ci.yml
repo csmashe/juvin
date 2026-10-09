@@ -1,0 +1,57 @@
+# CI is gated so it does not burn Actions minutes on every push while a pull request is
+# still going through code review. It runs when:
+#   - a commit lands on main (merges always build);
+#   - a pull request carries the "ci" label (add the label from the PR sidebar when review
+#     is done; later pushes keep running while the label stays on, remove it to pause);
+#   - someone presses "Run workflow" on the Actions tab (workflow_dispatch).
+# To reuse in another repository: copy this file, create a "ci" label there
+# (gh label create ci --color 0E8A16 --description "Run CI on this pull request"),
+# and adjust the solution name in the three dotnet steps.
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types:
+      - labeled
+      - synchronize
+      - reopened
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # Pull request events only run while the "ci" label is present; push and manual runs always do.
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci')
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore Juvin.slnx
+
+      - name: Build
+        run: dotnet build Juvin.slnx -c Release --no-restore
+
+      - name: Test
+        run: dotnet test Juvin.slnx -c Release --no-build --logger trx --results-directory artifacts/test-results
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.os }}
+          path: artifacts/test-results

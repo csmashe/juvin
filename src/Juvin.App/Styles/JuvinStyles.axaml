@@ -1,0 +1,175 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ic="using:FluentIcons.Avalonia"
+        xmlns:loc="using:Juvin.App.Localization">
+
+    <Styles.Resources>
+        <SolidColorBrush x:Key="JuvinNavyBrush" Color="#0F2D5B" />
+        <SolidColorBrush x:Key="JuvinAccentBrush" Color="#F5A623" />
+        <SolidColorBrush x:Key="JuvinAccentHoverBrush" Color="#F7B84D" />
+        <SolidColorBrush x:Key="JuvinOnAccentBrush" Color="#0E131B" />
+        <SolidColorBrush x:Key="JuvinWindowBrush" Color="#0E131B" />
+        <SolidColorBrush x:Key="JuvinCardBrush" Color="#141D26" />
+        <SolidColorBrush x:Key="JuvinDividerBrush" Color="#283644" />
+        <SolidColorBrush x:Key="JuvinHairlineBrush" Color="#1AFFFFFF" />
+        <SolidColorBrush x:Key="JuvinPrimaryTextBrush" Color="#FFFFFF" />
+        <SolidColorBrush x:Key="JuvinSecondaryTextBrush" Color="#8A9AAE" />
+        <SolidColorBrush x:Key="JuvinMutedHeaderBrush" Color="#7D8796" />
+        <SolidColorBrush x:Key="JuvinNavTextBrush" Color="#D7DEE8" />
+        <SolidColorBrush x:Key="JuvinNavSelectedBrush" Color="#1C2735" />
+    </Styles.Resources>
+
+    <Style Selector=":is(Window)">
+        <Setter Property="Background" Value="{StaticResource JuvinWindowBrush}" />
+    </Style>
+
+    <Style Selector="ToggleSwitch">
+        <Setter Property="OnContent" Value="{loc:Str Common.On}" />
+        <Setter Property="OffContent" Value="{loc:Str Common.Off}" />
+    </Style>
+
+    <!-- Wordmark -->
+    <Style Selector="TextBlock.wordmark">
+        <Setter Property="FontSize" Value="22" />
+        <Setter Property="FontWeight" Value="Bold" />
+        <Setter Property="Foreground" Value="{StaticResource JuvinPrimaryTextBrush}" />
+    </Style>
+    <Style Selector="TextBlock.tagline">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Foreground" Value="{StaticResource JuvinSecondaryTextBrush}" />
+    </Style>
+
+    <!-- Section pages -->
+    <Style Selector="TextBlock.page-title">
+        <Setter Property="FontSize" Value="22" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{StaticResource JuvinPrimaryTextBrush}" />
+    </Style>
+    <Style Selector="TextBlock.page-subtitle">
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Foreground" Value="{StaticResource JuvinSecondaryTextBrush}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="TextBlock.section-title">
+        <Setter Property="FontSize" Value="14.5" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="TextBlock.section-label">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{StaticResource JuvinMutedHeaderBrush}" />
+        <Setter Property="Margin" Value="2,0,0,0" />
+    </Style>
+    <Style Selector="TextBlock.row-title">
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="TextBlock.row-hint">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Foreground" Value="{StaticResource JuvinSecondaryTextBrush}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="Margin" Value="0,4,0,0" />
+    </Style>
+    <Style Selector="TextBlock.badge-text">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Foreground" Value="{StaticResource JuvinNavTextBrush}" />
+    </Style>
+
+    <Style Selector="Border.panel">
+        <Setter Property="Background" Value="{StaticResource JuvinCardBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource JuvinHairlineBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="14" />
+    </Style>
+    <Style Selector="Border.section-row">
+        <Setter Property="Padding" Value="18,14" />
+    </Style>
+    <Style Selector="Border.section-row.divided">
+        <Setter Property="BorderBrush" Value="{StaticResource JuvinHairlineBrush}" />
+        <Setter Property="BorderThickness" Value="0,1,0,0" />
+    </Style>
+    <Style Selector="Border.badge">
+        <Setter Property="Background" Value="#1B2430" />
+        <Setter Property="BorderBrush" Value="#223243" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="999" />
+        <Setter Property="Padding" Value="8,3" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.divider">
+        <Setter Property="Background" Value="{StaticResource JuvinDividerBrush}" />
+    </Style>
+
+    <!-- Accent button: orange is the only accent colour -->
+    <Style Selector="Button.accent">
+        <Setter Property="Background" Value="{StaticResource JuvinAccentBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource JuvinOnAccentBrush}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="Button.accent /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource JuvinAccentBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource JuvinOnAccentBrush}" />
+    </Style>
+    <Style Selector="Button.accent:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource JuvinAccentHoverBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource JuvinOnAccentBrush}" />
+    </Style>
+    <Style Selector="Button.accent:pressed /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource JuvinAccentBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource JuvinOnAccentBrush}" />
+    </Style>
+    <Style Selector="Button.accent:disabled /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Opacity" Value="0.45" />
+    </Style>
+
+    <Style Selector="HyperlinkButton">
+        <Setter Property="Foreground" Value="{StaticResource JuvinAccentBrush}" />
+    </Style>
+
+    <!-- Sidebar navigation -->
+    <Style Selector="Button.nav">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{StaticResource JuvinNavTextBrush}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Padding" Value="12,9" />
+        <Setter Property="Margin" Value="0,0,0,2" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="HorizontalContentAlignment" Value="Left" />
+    </Style>
+    <Style Selector="Button.nav:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource JuvinNavSelectedBrush}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="Foreground" Value="{StaticResource JuvinPrimaryTextBrush}" />
+    </Style>
+    <Style Selector="Button.nav.selected /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource JuvinNavSelectedBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource JuvinAccentBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource JuvinPrimaryTextBrush}" />
+    </Style>
+
+    <!-- Setup wizard -->
+    <Style Selector="TabControl.steps TabItem">
+        <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="Border.step-dot">
+        <Setter Property="Width" Value="24" />
+        <Setter Property="Height" Value="6" />
+        <Setter Property="CornerRadius" Value="3" />
+        <Setter Property="Background" Value="{StaticResource JuvinDividerBrush}" />
+    </Style>
+    <Style Selector="Border.step-dot.active">
+        <Setter Property="Background" Value="{StaticResource JuvinAccentBrush}" />
+    </Style>
+    <Style Selector="ic|SymbolIcon.status">
+        <Setter Property="FontSize" Value="18" />
+        <Setter Property="Foreground" Value="{StaticResource JuvinSecondaryTextBrush}" />
+    </Style>
+    <Style Selector="ic|SymbolIcon.status.satisfied">
+        <Setter Property="Foreground" Value="{StaticResource JuvinNavTextBrush}" />
+    </Style>
+    <Style Selector="ic|SymbolIcon.status.attention">
+        <Setter Property="Foreground" Value="{StaticResource JuvinAccentBrush}" />
+    </Style>
+</Styles>

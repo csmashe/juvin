@@ -1,0 +1,56 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Juvin.App.ViewModels.Sections"
+             xmlns:loc="using:Juvin.App.Localization"
+             x:Class="Juvin.App.Views.Sections.RewriteActionsSection"
+             x:DataType="vm:RewriteActionsSectionViewModel">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="32,28" MaxWidth="860" Spacing="22">
+            <StackPanel Spacing="6">
+                <TextBlock Classes="page-title" Text="{loc:Str RewriteActions.Title}" />
+                <TextBlock Classes="page-subtitle" Text="{loc:Str RewriteActions.Subtitle}" />
+            </StackPanel>
+
+            <StackPanel Spacing="8">
+                <TextBlock Classes="section-label" Text="{loc:Str RewriteActions.ActionsLabel}" />
+                <Border Classes="panel">
+                    <StackPanel>
+                        <Border Classes="section-row">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Classes="row-title" Text="{loc:Str RewriteActions.BuiltIn}" />
+                                    <TextBlock Classes="row-hint" Text="{loc:Str RewriteActions.BuiltInHint}" />
+                                </StackPanel>
+                                <Border Grid.Column="1" Classes="badge">
+                                    <TextBlock Classes="badge-text" Text="{loc:Str Common.ComingSoon}" />
+                                </Border>
+                            </Grid>
+                        </Border>
+                        <Border Classes="section-row divided">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Classes="row-title" Text="{loc:Str RewriteActions.Custom}" />
+                                    <TextBlock Classes="row-hint" Text="{loc:Str RewriteActions.CustomHint}" />
+                                </StackPanel>
+                                <Border Grid.Column="1" Classes="badge">
+                                    <TextBlock Classes="badge-text" Text="{loc:Str Common.ComingSoon}" />
+                                </Border>
+                            </Grid>
+                        </Border>
+                        <Border Classes="section-row divided">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Classes="row-title" Text="{loc:Str RewriteActions.Default}" />
+                                    <TextBlock Classes="row-hint" Text="{loc:Str RewriteActions.DefaultHint}" />
+                                </StackPanel>
+                                <Border Grid.Column="1" Classes="badge">
+                                    <TextBlock Classes="badge-text" Text="{loc:Str Common.ComingSoon}" />
+                                </Border>
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
