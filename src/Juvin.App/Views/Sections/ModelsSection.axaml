@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Juvin.App.ViewModels.Sections"
+             xmlns:app="using:Juvin.App.ViewModels"
              xmlns:loc="using:Juvin.App.Localization"
              x:Class="Juvin.App.Views.Sections.ModelsSection"
              x:DataType="vm:ModelsSectionViewModel">
@@ -16,56 +17,171 @@
                 <Border Classes="panel">
                     <StackPanel>
                         <Border Classes="section-row">
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                            <Grid ColumnDefinitions="*,220" ColumnSpacing="16">
                                 <StackPanel VerticalAlignment="Center">
                                     <TextBlock Classes="row-title" Text="{loc:Str Models.Mode}" />
-                                    <TextBlock Classes="row-hint" Text="{loc:Str Models.ModeHint}" />
+                                    <TextBlock Classes="row-hint" Text="{Binding ModeHint}" />
                                 </StackPanel>
-                                <Border Grid.Column="1" Classes="badge">
-                                    <TextBlock Classes="badge-text" Text="{loc:Str Common.ComingSoon}" />
-                                </Border>
+                                <ComboBox Grid.Column="1"
+                                          HorizontalAlignment="Stretch"
+                                          VerticalAlignment="Center"
+                                          ItemsSource="{Binding ModeOptions}"
+                                          SelectedItem="{Binding SelectedMode}">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="app:ProcessingModeOption">
+                                            <TextBlock Text="{Binding Label}" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                            </Grid>
+                        </Border>
+                        <Border Classes="section-row divided" IsVisible="{Binding IsCodexMode}">
+                            <TextBlock Classes="row-hint" Margin="0" Text="{loc:Str Models.CodexConsent}" />
+                        </Border>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+            <StackPanel Spacing="8" IsVisible="{Binding IsLocalMode}">
+                <TextBlock Classes="section-label" Text="{loc:Str Models.LocalLabel}" />
+                <Border Classes="panel">
+                    <StackPanel>
+                        <Border Classes="section-row">
+                            <StackPanel Spacing="10">
+                                <StackPanel>
+                                    <TextBlock Classes="row-title" Text="{loc:Str Models.LocalServer}" />
+                                    <TextBlock Classes="row-hint" Text="{loc:Str Models.LocalServerHint}" />
+                                </StackPanel>
+                                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+                                    <TextBox x:Name="LocalServerUrlBox"
+                                             Text="{Binding LocalServerUrl, UpdateSourceTrigger=LostFocus}">
+                                        <TextBox.KeyBindings>
+                                            <KeyBinding Gesture="Enter"
+                                                        Command="{Binding CommitLocalServerUrlCommand}"
+                                                        CommandParameter="{Binding #LocalServerUrlBox.Text}" />
+                                        </TextBox.KeyBindings>
+                                    </TextBox>
+                                    <Border Grid.Column="1" Classes="badge" IsVisible="{Binding HasLocalServerLocation}">
+                                        <TextBlock Classes="badge-text" Text="{Binding LocalServerLocation}" />
+                                    </Border>
+                                    <Button Grid.Column="2"
+                                            MinWidth="90"
+                                            Content="{loc:Str Common.Check}"
+                                            Command="{Binding CheckLocalCommand}" />
+                                </Grid>
+                                <ProgressBar IsIndeterminate="True" Height="4" IsVisible="{Binding IsLocalProbing}" />
+                                <TextBlock Classes="row-hint"
+                                           Margin="0"
+                                           Text="{Binding LocalStatus}"
+                                           IsVisible="{Binding HasLocalStatus}" />
+                            </StackPanel>
+                        </Border>
+                        <Border Classes="section-row divided">
+                            <Grid ColumnDefinitions="*,280,Auto" ColumnSpacing="10">
+                                <StackPanel VerticalAlignment="Center" Margin="0,0,6,0">
+                                    <TextBlock Classes="row-title" Text="{loc:Str Models.LocalModel}" />
+                                    <TextBlock Classes="row-hint" Text="{loc:Str Models.LocalModelHint}" />
+                                </StackPanel>
+                                <ComboBox Grid.Column="1"
+                                          HorizontalAlignment="Stretch"
+                                          VerticalAlignment="Center"
+                                          PlaceholderText="{loc:Str Models.NoModel}"
+                                          ItemsSource="{Binding LocalModels}"
+                                          SelectedItem="{Binding SelectedLocalModel}">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="app:ModelOption">
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <TextBlock Text="{Binding Label}" VerticalAlignment="Center" />
+                                                <Border Classes="badge" IsVisible="{Binding IsLowQuality}">
+                                                    <TextBlock Classes="badge-text" Text="{loc:Str Models.LowQualityBadge}" />
+                                                </Border>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <Button Grid.Column="2"
+                                        MinWidth="90"
+                                        VerticalAlignment="Center"
+                                        Content="{loc:Str Common.Refresh}"
+                                        Command="{Binding CheckLocalCommand}" />
+                            </Grid>
+                        </Border>
+                        <Border Classes="section-row divided">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Classes="row-title" Text="{loc:Str Models.Thinking}" />
+                                    <TextBlock Classes="row-hint" Text="{loc:Str Models.ThinkingHint}" />
+                                </StackPanel>
+                                <ToggleSwitch Grid.Column="1"
+                                              VerticalAlignment="Center"
+                                              IsChecked="{Binding LocalThinkingDisabled}" />
                             </Grid>
                         </Border>
                     </StackPanel>
                 </Border>
             </StackPanel>
 
-            <StackPanel Spacing="8">
-                <TextBlock Classes="section-label" Text="{loc:Str Models.LocalLabel}" />
+            <StackPanel Spacing="8" IsVisible="{Binding IsCodexMode}">
+                <TextBlock Classes="section-label" Text="{loc:Str Models.CodexLabel}" />
                 <Border Classes="panel">
                     <StackPanel>
                         <Border Classes="section-row">
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                            <Grid ColumnDefinitions="*,320" ColumnSpacing="16">
                                 <StackPanel VerticalAlignment="Center">
-                                    <TextBlock Classes="row-title" Text="{loc:Str Models.LocalServer}" />
-                                    <TextBlock Classes="row-hint" Text="{Binding LocalServerUrl}" />
+                                    <TextBlock Classes="row-title" Text="{loc:Str Models.CodexPath}" />
+                                    <TextBlock Classes="row-hint" Text="{loc:Str Models.CodexPathHint}" />
                                 </StackPanel>
-                                <Border Grid.Column="1" Classes="badge">
-                                    <TextBlock Classes="badge-text" Text="{loc:Str Common.ComingSoon}" />
-                                </Border>
+                                <TextBox x:Name="CodexBinaryPathBox"
+                                         Grid.Column="1"
+                                         VerticalAlignment="Center"
+                                         PlaceholderText="{loc:Str Models.CodexPathPlaceholder}"
+                                         Text="{Binding CodexBinaryPath, UpdateSourceTrigger=LostFocus}">
+                                    <TextBox.KeyBindings>
+                                        <KeyBinding Gesture="Enter"
+                                                    Command="{Binding CommitCodexBinaryPathCommand}"
+                                                    CommandParameter="{Binding #CodexBinaryPathBox.Text}" />
+                                    </TextBox.KeyBindings>
+                                </TextBox>
                             </Grid>
                         </Border>
                         <Border Classes="section-row divided">
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                            <Grid ColumnDefinitions="*,320" ColumnSpacing="16">
                                 <StackPanel VerticalAlignment="Center">
-                                    <TextBlock Classes="row-title" Text="{loc:Str Models.LocalModel}" />
-                                    <TextBlock Classes="row-hint" Text="{loc:Str Models.LocalModelHint}" />
+                                    <TextBlock Classes="row-title" Text="{loc:Str Models.CodexModel}" />
+                                    <TextBlock Classes="row-hint" Text="{loc:Str Models.CodexModelHint}" />
                                 </StackPanel>
-                                <Border Grid.Column="1" Classes="badge">
-                                    <TextBlock Classes="badge-text" Text="{loc:Str Common.ComingSoon}" />
-                                </Border>
+                                <TextBox x:Name="CodexModelBox"
+                                         Grid.Column="1"
+                                         VerticalAlignment="Center"
+                                         PlaceholderText="{loc:Str Models.CodexModelPlaceholder}"
+                                         Text="{Binding CodexModel, UpdateSourceTrigger=LostFocus}">
+                                    <TextBox.KeyBindings>
+                                        <KeyBinding Gesture="Enter"
+                                                    Command="{Binding CommitCodexModelCommand}"
+                                                    CommandParameter="{Binding #CodexModelBox.Text}" />
+                                    </TextBox.KeyBindings>
+                                </TextBox>
                             </Grid>
                         </Border>
                         <Border Classes="section-row divided">
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-                                <StackPanel VerticalAlignment="Center">
-                                    <TextBlock Classes="row-title" Text="{loc:Str Models.Codex}" />
-                                    <TextBlock Classes="row-hint" Text="{loc:Str Models.CodexHint}" />
-                                </StackPanel>
-                                <Border Grid.Column="1" Classes="badge">
-                                    <TextBlock Classes="badge-text" Text="{loc:Str Common.ComingSoon}" />
-                                </Border>
-                            </Grid>
+                            <StackPanel Spacing="10">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Classes="row-title" Text="{loc:Str Models.Codex}" />
+                                        <TextBlock Classes="row-hint" Text="{loc:Str Models.CodexStatusHint}" />
+                                    </StackPanel>
+                                    <Button Grid.Column="1"
+                                            MinWidth="90"
+                                            VerticalAlignment="Center"
+                                            Content="{loc:Str Common.Check}"
+                                            Command="{Binding CheckCodexCommand}" />
+                                </Grid>
+                                <ProgressBar IsIndeterminate="True" Height="4" IsVisible="{Binding IsCodexProbing}" />
+                                <TextBlock Classes="row-hint"
+                                           Margin="0"
+                                           Text="{Binding CodexStatus}"
+                                           IsVisible="{Binding HasCodexStatus}" />
+                            </StackPanel>
                         </Border>
                     </StackPanel>
                 </Border>
