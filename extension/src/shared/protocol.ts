@@ -21,7 +21,7 @@ export type ContextErrorCode =
   | "page-not-ready"
   | "internal";
 
-export type ApplyErrorCode = "draft-changed" | "editor-gone" | "no-active-tab" | "page-not-ready" | "internal";
+export type ApplyErrorCode = "draft-changed" | "editor-gone" | "internal";
 
 export interface ErrorPayload<TCode extends string = string> {
   code: TCode;
