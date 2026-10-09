@@ -19,6 +19,7 @@ public sealed record AppSettings
     public string? LocalModel { get; init; }
     public bool LocalThinkingDisabled { get; init; } = true;
     public string? CodexBinaryPath { get; init; }
+    public string? CodexModel { get; init; }
 
     public string RewriteShortcut { get; init; } = "Ctrl+Shift+Y";
 

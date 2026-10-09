@@ -12,13 +12,13 @@ Design reference: `/home/csmashe/RiderProjects/typewhisper-linux` (a Linux-only 
 
 ## Development Commands
 
-The solution is `Juvin.slnx` at the repo root (Phase 1 skeleton; the extension and the CLI commands do not exist yet, update this list as they land).
+The solution is `Juvin.slnx` at the repo root (the extension does not exist yet, update this list as it lands).
 
 ### Build and Test
 - `dotnet build Juvin.slnx` - Build the entire solution (0 warnings is the bar)
 - `dotnet run --project src/Juvin.App` - Run the desktop app; set `XDG_DATA_HOME` to a temp dir to keep `~/.local/share/Juvin` clean
 - `dotnet test Juvin.slnx` - Run all tests (Windows-only tests are skipped elsewhere and run in CI)
-- `dotnet run --project src/Juvin.Cli -- rewrite --stdin` - Exercise the rewrite pipeline without the extension (Phase 2)
+- `dotnet run --project src/Juvin.Cli -- rewrite --stdin` - Exercise the rewrite pipeline without the extension
 - Package versions live in `Directory.Packages.props` (central package management); `nuget.config` pins nuget.org as the only feed.
 
 ### Browser extension (in `extension/`)

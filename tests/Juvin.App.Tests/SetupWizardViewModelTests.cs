@@ -1,12 +1,15 @@
+using Juvin.App.Services;
 using Juvin.App.Tests.Fakes;
 using Juvin.App.ViewModels;
 using Juvin.Core.Localization;
+using Juvin.Core.Models;
 using Juvin.Platform.Setup;
 
 namespace Juvin.App.Tests;
 
 public sealed class SetupWizardViewModelTests
 {
+    private readonly FakeProviders _providers = new();
     private readonly FakeSettingsService _settings = new();
 
     [Fact]
@@ -107,8 +110,96 @@ public sealed class SetupWizardViewModelTests
         Assert.True(vm.CanAdvance);
         vm.NextCommand.Execute(null);
 
+        Assert.Equal(SetupWizardStep.ProcessingMode, vm.Step);
+        Assert.True(vm.CanAdvance);
+        vm.NextCommand.Execute(null);
+
         Assert.Equal(SetupWizardStep.Checklist, vm.Step);
         Assert.False(_settings.Current.HasCompletedOnboarding);
+    }
+
+    [Fact]
+    public void ProcessingModeStep_SitsBetweenWelcomeAndChecklist()
+    {
+        Assert.Equal(4, SetupWizardViewModel.StepCount);
+        Assert.Equal(1, (int)SetupWizardStep.ProcessingMode);
+        Assert.Equal(SetupWizardStep.Checklist, SetupWizardStep.ProcessingMode + 1);
+    }
+
+    [Fact]
+    public async Task ModeStep_NeverBlocksNext_EvenWithNothingDetected()
+    {
+        var vm = await CreateOnModeStepAsync();
+
+        Assert.True(vm.NoServerFound);
+        Assert.Null(vm.RecommendedModel);
+        Assert.True(vm.CanAdvance);
+        vm.NextCommand.Execute(null);
+        Assert.Equal(SetupWizardStep.Checklist, vm.Step);
+    }
+
+    [Fact]
+    public async Task ModeStep_ChoosingCodex_SavesTheMode()
+    {
+        var vm = await CreateOnModeStepAsync();
+
+        vm.SelectedMode = vm.ModeOptions.Single(option => option.Mode == ProcessingMode.Codex);
+
+        Assert.Equal(ProcessingMode.Codex, _settings.Current.ProcessingMode);
+        Assert.True(vm.IsCodexMode);
+    }
+
+    [Fact]
+    public async Task OnlyReachableServer_IsPreselectedAndItsBestModelSuggested()
+    {
+        _settings.Update(s => s with { LocalServerUrl = "http://10.0.3.20:11434" });
+        _providers.Servers[ModelProbeService.LmStudioUrl] = FakeProviders.Reachable(
+            null,
+            FakeProviders.Model("small", "4B", lowQuality: true),
+            FakeProviders.Model("large", "27B")
+        );
+
+        var vm = await CreateOnModeStepAsync();
+
+        Assert.Equal(ModelProbeService.LmStudioUrl, _settings.Current.LocalServerUrl);
+        Assert.Equal("large", vm.RecommendedModel?.Id);
+        Assert.Null(vm.ModelAdvice);
+
+        vm.UseRecommendedModelCommand.Execute(null);
+
+        Assert.Equal("large", _settings.Current.LocalModel);
+        Assert.True(vm.IsRecommendedModelInUse);
+    }
+
+    [Fact]
+    public async Task OllamaWithOnlyLowQualityModels_SuggestsPullingABiggerOne()
+    {
+        _providers.Servers[ModelProbeService.OllamaUrl] = FakeProviders.Reachable(
+            "0.12.3",
+            FakeProviders.Model("qwen3:8b", "8.2B", lowQuality: true)
+        );
+
+        var vm = await CreateOnModeStepAsync();
+
+        Assert.Equal("qwen3:8b", vm.RecommendedModel?.Id);
+        Assert.NotNull(vm.ModelAdvice);
+        Assert.Equal(ModelProbeService.OllamaPullCommand, vm.PullCommand);
+        Assert.Contains("0.12.3", vm.Detections[0].Summary);
+    }
+
+    [Fact]
+    public async Task UsingADetectedServer_SavesItsUrl()
+    {
+        _providers.Servers[ModelProbeService.OllamaUrl] = FakeProviders.Reachable("0.12.3");
+        _providers.Servers[ModelProbeService.LmStudioUrl] = FakeProviders.Reachable(null);
+        var vm = await CreateOnModeStepAsync();
+        var lmStudio = vm.Detections.Single(row => row.Url == ModelProbeService.LmStudioUrl);
+
+        vm.UseServerCommand.Execute(lmStudio);
+
+        Assert.Equal(ModelProbeService.LmStudioUrl, _settings.Current.LocalServerUrl);
+        Assert.True(lmStudio.IsInUse);
+        Assert.False(vm.Detections[0].IsSelected);
     }
 
     private static FakeSetupTask NewTask(string id, SetupTaskSeverity severity, SetupTaskStatusKind kind)
@@ -118,7 +209,16 @@ public sealed class SetupWizardViewModelTests
 
     private SetupWizardViewModel Create(params FakeSetupTask[] tasks)
     {
-        return new SetupWizardViewModel(_settings, new Localizer(), tasks);
+        var localizer = new Localizer();
+        return new SetupWizardViewModel(_settings, localizer, _providers.CreateService(localizer), tasks);
+    }
+
+    private async Task<SetupWizardViewModel> CreateOnModeStepAsync()
+    {
+        var vm = Create();
+        vm.StepIndex = (int)SetupWizardStep.ProcessingMode;
+        await vm.DetectModelsCommand.ExecuteAsync(null);
+        return vm;
     }
 
     private async Task<SetupWizardViewModel> CreateOnLastStepAsync(params FakeSetupTask[] tasks)
