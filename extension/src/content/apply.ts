@@ -33,7 +33,7 @@ export async function applyReplacement(
   const offsets = { start: request.start, end: request.end };
   const text = request.text.replace(/\r\n?/g, "\n");
   const before = editorText(editor);
-  if (offsets.end > before.length || (await hashText(before)) !== request.expectedHash) {
+  if (offsets.start < 0 || offsets.start > offsets.end || offsets.end > before.length || (await hashText(before)) !== request.expectedHash) {
     return failure("draft-changed", "The draft changed since it was captured.");
   }
 
