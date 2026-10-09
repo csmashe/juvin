@@ -17,5 +17,10 @@
 
     <ItemGroup>
         <ProjectReference Include="..\..\src\Juvin.Core\Juvin.Core.csproj"/>
+        <ProjectReference Include="..\..\src\Juvin.Cli\Juvin.Cli.csproj"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Include="Fixtures\*" CopyToOutputDirectory="PreserveNewest"/>
     </ItemGroup>
 </Project>

@@ -261,6 +261,8 @@ Result (October 8, 2026, CI green October 9): done. `Juvin.slnx` builds with 0 w
 
 Exit: a thread and draft on stdin produce a streamed rewrite from a local model, with provenance logged.
 
+Result (October 9, 2026): done. `juvin-cli rewrite --stdin` streams a rewrite of the sample thread from the LAN Ollama server (qwen3.5:27b, first words after 9 s, complete in 12 s) and returns one from the signed-in Codex CLI, with the provenance record on stderr. Local mode refuses Ollama cloud models and embedding-only models, fails on replies the server cut short, and sizes the Ollama context window to the conversation. The Models section and the wizard's processing-mode step detect Ollama, LM Studio, and the Codex CLI and recommend a 20B-class model. 218 tests pass.
+
 ### Phase 3: browser extension and native host (3 weeks)
 
 - Extension skeleton, MV3, dual build, background relay, popup.

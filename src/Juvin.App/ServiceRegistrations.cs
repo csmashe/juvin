@@ -4,6 +4,7 @@ using Juvin.App.ViewModels.Sections;
 using Juvin.App.Views;
 using Juvin.Core.Interfaces;
 using Juvin.Core.Localization;
+using Juvin.Core.Providers;
 using Juvin.Core.Services;
 using Juvin.Platform.Linux;
 using Juvin.Platform.Mac;
@@ -21,6 +22,14 @@ public static class ServiceRegistrations
         services.AddSingleton<ISettingsService, SettingsService>();
         services.AddSingleton<Localizer>();
         AddPlatform(services);
+
+        // Probes use this client; the rewrite path sets its own timeout when it lands.
+        services.AddSingleton(_ => new HttpClient { Timeout = TimeSpan.FromSeconds(30) });
+        services.AddSingleton<IProcessRunner, ProcessRunner>();
+        services.AddSingleton(sp =>
+            ProviderSelector.CreateDefault(sp.GetRequiredService<HttpClient>(), sp.GetRequiredService<IProcessRunner>())
+        );
+        services.AddSingleton<ModelProbeService>();
 
         services.AddSingleton<TrayIconService>();
         services.AddSingleton<ControlCommandHandler>();
