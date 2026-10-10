@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
-import type { PageLocation } from "../src/content/adapters/adapter";
+import type { PageLocation, SiteAdapter } from "../src/content/adapters/adapter";
 import { PAGE_TEXT_LIMIT } from "../src/content/adapters/generic";
+import { createGmailAdapter } from "../src/content/adapters/gmail";
 import { selectAdapter } from "../src/content/adapters/registry";
 import { applyReplacement, type ExecCommand } from "../src/content/apply";
 import { captureContext } from "../src/content/capture";
@@ -21,6 +22,13 @@ const OTHER_SITE: PageLocation & { href: string } = {
   hostname: "www.example.com",
   pathname: "/compose",
   href: "https://www.example.com/compose",
+};
+
+const GMAIL: PageLocation & { href: string } = {
+  protocol: "https:",
+  hostname: "mail.google.com",
+  pathname: "/mail/u/0/",
+  href: "https://mail.google.com/mail/u/0/#inbox/thread-1",
 };
 
 function testPage(): HTMLElement {
@@ -61,8 +69,8 @@ describe("selectAdapter", () => {
     expect(selectAdapter(OTHER_SITE)?.id).toBe("generic");
   });
 
-  it("has no adapter for Gmail until its adapter lands", () => {
-    expect(selectAdapter({ protocol: "https:", hostname: "mail.google.com", pathname: "/mail/u/0/" })).toBeUndefined();
+  it("picks the Gmail adapter on mail.google.com", () => {
+    expect(selectAdapter(GMAIL)?.id).toBe("gmail");
   });
 });
 
@@ -322,5 +330,311 @@ describe("applyReplacement", () => {
     const { registry, hash } = await captured();
     const result = await applyReplacement(document, registry, { editorId: "e-1", expectedHash: hash, start: 4, end: 9, text: "Robin" }, () => true);
     expect(!result.ok && result.error.code).toBe("internal");
+  });
+});
+
+describe("Gmail adapter", () => {
+  const GMAIL_EDITOR_ATTRIBUTES = `contenteditable="true" role="textbox" aria-label="Message Body" g_editable="true"`;
+
+  function expandedRow(name: string, email: string, title: string, body: string): string {
+    return `
+      <div role="listitem"><div class="adn">
+        <div class="gE"><span class="gD" email="${email}" name="${name}">${name}</span><span class="g3" title="${title}">Oct 7</span></div>
+        <div class="a3s"><div>${body}</div><div class="gmail_quote" style="display:none">On Oct 5 someone wrote: quoted history</div></div>
+      </div></div>`;
+  }
+
+  function collapsedRow(name: string, email: string, body: string): string {
+    return `
+      <div role="listitem" class="collapsed"><div class="adn">
+        <div class="gE"><span class="zF" email="${email}" name="${name}">${name}</span><span class="g3" title="Tue, Oct 6, 2026, 4:30 PM">Oct 6</span></div>
+        <div class="a3s" style="display:none"><div>${body}</div></div>
+      </div></div>`;
+  }
+
+  /** A conversation in `div[role=main]` with a reply draft as its last row; returns the draft editor. */
+  function gmailThread(rows: string, toolbar = ""): HTMLElement {
+    document.body.innerHTML = `
+      <div role="main">
+        <div role="toolbar">${toolbar}</div>
+        <h2 class="hP" data-thread-perm-id="thread-f:1">Venue for the offsite</h2>
+        <div role="list">${rows}
+          <div role="listitem"><div class="M9"><div id="reply" ${GMAIL_EDITOR_ATTRIBUTES}><div>hi ana</div><div>sounds good</div></div></div></div>
+        </div>
+      </div>`;
+    return document.getElementById("reply")!;
+  }
+
+  const EXPAND_ALL = `<div role="button" aria-label="Expand all"></div>`;
+
+  /** A Gmail adapter whose waits return at once, each advancing its clock one poll; `onTick` runs on each poll so a test can change the page. */
+  function instantGmail(onTick: (tick: number) => void = () => {}): { adapters: readonly SiteAdapter[]; ticks: () => number } {
+    let ticks = 0;
+    const adapter = createGmailAdapter({
+      pollMs: 100,
+      deadlineMs: 3000,
+      now: () => ticks * 100,
+      sleep: async () => {
+        ticks++;
+        onTick(ticks);
+      },
+    });
+    return { adapters: [adapter], ticks: () => ticks };
+  }
+
+  /** Gmail opens an inline reply inside the row of the message it answers; the editor sits beside that message's body. */
+  function inlineReplyRow(name: string, email: string, title: string, body: string): string {
+    return `
+      <div role="listitem"><div class="adn">
+        <div class="gE"><span class="gD" email="${email}" name="${name}">${name}</span><span class="g3" title="${title}">Oct 7</span></div>
+        <div class="a3s"><div>${body}</div></div>
+        <div class="M9"><div id="inline-reply" ${GMAIL_EDITOR_ATTRIBUTES}><div>hi sam</div><div>will do</div></div></div>
+      </div></div>`;
+  }
+
+  function expandCollapsedRows(): void {
+    for (const body of document.querySelectorAll<HTMLElement>(".collapsed .a3s")) {
+      body.style.display = "";
+    }
+  }
+
+  beforeEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("captures an expanded thread oldest first without the draft or quoted history", async () => {
+    const editor = gmailThread(
+      expandedRow("Ana", "ana@example.com", "Wed, Oct 7, 2026, 9:12 AM", "First message")
+        + expandedRow("Sam", "sam@example.com", "Wed, Oct 7, 2026, 10:05 AM", "Second message"),
+    );
+    select(editor, 3, 6);
+    const registry = new EditorRegistry(() => "e-1");
+    const { adapters } = instantGmail();
+    const result = await captureContext(document, GMAIL, registry, adapters);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+
+    expect(result.capture).toMatchObject({
+      adapter: "gmail",
+      subject: "Venue for the offsite",
+      editor: { id: "e-1", hash: await hashText("hi ana\nsounds good") },
+      selection: { text: "ana", start: 3, end: 6 },
+      thread: { completeness: "entire-thread", collapsedCount: 0 },
+    });
+    expect(result.capture.thread.messages).toEqual([
+      { from: "Ana <ana@example.com>", sent: new Date(2026, 9, 7, 9, 12).toISOString(), body: "First message" },
+      { from: "Sam <sam@example.com>", sent: new Date(2026, 9, 7, 10, 5).toISOString(), body: "Second message" },
+    ]);
+  });
+
+  it("keeps the message whose row holds the inline reply", async () => {
+    document.body.innerHTML = `
+      <div role="main"><div role="list">
+        ${expandedRow("Ana", "ana@example.com", "Wed, Oct 7, 2026, 9:12 AM", "First message")}
+        ${inlineReplyRow("Sam", "sam@example.com", "Wed, Oct 7, 2026, 10:05 AM", "Second message")}
+      </div></div>`;
+    const editor = document.getElementById("inline-reply")!;
+    select(editor, 3, 6);
+    const result = await captureContext(document, GMAIL, new EditorRegistry(), instantGmail().adapters);
+
+    expect(result.ok && result.capture.selection.text).toBe("sam");
+    expect(result.ok && result.capture.thread).toMatchObject({ completeness: "entire-thread", collapsedCount: 0 });
+    expect(result.ok && result.capture.thread.messages.map((m) => [m.from, m.body])).toEqual([
+      ["Ana <ana@example.com>", "First message"],
+      ["Sam <sam@example.com>", "Second message"],
+    ]);
+  });
+
+  it("counts a collapsed message that holds the inline reply instead of dropping it", async () => {
+    document.body.innerHTML = `
+      <div role="main"><div role="list">
+        ${expandedRow("Ana", "ana@example.com", "Wed, Oct 7, 2026, 9:12 AM", "First message")}
+        ${inlineReplyRow("Sam", "sam@example.com", "Wed, Oct 7, 2026, 10:05 AM", "Second message")}
+      </div></div>`;
+    const editor = document.getElementById("inline-reply")!;
+    editor.closest('[role="listitem"]')!.querySelector<HTMLElement>(".a3s")!.style.display = "none";
+    select(editor, 0, 2);
+    const result = await captureContext(document, GMAIL, new EditorRegistry(), instantGmail().adapters);
+
+    expect(result.ok && result.capture.thread).toMatchObject({ completeness: "loaded-messages-only", collapsedCount: 1 });
+    expect(result.ok && result.capture.thread.messages.map((m) => m.body)).toEqual(["First message"]);
+  });
+
+  it("leaves sent out when the date does not parse and uses the address when there is no name", async () => {
+    const editor = gmailThread(expandedRow("", "ana@example.com", "sometime", "Hello"));
+    select(editor, 0, 2);
+    const result = await captureContext(document, GMAIL, new EditorRegistry(), instantGmail().adapters);
+    expect(result.ok && result.capture.thread.messages).toEqual([{ from: "ana@example.com", sent: undefined, body: "Hello" }]);
+  });
+
+  it("clicks Expand all and waits for the collapsed messages to open", async () => {
+    const editor = gmailThread(collapsedRow("Ana", "ana@example.com", "First message") + collapsedRow("Sam", "sam@example.com", "Second message"), EXPAND_ALL);
+    let clicked = false;
+    document.querySelector('[aria-label="Expand all"]')!.addEventListener("click", () => (clicked = true));
+    select(editor, 0, 2);
+    const timed = instantGmail((tick) => {
+      if (clicked && tick === 4) {
+        expandCollapsedRows();
+      }
+    });
+    const result = await captureContext(document, GMAIL, new EditorRegistry(), timed.adapters);
+
+    expect(clicked).toBe(true);
+    expect(timed.ticks()).toBe(4);
+    expect(result.ok && result.capture.thread).toMatchObject({ completeness: "entire-thread", collapsedCount: 0 });
+    expect(result.ok && result.capture.thread.messages.map((m) => m.body)).toEqual(["First message", "Second message"]);
+  });
+
+  it("stops waiting once the thread stops changing after Expand all", async () => {
+    const editor = gmailThread(collapsedRow("Ana", "ana@example.com", "First message") + collapsedRow("Sam", "sam@example.com", "Second message"), EXPAND_ALL);
+    select(editor, 0, 2);
+    const timed = instantGmail((tick) => {
+      if (tick === 2) {
+        document.querySelector<HTMLElement>(".collapsed .a3s")!.style.display = "";
+      }
+    });
+    const result = await captureContext(document, GMAIL, new EditorRegistry(), timed.adapters);
+
+    expect(timed.ticks()).toBe(5);
+    expect(result.ok && result.capture.thread).toMatchObject({ completeness: "loaded-messages-only", collapsedCount: 1 });
+    expect(result.ok && result.capture.thread.messages.map((m) => m.body)).toEqual(["First message"]);
+  });
+
+  it("gives up at the deadline when Expand all opens nothing", async () => {
+    const editor = gmailThread(collapsedRow("Ana", "ana@example.com", "First message"), EXPAND_ALL);
+    select(editor, 0, 2);
+    const timed = instantGmail();
+    const result = await captureContext(document, GMAIL, new EditorRegistry(), timed.adapters);
+
+    expect(timed.ticks()).toBe(30);
+    expect(result.ok && result.capture.thread).toEqual({ completeness: "loaded-messages-only", collapsedCount: 1, messages: [] });
+  });
+
+  it("measures the deadline on the clock, so a throttled tab stops after a few stretched waits", async () => {
+    const editor = gmailThread(collapsedRow("Ana", "ana@example.com", "First message"), EXPAND_ALL);
+    select(editor, 0, 2);
+    let ticks = 0;
+    const throttled = createGmailAdapter({
+      pollMs: 150,
+      deadlineMs: 3000,
+      now: () => ticks * 1000,
+      sleep: async () => {
+        ticks++;
+      },
+    });
+    const result = await captureContext(document, GMAIL, new EditorRegistry(), [throttled]);
+
+    expect(ticks).toBe(3);
+    expect(result.ok && result.capture.thread).toMatchObject({ completeness: "loaded-messages-only", collapsedCount: 1 });
+  });
+
+  it("does not click Expand all when nothing is collapsed", async () => {
+    const editor = gmailThread(expandedRow("Ana", "ana@example.com", "Wed, Oct 7, 2026, 9:12 AM", "First message"), EXPAND_ALL);
+    let clicked = false;
+    document.querySelector('[aria-label="Expand all"]')!.addEventListener("click", () => (clicked = true));
+    select(editor, 0, 2);
+    const timed = instantGmail();
+    const result = await captureContext(document, GMAIL, new EditorRegistry(), timed.adapters);
+
+    expect(clicked).toBe(false);
+    expect(timed.ticks()).toBe(0);
+    expect(result.ok && result.capture.thread.completeness).toBe("entire-thread");
+  });
+
+  it("counts collapsed rows and the older-messages bundle when Expand all is absent", async () => {
+    const editor = gmailThread(
+      `<div><span role="button" aria-label="2 older messages">2</span></div>`
+        + collapsedRow("Ana", "ana@example.com", "First message")
+        + expandedRow("Sam", "sam@example.com", "Wed, Oct 7, 2026, 9:12 AM", "Latest message"),
+    );
+    select(editor, 0, 2);
+    const timed = instantGmail();
+    const result = await captureContext(document, GMAIL, new EditorRegistry(), timed.adapters);
+
+    expect(timed.ticks()).toBe(0);
+    expect(result.ok && result.capture.thread).toMatchObject({ completeness: "loaded-messages-only", collapsedCount: 3 });
+    expect(result.ok && result.capture.thread.messages.map((m) => m.body)).toEqual(["Latest message"]);
+  });
+
+  it("captures the draft that holds the selection when two are open", async () => {
+    const reply = gmailThread(expandedRow("Ana", "ana@example.com", "Wed, Oct 7, 2026, 9:12 AM", "First message"));
+    document.body.insertAdjacentHTML("beforeend", `<div role="dialog"><div id="compose" ${GMAIL_EDITOR_ATTRIBUTES}>new note</div></div>`);
+    const compose = document.getElementById("compose")!;
+    const registry = new EditorRegistry();
+    const { adapters } = instantGmail();
+
+    select(compose, 4, 8);
+    const fromCompose = await captureContext(document, GMAIL, registry, adapters);
+    expect(fromCompose.ok && fromCompose.capture.selection.text).toBe("note");
+    expect(fromCompose.ok && registry.find(fromCompose.capture.editor.id)).toBe(compose);
+
+    select(reply, 7, 13);
+    const fromReply = await captureContext(document, GMAIL, registry, adapters);
+    expect(fromReply.ok && fromReply.capture.selection.text).toBe("sounds");
+    expect(fromReply.ok && registry.find(fromReply.capture.editor.id)).toBe(reply);
+  });
+
+  it("reports no-selection when a draft is open but nothing in it is selected", async () => {
+    gmailThread(expandedRow("Ana", "ana@example.com", "Wed, Oct 7, 2026, 9:12 AM", "First message"));
+    document.getSelection()!.selectAllChildren(document.querySelector("h2")!);
+    const result = await captureContext(document, GMAIL, new EditorRegistry(), instantGmail().adapters);
+    expect(!result.ok && result.error.code).toBe("no-selection");
+  });
+
+  it("reports no-editor when no draft is open", async () => {
+    document.body.innerHTML = `<div role="main"><p>Inbox</p></div>`;
+    document.getSelection()!.selectAllChildren(document.querySelector("p")!);
+    const result = await captureContext(document, GMAIL, new EditorRegistry(), instantGmail().adapters);
+    expect(!result.ok && result.error.code).toBe("no-editor");
+  });
+
+  it("reports draft-only for a new message outside the conversation", async () => {
+    document.body.innerHTML = `
+      <div role="main"><div role="list">${expandedRow("Ana", "ana@example.com", "Wed, Oct 7, 2026, 9:12 AM", "Unrelated")}</div></div>
+      <div role="dialog"><div id="compose" ${GMAIL_EDITOR_ATTRIBUTES}>new note</div></div>`;
+    select(document.getElementById("compose")!, 0, 3);
+    const result = await captureContext(document, GMAIL, new EditorRegistry(), instantGmail().adapters);
+    expect(result.ok && result.capture.thread).toEqual({ completeness: "draft-only", collapsedCount: 0, messages: [] });
+  });
+
+  it("falls back to visible text when the conversation no longer has the expected structure", async () => {
+    document.title = "Venue - Gmail";
+    document.body.innerHTML = `
+      <div role="main">
+        <div role="listitem"><div class="renamed"><span>Ana</span><div class="renamed-body">First message</div></div></div>
+        <div role="listitem"><div id="reply" ${GMAIL_EDITOR_ATTRIBUTES}>hi ana</div></div>
+      </div>`;
+    select(document.getElementById("reply")!, 0, 2);
+    try {
+      const result = await captureContext(document, GMAIL, new EditorRegistry(), instantGmail().adapters);
+      expect(result.ok && result.capture.adapter).toBe("gmail");
+      expect(result.ok && result.capture.subject).toBe("Venue - Gmail");
+      expect(result.ok && result.capture.thread).toEqual({
+        completeness: "visible-text-only",
+        collapsedCount: 0,
+        messages: [{ from: document.location.hostname, body: "Ana\nFirst message" }],
+      });
+    } finally {
+      document.title = "";
+    }
+  });
+
+  it("applies a rewrite into the reply draft, leaving its hidden quoted text alone", async () => {
+    const editor = gmailThread(expandedRow("Ana", "ana@example.com", "Wed, Oct 7, 2026, 9:12 AM", "First message"));
+    editor.insertAdjacentHTML("beforeend", `<div class="gmail_signature">Me</div><div class="gmail_quote" style="display:none">quoted</div>`);
+    select(editor, 3, 6);
+    const registry = new EditorRegistry(() => "e-1");
+    const captured = await captureContext(document, GMAIL, registry, instantGmail().adapters);
+    const hash = captured.ok ? captured.capture.editor.hash : "";
+    expect(hash).toBe(await hashText("hi ana\nsounds good\nMe"));
+
+    document.getSelection()!.removeAllRanges();
+    const result = await applyReplacement(document, registry, { editorId: "e-1", expectedHash: hash, start: 3, end: 6, text: "Ana" }, fakeExec);
+    expect(result).toEqual({ ok: true });
+    expect(readPlainText(editor).text).toBe("hi Ana\nsounds good\nMe");
+    expect(editor.querySelector(".gmail_quote")!.textContent).toBe("quoted");
   });
 });
