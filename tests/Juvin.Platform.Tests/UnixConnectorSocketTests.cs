@@ -112,6 +112,39 @@ public sealed class UnixConnectorSocketTests : IDisposable
         Assert.True(File.Exists(_temp.File("control.lock")));
     }
 
+    [UnixFact]
+    public async Task AddAddress_AcceptsConnectionsWithTheSameHandlerInAPrivateDirectory()
+    {
+        using var server = new UnixConnectorSocketServer(SocketPath);
+        await server.StartAsync(EchoFramesAsync, CancellationToken.None);
+        var sandboxPath = _temp.File(Path.Join("app", "org.mozilla.firefox", "juvin", "connector.sock"));
+
+        await server.AddAddressAsync(sandboxPath, CancellationToken.None);
+        await server.AddAddressAsync(sandboxPath, CancellationToken.None);
+
+        await using var stream = await new UnixConnectorSocketClient(sandboxPath).ConnectAsync(s_timeout);
+        Assert.NotNull(stream);
+        await NativeMessagingFraming.WriteFrameAsync(stream, "\"sandboxed\"", CancellationToken.None);
+        Assert.Equal("\"sandboxed\"", await NativeMessagingFraming.ReadFrameAsync(stream, CancellationToken.None).WaitAsync(s_timeout));
+        Assert.Equal(
+            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute,
+            File.GetUnixFileMode(Path.GetDirectoryName(sandboxPath)!)
+        );
+
+        await server.StopAsync();
+
+        Assert.False(File.Exists(sandboxPath));
+        Assert.False(File.Exists(SocketPath));
+    }
+
+    [UnixFact]
+    public async Task AddAddress_RequiresAStartedServer()
+    {
+        using var server = new UnixConnectorSocketServer(SocketPath);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => server.AddAddressAsync(_temp.File("extra.sock"), CancellationToken.None));
+    }
+
     [UnixTheory]
     [InlineData("org.mozilla.firefox", "/run/user/1000", "/run/user/1000/app/org.mozilla.firefox/juvin/connector.sock")]
     [InlineData(null, "/run/user/1000", null)]

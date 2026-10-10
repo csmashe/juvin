@@ -117,6 +117,14 @@ public sealed class WindowsPlatformTests : IDisposable
     }
 
     [WindowsFact]
+    public async Task ConnectorPipe_HasNoExtraAddresses()
+    {
+        using var server = new NamedPipeConnectorServer(_pipeName);
+
+        await Assert.ThrowsAsync<NotSupportedException>(() => server.AddAddressAsync("other", CancellationToken.None));
+    }
+
+    [WindowsFact]
     public void Guard_AllowsOneHolder()
     {
         var name = @"Local\Juvin.Test." + Guid.NewGuid().ToString("N");

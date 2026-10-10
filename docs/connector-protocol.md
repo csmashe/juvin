@@ -10,7 +10,7 @@ Date: October 9, 2026. Implements section 4.5 of `mvp-scope.md`. This is the con
 
 | OS | Connector endpoint |
 | --- | --- |
-| Linux | `$XDG_RUNTIME_DIR/juvin/connector.sock`, falling back to `<data>/Runtime/connector.sock` like the control socket. Inside a Flatpak sandbox (`FLATPAK_ID` set) the host uses `$XDG_RUNTIME_DIR/app/<FLATPAK_ID>/juvin/connector.sock` instead; the app does not bind that path yet, so Flatpak browsers cannot connect until the host registrar slice adds it. |
+| Linux | `$XDG_RUNTIME_DIR/juvin/connector.sock`, falling back to `<data>/Runtime/connector.sock` like the control socket. Inside a Flatpak sandbox (`FLATPAK_ID` set) the host uses `$XDG_RUNTIME_DIR/app/<FLATPAK_ID>/juvin/connector.sock` instead. The app also listens on that path for every Flatpak browser it has registered, binding it at startup and right after a registration. |
 | macOS | `<data>/Runtime/connector.sock` |
 | Windows | Named pipe `juvin-connector-<user SID>-<session id>` |
 

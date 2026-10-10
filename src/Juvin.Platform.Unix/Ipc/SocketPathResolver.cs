@@ -99,7 +99,7 @@ internal static partial class SocketPathResolver
         return Path.Join(fallbackDirectory, fileName);
     }
 
-    private static void PreparePrivateDirectory(string directory)
+    internal static void PreparePrivateDirectory(string directory)
     {
         try
         {
