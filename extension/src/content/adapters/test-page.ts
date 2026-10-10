@@ -22,7 +22,7 @@ export const testPageAdapter: SiteAdapter = {
   id: "test-page",
   matches: (location) => EXTENSION_PROTOCOLS.has(location.protocol) && location.pathname.endsWith("/test-page.html"),
   findEditor: (doc) => doc.querySelector<HTMLElement>(SELECTORS.editor),
-  captureThread(doc) {
+  async captureThread(doc) {
     const messages: ThreadMessage[] = Array.from(doc.querySelectorAll(SELECTORS.message), (element) => {
       const to = textOf(element, SELECTORS.to)
         .split(",")
