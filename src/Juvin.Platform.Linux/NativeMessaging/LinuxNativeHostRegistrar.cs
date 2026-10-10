@@ -197,9 +197,18 @@ public sealed class LinuxNativeHostRegistrar : INativeHostRegistrar
             File.SetLastWriteTimeUtc(temp, File.GetLastWriteTimeUtc(hostPath));
             File.Move(temp, target, overwrite: true);
         }
-        finally
+        catch
         {
-            File.Delete(temp);
+            try
+            {
+                File.Delete(temp);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // The original failure is the one to report.
+            }
+
+            throw;
         }
 
         return target;
