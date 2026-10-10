@@ -64,6 +64,10 @@ jobs:
   codeql:
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci')
     runs-on: ubuntu-24.04
+    # The analyze step reads its own workflow run for the status report.
+    permissions:
+      contents: read
+      actions: read
     strategy:
       fail-fast: false
       matrix:
