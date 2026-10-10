@@ -117,7 +117,8 @@ public sealed class UnixConnectorSocketTests : IDisposable
     {
         using var server = new UnixConnectorSocketServer(SocketPath);
         await server.StartAsync(EchoFramesAsync, CancellationToken.None);
-        var sandboxPath = _temp.File(Path.Join("app", "org.mozilla.firefox", "juvin", "connector.sock"));
+        // Short on purpose: macOS caps socket paths at 104 bytes and its temp directory is already long.
+        var sandboxPath = _temp.File(Path.Join("app", "fx", "c.sock"));
 
         await server.AddAddressAsync(sandboxPath, CancellationToken.None);
         await server.AddAddressAsync(sandboxPath, CancellationToken.None);
