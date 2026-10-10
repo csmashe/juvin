@@ -22,6 +22,8 @@ on:
 
 permissions:
   contents: read
+  # Lets the CodeQL job upload results once code scanning is available on this repository.
+  security-events: write
 
 jobs:
   build:
@@ -55,3 +57,60 @@ jobs:
         with:
           name: test-results-${{ matrix.os }}
           path: artifacts/test-results
+
+  # CodeQL runs under the same gate. Code scanning is not available on a free private
+  # repository, so the results are not uploaded: the SARIF is kept as an artifact and any
+  # error-level finding fails the job. Switch "upload" to "always" once the repository is
+  # public or has code security enabled, and the findings appear in the Security tab.
+  codeql:
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci')
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: csharp
+            build-mode: none
+          - language: javascript-typescript
+            build-mode: none
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          queries: security-and-quality
+
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:${{ matrix.language }}
+          upload: never
+          output: artifacts/codeql
+
+      - name: Upload CodeQL results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codeql-${{ matrix.language }}
+          path: artifacts/codeql
+
+      - name: Fail on error-level findings
+        shell: python
+        run: |
+          import glob, json, sys
+          errors = 0
+          for path in glob.glob("artifacts/codeql/*.sarif"):
+              run = json.load(open(path))["runs"][0]
+              rules = {r["id"]: r for r in run["tool"]["driver"].get("rules", [])}
+              for ext in run["tool"].get("extensions", []):
+                  rules.update({r["id"]: r for r in ext.get("rules", [])})
+              for result in run.get("results", []):
+                  rule = rules.get(result["ruleId"], {})
+                  level = result.get("level") or rule.get("defaultConfiguration", {}).get("level", "warning")
+                  loc = result["locations"][0]["physicalLocation"] if result.get("locations") else {}
+                  where = f'{loc.get("artifactLocation", {}).get("uri", "?")}:{loc.get("region", {}).get("startLine", "?")}'
+                  print(f'{level}: {result["ruleId"]} at {where}: {result["message"]["text"]}')
+                  errors += level == "error"
+          sys.exit(1 if errors else 0)
