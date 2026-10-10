@@ -3,10 +3,7 @@ import { editorForSelection, type SiteAdapter } from "./adapter";
 
 export const PAGE_TEXT_LIMIT = 20_000;
 
-// Sites that will get a dedicated adapter; the generic one stays out so they report no-adapter until then.
-const DEDICATED_HOSTS = new Set(["mail.google.com"]);
-
-function normalize(text: string): string {
+export function normalize(text: string): string {
   return text.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
@@ -23,9 +20,9 @@ function truncate(text: string, limit: number): string {
 export const genericAdapter: SiteAdapter = {
   id: "generic",
   fallback: true,
-  matches: (location) => !DEDICATED_HOSTS.has(location.hostname),
+  matches: () => true,
   findEditor: (doc) => editorForSelection(doc),
-  captureThread(doc, editor) {
+  async captureThread(doc, editor) {
     const main = doc.querySelector<HTMLElement>("main, [role='main'], article");
     const root = main && !editor.contains(main) && isRendered(main) ? main : doc.body;
     const text = root && !editor.contains(root) ? truncate(normalize(readPlainText(root, editor).text), PAGE_TEXT_LIMIT) : "";

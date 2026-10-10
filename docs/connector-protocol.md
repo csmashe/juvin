@@ -105,6 +105,7 @@ Success:
 - `editor.hash` is `sha256:` plus the lowercase hex SHA-256 of the editor's full plain text at capture time.
 - `selection.text` is the text to rewrite; `start` and `end` are its character offsets within the editor's plain text.
 - The generic adapter sends one message whose `from` is the page's hostname and whose body is the page's main readable text with the draft removed; `subject` is the document title.
+- The Gmail adapter clicks "Expand all" when messages are collapsed (waiting up to about 3 seconds), then sends one message per expanded row with `from` as `Name <address>`, `sent` when the date parses, and the body without hidden quoted text; `subject` is the conversation heading. Rows left collapsed and any "N older messages" bundle count toward `collapsedCount` and make it `loaded-messages-only`. A new message outside a conversation is `draft-only`; a conversation it cannot parse gets the generic adapter's capture.
 - `thread.completeness` is one of `entire-thread`, `loaded-messages-only`, `visible-text-only`, `draft-only`, `truncated`. `truncated` means the extension dropped messages to stay under the frame cap. `messages` are oldest first; `to` and `sent` may be empty or absent.
 
 Failure:
@@ -113,7 +114,7 @@ Failure:
 {"v":1,"type":"context.response","id":"c1","ok":false,"error":{"code":"no-selection","message":"Nothing is selected in the editor."}}
 ```
 
-Codes: `no-active-tab`, `no-adapter` (no site adapter matched and the generic one found no editor; Gmail reports this until its adapter lands), `no-editor` (a site adapter matched but found no editor), `no-selection`, `page-not-ready` (the content script could not be reached or injected), `internal` (including a selection too large for one frame).
+Codes: `no-active-tab`, `no-adapter` (no site adapter matched and the generic one found no editor), `no-editor` (a site adapter matched but found no editor), `no-selection`, `page-not-ready` (the content script could not be reached or injected), `internal` (including a selection too large for one frame).
 
 ### `apply.request` (app to extension)
 

@@ -64,7 +64,7 @@ export async function captureContext(
 
   const text = editorText(editor);
   const hash = await hashText(text);
-  const thread = adapter.captureThread(doc, editor);
+  const thread = await adapter.captureThread(doc, editor);
   const id = registry.idFor(editor);
 
   return {

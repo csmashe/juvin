@@ -12,6 +12,23 @@ Run after any change to `juvin-host`, the connector socket, `ConnectorService`, 
 6. Open the test page from the popup, select the draft, press the shortcut. The app log must show `Captured 161 draft chars, 3 messages, EntireThread, adapter test-page` and nothing from the draft or thread text.
 7. Quit the browser. The app log must show `<browser> disconnected` and no `juvin-host` process may remain.
 
+## Gmail steps (any OS)
+
+Run after steps 1 to 5, signed in to a Gmail account with test conversations only. Use synthetic text; the log lines below carry counts, never content.
+
+1. Open a conversation of three or more messages, all expanded. Reply, type a two-line draft, select part of it, and press the shortcut. The log must show `Captured <n> draft chars, <messages in the thread> messages, EntireThread, adapter gmail`.
+2. Open a conversation long enough to show an "N older messages" bundle. Reply, select, and press the shortcut. Gmail must expand the whole conversation within about 3 seconds and the log must show `EntireThread` with every message counted.
+3. Open a reply in a conversation and a new message window at the same time. Select text in the new message and capture: the log must show `0 messages, DraftOnly`. Select text in the reply and capture: the log must show the conversation's messages.
+4. With a reply draft captured, apply a replacement for that capture. The selected text must change in place, and Ctrl+Z (Cmd+Z on macOS) must restore the original draft.
+5. Capture again, type one character in the draft, then apply. The apply must be refused with `draft-changed` and the draft must stay as typed.
+
+Until the rewrite panel can send an apply (Phase 4), run steps 4 and 5 from the extension's background console (Chrome: Inspect the service worker on the extensions page; Firefox: Inspect on `about:debugging`). Find the Gmail tab's id with `tabs.query`, send `{kind: "juvin.capture"}` with `tabs.sendMessage`, then send `{kind: "juvin.apply", editorId, expectedHash, start, end, text}` using the `editor.id`, `editor.hash`, and `selection` offsets from that capture.
+
+### Gmail results
+
+| Date | OS | Browser | Full thread | Collapsed thread | Two drafts | Apply and Undo | Edited draft refused |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+
 ## Results
 
 | Date | OS | Browser | Route | Connect | Ping | Capture |

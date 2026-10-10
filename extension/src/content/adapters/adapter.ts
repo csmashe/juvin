@@ -16,7 +16,7 @@ export interface SiteAdapter {
   fallback?: boolean;
   matches(location: PageLocation): boolean;
   findEditor(doc: Document): HTMLElement | null;
-  captureThread(doc: Document, editor: HTMLElement): ThreadSnapshot;
+  captureThread(doc: Document, editor: HTMLElement): Promise<ThreadSnapshot>;
 }
 
 const EDITABLE_VALUES = new Set(["", "true", "plaintext-only"]);
