@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net.Sockets;
 using Juvin.Core.Connector;
 using Juvin.Core.Interfaces;
 using Juvin.Core.Localization;
@@ -25,13 +26,20 @@ public sealed class ConnectorService
 
     private readonly Lock _gate = new();
     private readonly Localizer _localizer;
+    private readonly INativeHostRegistrar _registrar;
     private readonly IConnectorSocketServer _server;
     private readonly List<ConnectorSession> _sessions = [];
     private readonly ISettingsService _settings;
 
-    public ConnectorService(IConnectorSocketServer server, ISettingsService settings, Localizer localizer)
+    public ConnectorService(
+        IConnectorSocketServer server,
+        INativeHostRegistrar registrar,
+        ISettingsService settings,
+        Localizer localizer
+    )
     {
         _server = server;
+        _registrar = registrar;
         _settings = settings;
         _localizer = localizer;
 
@@ -59,7 +67,42 @@ public sealed class ConnectorService
     /// <summary>Raised when a capture requested by the extension's shortcut finishes, successfully or not.</summary>
     public event Action<ConnectorSession, ContextResult>? CaptureCompleted;
 
-    public Task StartAsync(CancellationToken ct) => _server.StartAsync(HandleConnectionAsync, ct);
+    public async Task StartAsync(CancellationToken ct)
+    {
+        await _server.StartAsync(HandleConnectionAsync, ct);
+        await BindSandboxEndpointsAsync(ct);
+    }
+
+    /// <summary>
+    ///     Listens on the registrar's sandbox endpoints too. Called on start and again after a
+    ///     registration, which can add one. Returns the addresses that could not be bound.
+    /// </summary>
+    public async Task<IReadOnlyList<SandboxEndpoint>> BindSandboxEndpointsAsync(CancellationToken ct)
+    {
+        var failed = new List<SandboxEndpoint>();
+        foreach (var endpoint in _registrar.SandboxEndpoints)
+        {
+            try
+            {
+                await _server.AddAddressAsync(endpoint.Address, ct);
+            }
+            catch (Exception ex)
+                when (ex
+                    is IOException
+                        or SocketException
+                        or ArgumentException
+                        or NotSupportedException
+                        or UnauthorizedAccessException
+                        or InvalidOperationException
+                )
+            {
+                Trace.WriteLine($"[ConnectorService] Could not listen on {endpoint.Address} ({ex.GetType().Name}).");
+                failed.Add(endpoint);
+            }
+        }
+
+        return failed;
+    }
 
     public Task StopAsync() => _server.StopAsync();
 

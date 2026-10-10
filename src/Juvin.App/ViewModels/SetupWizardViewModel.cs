@@ -12,14 +12,15 @@ using Juvin.Platform.Setup;
 namespace Juvin.App.ViewModels;
 
 /// <summary>
-///     Order of the wizard pages. The view has one tab per member, in the same order. Processing
-///     Browser connector, shortcut, and try-it steps are added here as their phases land.
+///     Order of the wizard pages. The view has one tab per member, in the same order. Shortcut and
+///     try-it steps are added here as their phases land.
 /// </summary>
 public enum SetupWizardStep
 {
     // ReSharper disable once UnusedMember.Global -- step 0, reached through StepIndex
     Welcome,
     ProcessingMode,
+    BrowserConnector,
     Checklist,
     Done,
 }
@@ -75,10 +76,12 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         ISettingsService settings,
         Localizer localizer,
         ModelProbeService probes,
+        BrowserConnectorPanelViewModel connector,
         IEnumerable<ISetupTask> setupTasks
     )
     {
         _settings = settings;
+        Connector = connector;
         _localizer = localizer;
         _probes = probes;
         ModeOptions = ProcessingModeOption.All(localizer);
@@ -100,6 +103,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
 
     public static int StepCount { get; } = Enum.GetValues<SetupWizardStep>().Length;
 
+    public BrowserConnectorPanelViewModel Connector { get; }
     public ObservableCollection<SetupTaskRow> SetupItems { get; }
     public IReadOnlyList<ProcessingModeOption> ModeOptions { get; }
     public ObservableCollection<DetectionRow> Detections { get; } = [];
@@ -133,12 +137,18 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         }
 
         _lifetime.Dispose();
+        Connector.Dispose();
     }
 
     // ReSharper disable once UnusedParameterInPartialMethod -- signature fixed by the source generator
     partial void OnStepIndexChanged(int value)
     {
         RefreshStepState();
+        if (Step == SetupWizardStep.BrowserConnector)
+        {
+            Connector.DetectCommand.Execute(null);
+        }
+
         _ = Step switch
         {
             SetupWizardStep.ProcessingMode => DetectModelsAsync(),

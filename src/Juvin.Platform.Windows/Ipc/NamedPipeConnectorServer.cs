@@ -32,6 +32,10 @@ public sealed class NamedPipeConnectorServer : IConnectorSocketServer, IDisposab
         return _listener.StartAsync((pipe, token) => handleConnection(new DrainingPipeStream(pipe), token), ct);
     }
 
+    /// <summary>Every browser on Windows reaches the one pipe, so there are no sandbox addresses to add.</summary>
+    public Task AddAddressAsync(string address, CancellationToken ct) =>
+        throw new NotSupportedException("The connector pipe has a single address on Windows.");
+
     public Task StopAsync() => _listener.StopAsync();
 
     public void Dispose()

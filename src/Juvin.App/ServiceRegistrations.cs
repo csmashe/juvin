@@ -38,6 +38,7 @@ public static class ServiceRegistrations
         services.AddSingleton<HomeSectionViewModel>();
         services.AddSingleton<ShortcutsSectionViewModel>();
         services.AddSingleton<RewriteActionsSectionViewModel>();
+        services.AddTransient<BrowserConnectorPanelViewModel>();
         services.AddSingleton<BrowserConnectorSectionViewModel>();
         services.AddSingleton<ModelsSectionViewModel>();
         services.AddSingleton<PrivacyAndDataSectionViewModel>();

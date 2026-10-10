@@ -1,0 +1,139 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Juvin.App.ViewModels"
+             xmlns:ic="using:FluentIcons.Avalonia"
+             xmlns:sys="using:System"
+             xmlns:loc="using:Juvin.App.Localization"
+             x:Class="Juvin.App.Views.Controls.BrowserConnectorPanel"
+             x:DataType="vm:BrowserConnectorPanelViewModel">
+    <StackPanel Spacing="18">
+        <StackPanel Spacing="8">
+            <TextBlock Classes="section-label" Text="{loc:Str BrowserConnector.BrowsersLabel}" />
+            <Border Classes="panel">
+                <StackPanel>
+                    <Border Classes="section-row">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Classes="row-title" Text="{loc:Str BrowserConnector.Detected}" />
+                                <TextBlock Classes="row-hint" Text="{loc:Str BrowserConnector.DetectedHint}" />
+                            </StackPanel>
+                            <Button Grid.Column="1"
+                                    VerticalAlignment="Center"
+                                    Content="{loc:Str Common.CheckAgain}"
+                                    Command="{Binding DetectCommand}" />
+                        </Grid>
+                    </Border>
+                    <Border Classes="section-row divided" IsVisible="{Binding IsHostMissing}">
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                            <ic:SymbolIcon Classes="status attention" Symbol="Warning" VerticalAlignment="Top" />
+                            <StackPanel Grid.Column="1" Spacing="2">
+                                <TextBlock Classes="row-title" Text="{loc:Str BrowserConnector.HostMissing}" />
+                                <TextBlock Classes="row-hint" Text="{Binding HostMissingHint}" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                    <Border Classes="section-row divided" IsVisible="{Binding !HasBrowsers}">
+                        <TextBlock Classes="row-hint" Margin="0" Text="{loc:Str BrowserConnector.NoBrowsers}" />
+                    </Border>
+                    <ItemsControl ItemsSource="{Binding Browsers}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:BrowserRow">
+                                <Border Classes="section-row divided">
+                                    <StackPanel Spacing="6">
+                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                                            <ic:SymbolIcon Classes="status"
+                                                           Classes.satisfied="{Binding IsSatisfied}"
+                                                           Classes.attention="{Binding NeedsAttention}"
+                                                           Symbol="{Binding StatusSymbol}"
+                                                           VerticalAlignment="Top" />
+                                            <StackPanel Grid.Column="1" Spacing="2">
+                                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                                    <TextBlock Classes="row-title" Text="{Binding DisplayName}" />
+                                                    <Border Classes="badge" IsVisible="{Binding HasPackaging}">
+                                                        <TextBlock Classes="badge-text" Text="{Binding PackagingLabel}" />
+                                                    </Border>
+                                                </StackPanel>
+                                                <TextBlock Classes="row-hint" Text="{Binding StateText}" />
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="2" Spacing="4" VerticalAlignment="Center" MinWidth="90">
+                                                <ProgressBar IsIndeterminate="True" Height="4" IsVisible="{Binding IsBusy}" />
+                                                <Button Content="{Binding RegisterLabel}"
+                                                        HorizontalAlignment="Stretch"
+                                                        IsVisible="{Binding CanRegister}"
+                                                        Command="{Binding $parent[ItemsControl].((vm:BrowserConnectorPanelViewModel)DataContext).RegisterCommand, FallbackValue={x:Null}}"
+                                                        CommandParameter="{Binding}" />
+                                            </StackPanel>
+                                        </Grid>
+                                        <TextBlock Classes="row-hint" Text="{Binding Error}" IsVisible="{Binding HasError}" />
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+
+        <StackPanel Spacing="8">
+            <TextBlock Classes="section-label" Text="{loc:Str BrowserConnector.ExtensionLabel}" />
+            <Border Classes="panel">
+                <Border Classes="section-row">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Classes="row-title" Text="{loc:Str BrowserConnector.Extension}" />
+                            <TextBlock Classes="row-hint" Text="{loc:Str BrowserConnector.ExtensionHint}" />
+                        </StackPanel>
+                        <HyperlinkButton Grid.Column="1"
+                                         VerticalAlignment="Center"
+                                         Content="{loc:Str BrowserConnector.ExtensionLink}"
+                                         NavigateUri="https://github.com/csmashe/juvin/tree/main/extension" />
+                    </Grid>
+                </Border>
+            </Border>
+        </StackPanel>
+
+        <StackPanel Spacing="8">
+            <TextBlock Classes="section-label" Text="{loc:Str BrowserConnector.ConnectionLabel}" />
+            <Border Classes="panel">
+                <StackPanel>
+                    <Border Classes="section-row">
+                        <StackPanel Spacing="2">
+                            <TextBlock Classes="row-title" Text="{loc:Str BrowserConnector.Connected}" />
+                            <TextBlock Classes="row-hint"
+                                       Text="{loc:Str BrowserConnector.NoneConnected}"
+                                       IsVisible="{Binding !HasClients}" />
+                            <ItemsControl ItemsSource="{Binding ConnectedClients}" IsVisible="{Binding HasClients}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="sys:String">
+                                        <TextBlock Classes="row-hint" Text="{Binding}" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+                    <Border Classes="section-row divided">
+                        <StackPanel Spacing="10">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Classes="row-title" Text="{loc:Str BrowserConnector.Test}" />
+                                    <TextBlock Classes="row-hint"
+                                               Text="{loc:Str BrowserConnector.TestHint}"
+                                               IsVisible="{Binding !HasTestResult}" />
+                                    <TextBlock Classes="row-hint"
+                                               Text="{Binding TestResult}"
+                                               IsVisible="{Binding HasTestResult}" />
+                                </StackPanel>
+                                <Button Grid.Column="1"
+                                        MinWidth="90"
+                                        VerticalAlignment="Center"
+                                        Content="{loc:Str BrowserConnector.TestButton}"
+                                        Command="{Binding TestCommand}" />
+                            </Grid>
+                            <ProgressBar IsIndeterminate="True" Height="4" IsVisible="{Binding IsTesting}" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </StackPanel>
+</UserControl>
