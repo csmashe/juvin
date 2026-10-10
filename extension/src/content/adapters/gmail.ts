@@ -28,12 +28,14 @@ const STABLE_POLLS = 3;
 
 export interface GmailTiming {
   sleep(ms: number): Promise<void>;
+  now(): number;
   pollMs: number;
   deadlineMs: number;
 }
 
 const DEFAULT_TIMING: GmailTiming = {
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  now: () => performance.now(),
   pollMs: 150,
   deadlineMs: 3000,
 };
@@ -49,9 +51,9 @@ function isGmailEditor(element: Element): boolean {
     && (element.getAttribute("g_editable") === "true" || element.getAttribute("aria-label") === LABELS.messageBody);
 }
 
-function bodyOf(row: Element): HTMLElement | null {
+function bodyOf(row: Element, editor: HTMLElement): HTMLElement | null {
   const body = row.querySelector<HTMLElement>(SELECTORS.body);
-  return body && isRendered(body) ? body : null;
+  return body && !editor.contains(body) && isRendered(body) ? body : null;
 }
 
 function olderMessages(main: Element, editor: HTMLElement): number {
@@ -65,12 +67,17 @@ function olderMessages(main: Element, editor: HTMLElement): number {
   return 0;
 }
 
-/** Message rows oldest first, leaving out the draft's own row and rows nested in another row. */
+/** Gmail nests an inline reply inside the row of the message it answers, so a row with the draft and no date header is the draft alone. */
+function isDraftOnlyRow(row: Element, editor: HTMLElement): boolean {
+  return row.contains(editor) && !Array.from(row.querySelectorAll(SELECTORS.date)).some((date) => !editor.contains(date));
+}
+
+/** Message rows oldest first, leaving out rows nested in another row and a row that is only the draft. */
 function scan(main: Element, editor: HTMLElement): ThreadState {
   const rows = Array.from(main.querySelectorAll(SELECTORS.message)).filter(
-    (row) => !row.contains(editor) && !row.parentElement?.closest(SELECTORS.message) && isRendered(row),
+    (row) => !row.parentElement?.closest(SELECTORS.message) && isRendered(row) && !isDraftOnlyRow(row, editor),
   );
-  return { rows, collapsed: rows.filter((row) => !bodyOf(row)).length, older: olderMessages(main, editor) };
+  return { rows, collapsed: rows.filter((row) => !bodyOf(row, editor)).length, older: olderMessages(main, editor) };
 }
 
 const hiddenCount = (state: ThreadState): number => state.collapsed + state.older;
@@ -87,7 +94,9 @@ async function expandAll(main: Element, editor: HTMLElement, timing: GmailTiming
   const initialKey = stateKey(initial);
   let lastKey = initialKey;
   let stablePolls = 0;
-  for (let waited = 0; waited < timing.deadlineMs; waited += timing.pollMs) {
+  // Wall clock, not a sleep count: a throttled tab stretches each sleep well past pollMs.
+  const deadline = timing.now() + timing.deadlineMs;
+  while (timing.now() < deadline) {
     await timing.sleep(timing.pollMs);
     const state = scan(main, editor);
     if (hiddenCount(state) === 0) {
@@ -147,8 +156,8 @@ export function createGmailAdapter(timing: GmailTiming = DEFAULT_TIMING): SiteAd
       await expandAll(main, editor, timing);
       const state = scan(main, editor);
       const messages: ThreadMessage[] = state.rows.flatMap((row) => {
-        const body = bodyOf(row);
-        return body ? [{ from: sender(row), sent: sentAt(row), body: normalize(readPlainText(body).text) }] : [];
+        const body = bodyOf(row, editor);
+        return body ? [{ from: sender(row), sent: sentAt(row), body: normalize(readPlainText(body, editor).text) }] : [];
       });
 
       if (messages.length === 0 && !state.rows.some((row) => row.querySelector(SELECTORS.sender))) {
