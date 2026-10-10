@@ -4,6 +4,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="using:Juvin.App.ViewModels"
         xmlns:ic="using:FluentIcons.Avalonia"
+        xmlns:controls="using:Juvin.App.Views.Controls"
         xmlns:loc="using:Juvin.App.Localization"
         mc:Ignorable="d" d:DesignWidth="640" d:DesignHeight="640"
         x:Class="Juvin.App.Views.SetupWizard"
@@ -165,6 +166,16 @@
                                 </Border>
                             </StackPanel>
                         </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem>
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Spacing="14" Margin="0,0,14,0">
+                        <TextBlock Classes="page-title" Text="{loc:Str Wizard.Connector.Title}" />
+                        <TextBlock Classes="page-subtitle" Text="{loc:Str Wizard.Connector.Body}" />
+                        <controls:BrowserConnectorPanel DataContext="{Binding Connector}" />
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>

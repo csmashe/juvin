@@ -18,5 +18,13 @@ public interface IConnectorSocketServer
     /// </summary>
     Task StartAsync(Func<Stream, CancellationToken, Task> handleConnection, CancellationToken ct);
 
+    /// <summary>
+    ///     Binds one more address with the same handler, after <see cref="StartAsync" />. Used for the
+    ///     per-sandbox endpoints in <see cref="INativeHostRegistrar.SandboxEndpoints" />; binding an
+    ///     address that is already bound is a no-op. Throws <see cref="NotSupportedException" /> where
+    ///     the endpoint is reachable from every browser and extra addresses make no sense (Windows).
+    /// </summary>
+    Task AddAddressAsync(string address, CancellationToken ct);
+
     Task StopAsync();
 }

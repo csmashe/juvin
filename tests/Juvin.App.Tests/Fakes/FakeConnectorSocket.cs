@@ -12,10 +12,29 @@ public sealed class FakeConnectorSocket : IConnectorSocketServer, IConnectorSock
 
     public string Address => "fake";
 
+    public List<string> AddedAddresses { get; } = [];
+
+    /// <summary>When set, <see cref="AddAddressAsync" /> throws it instead of recording the address.</summary>
+    public Exception? AddAddressFailure { get; set; }
+
+    /// <summary>When set, only this address throws <see cref="AddAddressFailure" />; others are recorded.</summary>
+    public string? FailOnlyAddress { get; set; }
+
     public Task StartAsync(Func<Stream, CancellationToken, Task> handleConnection, CancellationToken ct)
     {
         _handler = handleConnection;
         _cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        return Task.CompletedTask;
+    }
+
+    public Task AddAddressAsync(string address, CancellationToken ct)
+    {
+        if (AddAddressFailure is not null && (FailOnlyAddress is null || FailOnlyAddress == address))
+        {
+            throw AddAddressFailure;
+        }
+
+        AddedAddresses.Add(address);
         return Task.CompletedTask;
     }
 
