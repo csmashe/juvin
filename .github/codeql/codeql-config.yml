@@ -1,0 +1,5 @@
+# Throwaway spike projects and build outputs are not product code.
+paths-ignore:
+  - spikes
+  - extension/dist
+  - extension/node_modules
