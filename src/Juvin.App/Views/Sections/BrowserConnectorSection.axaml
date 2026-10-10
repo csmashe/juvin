@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Juvin.App.ViewModels.Sections"
+             xmlns:controls="using:Juvin.App.Views.Controls"
              xmlns:loc="using:Juvin.App.Localization"
              x:Class="Juvin.App.Views.Sections.BrowserConnectorSection"
              x:DataType="vm:BrowserConnectorSectionViewModel">
@@ -11,46 +12,7 @@
                 <TextBlock Classes="page-subtitle" Text="{loc:Str BrowserConnector.Subtitle}" />
             </StackPanel>
 
-            <StackPanel Spacing="8">
-                <TextBlock Classes="section-label" Text="{loc:Str BrowserConnector.BrowsersLabel}" />
-                <Border Classes="panel">
-                    <StackPanel>
-                        <Border Classes="section-row">
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-                                <StackPanel VerticalAlignment="Center">
-                                    <TextBlock Classes="row-title" Text="{loc:Str BrowserConnector.Detected}" />
-                                    <TextBlock Classes="row-hint" Text="{loc:Str BrowserConnector.DetectedHint}" />
-                                </StackPanel>
-                                <Border Grid.Column="1" Classes="badge">
-                                    <TextBlock Classes="badge-text" Text="{loc:Str Common.ComingSoon}" />
-                                </Border>
-                            </Grid>
-                        </Border>
-                        <Border Classes="section-row divided">
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-                                <StackPanel VerticalAlignment="Center">
-                                    <TextBlock Classes="row-title" Text="{loc:Str BrowserConnector.Extension}" />
-                                    <TextBlock Classes="row-hint" Text="{loc:Str BrowserConnector.ExtensionHint}" />
-                                </StackPanel>
-                                <Border Grid.Column="1" Classes="badge">
-                                    <TextBlock Classes="badge-text" Text="{loc:Str Common.ComingSoon}" />
-                                </Border>
-                            </Grid>
-                        </Border>
-                        <Border Classes="section-row divided">
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-                                <StackPanel VerticalAlignment="Center">
-                                    <TextBlock Classes="row-title" Text="{loc:Str BrowserConnector.Test}" />
-                                    <TextBlock Classes="row-hint" Text="{loc:Str BrowserConnector.TestHint}" />
-                                </StackPanel>
-                                <Border Grid.Column="1" Classes="badge">
-                                    <TextBlock Classes="badge-text" Text="{loc:Str Common.ComingSoon}" />
-                                </Border>
-                            </Grid>
-                        </Border>
-                    </StackPanel>
-                </Border>
-            </StackPanel>
+            <controls:BrowserConnectorPanel DataContext="{Binding Panel}" />
         </StackPanel>
     </ScrollViewer>
 </UserControl>

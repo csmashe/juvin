@@ -1,3 +1,4 @@
+using System.Net.Sockets;
 using System.Text.Json;
 using Juvin.App.Services;
 using Juvin.App.Tests.Fakes;
@@ -5,6 +6,7 @@ using Juvin.Core.Connector;
 using Juvin.Core.Localization;
 using Juvin.Core.Models;
 using Juvin.Core.Rewrite;
+using Juvin.Platform;
 
 namespace Juvin.App.Tests;
 
@@ -15,13 +17,14 @@ public sealed class ConnectorServiceTests : IAsyncDisposable
 
     private static readonly TimeSpan s_timeout = TimeSpan.FromSeconds(5);
 
+    private readonly FakeNativeHostRegistrar _registrar = new();
     private readonly ConnectorService _service;
     private readonly FakeSettingsService _settings = new();
     private readonly FakeConnectorSocket _socket = new();
 
     public ConnectorServiceTests()
     {
-        _service = new ConnectorService(_socket, _settings, new Localizer());
+        _service = new ConnectorService(_socket, _registrar, _settings, new Localizer());
     }
 
     public async ValueTask DisposeAsync()
@@ -39,6 +42,51 @@ public sealed class ConnectorServiceTests : IAsyncDisposable
         Assert.Equal(["gmail", "generic", "test-page"], config.Adapters);
         Assert.Equal("Ctrl+Alt+J", config.Shortcut);
         Assert.Equal(new ConnectorHealth("codex", null), config.Health);
+    }
+
+    [Fact]
+    public async Task Start_ListensOnEverySandboxEndpoint()
+    {
+        _registrar.Endpoints.AddRange(
+            [
+                new SandboxEndpoint("firefox-flatpak", "/run/user/1000/app/org.mozilla.firefox/juvin/connector.sock"),
+                new SandboxEndpoint("zen-flatpak", "/run/user/1000/app/app.zen_browser.zen/juvin/connector.sock"),
+            ]
+        );
+
+        await _service.StartAsync(CancellationToken.None);
+
+        Assert.Equal(_registrar.Endpoints.Select(endpoint => endpoint.Address), _socket.AddedAddresses);
+    }
+
+    [Fact]
+    public async Task Start_SurvivesAnEndpointThatCannotBeBound()
+    {
+        _registrar.Endpoints.Add(new SandboxEndpoint("firefox-flatpak", "/unbindable"));
+        _socket.AddAddressFailure = new IOException("in use");
+
+        await _service.StartAsync(CancellationToken.None);
+
+        Assert.Empty(_socket.AddedAddresses);
+        Assert.Equal(_registrar.Endpoints, await _service.BindSandboxEndpointsAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task BindSandboxEndpoints_ContinuesPastASocketError()
+    {
+        _registrar.Endpoints.AddRange(
+            [
+                new SandboxEndpoint("firefox-flatpak", "/too/long"),
+                new SandboxEndpoint("zen-flatpak", "/run/user/1000/app/app.zen_browser.zen/juvin/connector.sock"),
+            ]
+        );
+        _socket.AddAddressFailure = new SocketException((int)SocketError.AddressAlreadyInUse);
+        _socket.FailOnlyAddress = "/too/long";
+
+        var unbound = await _service.BindSandboxEndpointsAsync(CancellationToken.None);
+
+        Assert.Equal([_registrar.Endpoints[0]], unbound);
+        Assert.Equal([_registrar.Endpoints[1].Address], _socket.AddedAddresses);
     }
 
     [Fact]

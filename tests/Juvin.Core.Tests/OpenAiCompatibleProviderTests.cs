@@ -271,23 +271,28 @@ public sealed class OpenAiCompatibleProviderTests
     [Fact]
     public async Task Stream_StaysAliveWhileDeltasKeepArrivingSlowerThanTheTimeoutInTotal()
     {
+        // Eight gaps of 150 ms add up to more than the 1 s idle timeout, while each gap leaves a
+        // wide margin for a slow CI runner.
         var handler = new FakeHttpHandler().Trickle(
             "/v1/chat/completions",
-            TimeSpan.FromMilliseconds(120),
+            TimeSpan.FromMilliseconds(150),
             "data: {\"choices\":[{\"delta\":{\"content\":\"a\"}}]}\n\n",
             "data: {\"choices\":[{\"delta\":{\"content\":\"b\"}}]}\n\n",
             "data: {\"choices\":[{\"delta\":{\"content\":\"c\"}}]}\n\n",
             "data: {\"choices\":[{\"delta\":{\"content\":\"d\"}}]}\n\n",
-            "data: {\"choices\":[{\"delta\":{\"content\":\"e\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"
+            "data: {\"choices\":[{\"delta\":{\"content\":\"e\"}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"f\"}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"g\"}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"h\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"
         );
         var provider = new OpenAiCompatibleProvider(
-            new HttpClient(handler) { Timeout = TimeSpan.FromMilliseconds(300) },
+            new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(1) },
             new AppSettings { LocalServerUrl = "http://localhost:1234", LocalModel = "m" }
         );
 
         var result = await provider.CompleteAsync(s_request, null, CancellationToken.None);
 
-        Assert.Equal("abcde", result.Text);
+        Assert.Equal("abcdefgh", result.Text);
     }
 
     [Fact]

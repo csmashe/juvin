@@ -3,6 +3,7 @@ using Juvin.App.Tests.Fakes;
 using Juvin.App.ViewModels;
 using Juvin.Core.Localization;
 using Juvin.Core.Models;
+using Juvin.Platform;
 using Juvin.Platform.Setup;
 
 namespace Juvin.App.Tests;
@@ -10,6 +11,7 @@ namespace Juvin.App.Tests;
 public sealed class SetupWizardViewModelTests
 {
     private readonly FakeProviders _providers = new();
+    private readonly FakeNativeHostRegistrar _registrar = new();
     private readonly FakeSettingsService _settings = new();
 
     [Fact]
@@ -114,16 +116,35 @@ public sealed class SetupWizardViewModelTests
         Assert.True(vm.CanAdvance);
         vm.NextCommand.Execute(null);
 
+        Assert.Equal(SetupWizardStep.BrowserConnector, vm.Step);
+        Assert.True(vm.CanAdvance);
+        vm.NextCommand.Execute(null);
+
         Assert.Equal(SetupWizardStep.Checklist, vm.Step);
         Assert.False(_settings.Current.HasCompletedOnboarding);
     }
 
     [Fact]
-    public void ProcessingModeStep_SitsBetweenWelcomeAndChecklist()
+    public void Steps_RunWelcomeModeBrowserChecklistDone()
     {
-        Assert.Equal(4, SetupWizardViewModel.StepCount);
+        Assert.Equal(5, SetupWizardViewModel.StepCount);
         Assert.Equal(1, (int)SetupWizardStep.ProcessingMode);
-        Assert.Equal(SetupWizardStep.Checklist, SetupWizardStep.ProcessingMode + 1);
+        Assert.Equal(SetupWizardStep.BrowserConnector, SetupWizardStep.ProcessingMode + 1);
+        Assert.Equal(SetupWizardStep.Checklist, SetupWizardStep.BrowserConnector + 1);
+    }
+
+    [Fact]
+    public void EnteringTheBrowserStep_DetectsBrowsers()
+    {
+        _registrar.Browsers.Add(new BrowserTarget("chrome", "Google Chrome", BrowserFamily.Chromium, BrowserPackaging.Native));
+        var vm = Create();
+        var detections = _registrar.DetectCount;
+
+        vm.StepIndex = (int)SetupWizardStep.BrowserConnector;
+
+        Assert.Equal(detections + 1, _registrar.DetectCount);
+        Assert.Equal("Google Chrome", Assert.Single(vm.Connector.Browsers).DisplayName);
+        Assert.True(vm.CanAdvance);
     }
 
     [Fact]
@@ -135,7 +156,7 @@ public sealed class SetupWizardViewModelTests
         Assert.Null(vm.RecommendedModel);
         Assert.True(vm.CanAdvance);
         vm.NextCommand.Execute(null);
-        Assert.Equal(SetupWizardStep.Checklist, vm.Step);
+        Assert.Equal(SetupWizardStep.BrowserConnector, vm.Step);
     }
 
     [Fact]
@@ -210,7 +231,9 @@ public sealed class SetupWizardViewModelTests
     private SetupWizardViewModel Create(params FakeSetupTask[] tasks)
     {
         var localizer = new Localizer();
-        return new SetupWizardViewModel(_settings, localizer, _providers.CreateService(localizer), tasks);
+        var connector = new ConnectorService(new FakeConnectorSocket(), _registrar, _settings, localizer);
+        var panel = new BrowserConnectorPanelViewModel(_registrar, connector, localizer);
+        return new SetupWizardViewModel(_settings, localizer, _providers.CreateService(localizer), panel, tasks);
     }
 
     private async Task<SetupWizardViewModel> CreateOnModeStepAsync()

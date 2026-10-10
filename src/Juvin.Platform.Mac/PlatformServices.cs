@@ -1,3 +1,4 @@
+using Juvin.Platform.Mac.NativeMessaging;
 using Juvin.Platform.Mac.Secrets;
 using Juvin.Platform.Mac.Tray;
 using Juvin.Platform.Unix;
@@ -14,6 +15,7 @@ public static class PlatformServices
         services.AddUnixLocalSocket();
         services.AddUnixConnectorSocket();
         services.AddSingleton<ITrayHostProbe, MenuBarTrayHostProbe>();
+        services.AddSingleton<INativeHostRegistrar>(_ => new MacNativeHostRegistrar(NativeHost.Locate));
         return services;
     }
 }

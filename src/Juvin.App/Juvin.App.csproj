@@ -33,4 +33,12 @@
         <ProjectReference Include="..\Juvin.Platform.Mac\Juvin.Platform.Mac.csproj"/>
         <ProjectReference Include="..\Juvin.Platform.Windows\Juvin.Platform.Windows.csproj"/>
     </ItemGroup>
+
+    <!-- Ships juvin-host next to the app without referencing it for compilation; OutputItemType also copies juvin-host.dll, which a plain reference leaves out. -->
+    <ItemGroup>
+        <ProjectReference Include="..\Juvin.NativeHost\Juvin.NativeHost.csproj"
+                          ReferenceOutputAssembly="false"
+                          OutputItemType="Content"
+                          CopyToOutputDirectory="PreserveNewest"/>
+    </ItemGroup>
 </Project>
