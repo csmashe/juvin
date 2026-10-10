@@ -32,3 +32,14 @@ public sealed class WindowsFactAttribute : FactAttribute
         }
     }
 }
+
+public sealed class UnixTheoryAttribute : TheoryAttribute
+{
+    public UnixTheoryAttribute()
+    {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
+        {
+            Skip = "Linux and macOS only.";
+        }
+    }
+}

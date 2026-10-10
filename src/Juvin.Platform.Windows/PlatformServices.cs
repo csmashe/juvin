@@ -14,6 +14,8 @@ public static class PlatformServices
         services.AddSingleton<ISingleInstanceGuard, WindowsSingleInstanceGuard>();
         services.AddSingleton<ILocalSocketServer, NamedPipeServer>();
         services.AddSingleton<ILocalSocketClient, NamedPipeClient>();
+        services.AddSingleton<IConnectorSocketServer, NamedPipeConnectorServer>();
+        services.AddSingleton<IConnectorSocketClient, NamedPipeConnectorClient>();
         services.AddSingleton<ITrayHostProbe, NotificationAreaTrayHostProbe>();
         return services;
     }

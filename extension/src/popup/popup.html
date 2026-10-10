@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Juvin</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <img src="icons/icon-32.png" alt="" width="24" height="24" />
+      <h1>Juvin</h1>
+    </header>
+
+    <section class="panel" aria-live="polite">
+      <p id="status" class="status">Checking connection...</p>
+      <p id="detail" class="detail" hidden></p>
+      <div class="row">
+        <button id="connect" class="primary" type="button">Connect</button>
+        <button id="test" type="button">Test connection</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Shortcut</h2>
+      <p class="detail">Juvin: <span id="app-shortcut">not connected</span></p>
+      <p class="detail">Browser: <span id="browser-shortcut">not set</span></p>
+      <button id="shortcuts" class="link" type="button">Change the browser shortcut</button>
+      <p id="shortcuts-hint" class="detail" hidden></p>
+    </section>
+
+    <section class="panel">
+      <h2>Other sites</h2>
+      <p class="detail">Juvin reads Gmail and its test page. To rewrite in editors on other sites, allow it on all sites.</p>
+      <button id="all-sites" type="button">Allow Juvin on all sites</button>
+    </section>
+
+    <footer class="row">
+      <button id="test-page" type="button">Open test page</button>
+      <button id="open-app" type="button" disabled title="Not available yet">Open Juvin</button>
+    </footer>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

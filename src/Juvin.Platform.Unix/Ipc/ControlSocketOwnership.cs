@@ -17,9 +17,9 @@ internal enum ControlSocketCleanupResult
 }
 
 /// <summary>
-///     Owns the stable advisory lock that serializes every control-socket bind and unlink.
-///     The lockfile is persistent; closing its file descriptor releases ownership without
-///     replacing the inode that all contenders lock.
+///     Owns the stable advisory lock that serializes every bind and unlink of one socket path. The
+///     lockfile sits next to the socket with a <c>.lock</c> extension and is persistent; closing
+///     its file descriptor releases ownership without replacing the inode that all contenders lock.
 /// </summary>
 internal sealed partial class ControlSocketOwnership : IDisposable
 {
@@ -52,7 +52,7 @@ internal sealed partial class ControlSocketOwnership : IDisposable
     )
     {
         ownership = null;
-        var lockPath = Path.Join(Path.GetDirectoryName(socketPath)!, "control.lock");
+        var lockPath = Path.ChangeExtension(socketPath, ".lock");
         // ReSharper disable once SuggestVarOrType_SimpleTypes -- OpenLockFile returns a non-nullable handle; the explicit nullable type is required for the `handle = null` ownership transfer below.
         SafeFileHandle? handle = OpenLockFile(lockPath);
         try
@@ -72,7 +72,7 @@ internal sealed partial class ControlSocketOwnership : IDisposable
                 }
 
                 throw new IOException(
-                    $"Could not acquire control socket ownership lock {lockPath}.",
+                    $"Could not acquire socket ownership lock {lockPath}.",
                     new Win32Exception(error)
                 );
             }
@@ -228,7 +228,7 @@ internal sealed partial class ControlSocketOwnership : IDisposable
             }
 
             throw new IOException(
-                $"Could not open control socket ownership lock {lockPath}.",
+                $"Could not open socket ownership lock {lockPath}.",
                 new Win32Exception(error)
             );
         }
@@ -245,7 +245,7 @@ internal sealed partial class ControlSocketOwnership : IDisposable
             }
 
             throw new IOException(
-                $"Could not secure control socket ownership lock {lockPath} with mode 0600.",
+                $"Could not secure socket ownership lock {lockPath} with mode 0600.",
                 new Win32Exception(error)
             );
         }
