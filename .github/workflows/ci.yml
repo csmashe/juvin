@@ -106,6 +106,8 @@ jobs:
               for ext in run["tool"].get("extensions", []):
                   rules.update({r["id"]: r for r in ext.get("rules", [])})
               for result in run.get("results", []):
+                  if result.get("suppressions"):
+                      continue
                   rule = rules.get(result["ruleId"], {})
                   level = result.get("level") or rule.get("defaultConfiguration", {}).get("level", "warning")
                   loc = result["locations"][0]["physicalLocation"] if result.get("locations") else {}
