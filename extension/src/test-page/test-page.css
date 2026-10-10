@@ -1,0 +1,66 @@
+body {
+  margin: 0;
+  background: #ffffff;
+  color: #1f2328;
+  font: 14px/1.5 system-ui, sans-serif;
+}
+
+main {
+  max-width: 720px;
+  margin: 24px auto;
+  padding: 0 16px;
+}
+
+.note {
+  color: #59636e;
+  font-size: 13px;
+}
+
+h1 {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+h2 {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+article {
+  border-top: 1px solid #d1d9e0;
+  padding: 12px 0;
+}
+
+article header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  color: #59636e;
+  font-size: 13px;
+}
+
+article .from {
+  color: #1f2328;
+  font-weight: 600;
+}
+
+.body {
+  white-space: pre-wrap;
+  margin-top: 8px;
+}
+
+#juvin-test-editor {
+  min-height: 140px;
+  padding: 8px;
+  border: 1px solid #d1d9e0;
+  border-radius: 4px;
+  outline: none;
+}
+
+#juvin-test-editor:focus {
+  border-color: #59636e;
+}
+
+#reset {
+  margin-top: 8px;
+}

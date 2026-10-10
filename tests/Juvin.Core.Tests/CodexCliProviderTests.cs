@@ -285,6 +285,6 @@ public sealed class CodexCliProviderTests : IDisposable
     {
         var info = ProcessRunner.BuildStartInfo(@"C:\npm\codex.cmd", ["-m", "", "-"], isWindows: true);
 
-        Assert.Contains(@"-m """" -", info.Arguments);
+        Assert.Contains("""-m "" -""", info.Arguments);
     }
 }
