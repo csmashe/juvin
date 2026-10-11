@@ -43,6 +43,7 @@ public sealed class ConnectorProtocolTests
         { """{"v":1,"type":"pong","id":"p1"}""", typeof(PongMessage) },
         { """{"v":1,"type":"shortcut.pressed"}""", typeof(ShortcutPressedMessage) },
         { """{"v":1,"type":"context.request","id":"c1"}""", typeof(ContextRequestMessage) },
+        { """{"v":1,"type":"context.request","id":"c2","editorId":"e-7f3a"}""", typeof(ContextRequestMessage) },
         { CaptureResponse, typeof(ContextResponseMessage) },
         {
             """{"v":1,"type":"context.response","id":"c1","ok":false,"error":{"code":"no-selection","message":"Nothing is selected in the editor."}}""",
@@ -101,6 +102,7 @@ public sealed class ConnectorProtocolTests
     [InlineData("""{"v":1,"type":"context.response","id":"c1","ok":false}""", ConnectorErrorCodes.BadMessage, "c1")]
     [InlineData("""{"v":1,"type":"ping","id":"\ud800"}""", ConnectorErrorCodes.BadMessage, null)]
     [InlineData("""{"v":1,"type":"pi\ud800ng","id":"p1"}""", ConnectorErrorCodes.BadMessage, null)]
+    [InlineData("""{"v":1,"type":"context.request","id":"c1","editorId":7}""", ConnectorErrorCodes.BadMessage, "c1")]
     [InlineData("""{"v":1,"type":"apply.request","id":"a1","editorId":"e","expectedHash":"h","start":0,"end":1,"text":null}""", ConnectorErrorCodes.BadMessage, "a1")]
     [InlineData("""{"v":1,"type":"apply.request","id":"a1","editorId":"e","expectedHash":"h","text":"t"}""", ConnectorErrorCodes.BadMessage, "a1")]
     [InlineData("""{"v":1,"type":"apply.request","id":"a1","editorId":"e","expectedHash":"h","start":3,"end":1,"text":"t"}""", ConnectorErrorCodes.BadMessage, "a1")]

@@ -90,13 +90,16 @@ public sealed class ConnectorSession : IAsyncDisposable
 
     public Task SendConfigAsync(ConnectorConfig config, CancellationToken ct) => SendAsync(config, ct);
 
-    /// <summary>Asks the extension to capture the active tab.</summary>
+    /// <summary>
+    ///     Asks the extension to capture the shortcut's tab, or with <paramref name="editorId" /> the tab
+    ///     that owns that editor, which answers <c>editor-gone</c> rather than reading another tab.
+    /// </summary>
     /// <exception cref="TimeoutException">No response within <paramref name="timeout" />.</exception>
     /// <exception cref="ConnectorException">The connection closed first.</exception>
-    public async Task<ContextResult> RequestContextAsync(TimeSpan timeout, CancellationToken ct)
+    public async Task<ContextResult> RequestContextAsync(string? editorId, TimeSpan timeout, CancellationToken ct)
     {
-        var response = await RequestAsync(new ContextRequestMessage { Id = NextId("c") }, timeout, ct)
-            .ConfigureAwait(false);
+        var request = new ContextRequestMessage { Id = NextId("c"), EditorId = editorId };
+        var response = await RequestAsync(request, timeout, ct).ConfigureAwait(false);
         return response switch
         {
             ContextResponseMessage { Ok: true, Capture: { } capture } => new ContextResult(CapturedContext.From(capture), null),

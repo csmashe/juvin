@@ -23,6 +23,9 @@ public sealed record AppSettings
 
     public string RewriteShortcut { get; init; } = "Ctrl+Shift+F";
 
+    /// <summary>The id of the action run as soon as a capture arrives.</summary>
+    public string DefaultRewriteAction { get; init; } = "clearer";
+
     public bool HistoryEnabled { get; init; }
     public int HistoryRetentionDays { get; init; } = 30;
     public bool ProvenanceCaptureEnabled { get; init; }

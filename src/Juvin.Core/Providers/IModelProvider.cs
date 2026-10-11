@@ -8,7 +8,6 @@ public interface IModelProvider
 
     string DisplayName { get; }
 
-    // ReSharper disable once UnusedMemberInSuper.Global -- the rewrite panel picks a progress or a live preview by this
     bool SupportsStreaming { get; }
 
     /// <summary>True only when requests never leave this machine.</summary>

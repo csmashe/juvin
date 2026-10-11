@@ -4,6 +4,8 @@ import type { ApplyErrorCode, Capture, ContextErrorCode, ErrorPayload } from "./
 
 export interface CaptureRequest {
   kind: "juvin.capture";
+  /** Set on a recapture: only this editor may be read. */
+  editorId?: string;
   /** Set only when the target is the bundled test page, which receives runtime messages instead of tab messages. */
   tabId?: number;
 }

@@ -30,7 +30,7 @@ Every message is a JSON object with:
 
 Unknown properties are ignored. A message that is not an object, lacks `type`, has a missing or non-numeric `v`, or has a null in a required field gets `error` with code `bad-message`. A numeric `v` other than `1` gets `unsupported-version`, after which the app closes the connection (the extension does not close on its own). An `error` reply is never answered with another `error`. Requests sent in the wrong direction (for example `config` from the extension) get `unknown-type`. The app ignores an unmatched response and logs only its type and code; an `error` that echoes a pending request's id fails that request.
 
-Required fields: `id` on every request and response; `editorId`, `expectedHash`, `start`, `end`, and `text` on `apply.request`, with `0 <= start <= end`; `capture` when `ok` is true and `error` when it is false; in a capture, `adapter`, `editor`, `selection`, and `thread` with `completeness` and `messages`. Optional: `pageUrl`, `capturedAt`, `subject`, `collapsedCount` (default 0), and `to` and `sent` on a message. A `sent` value that does not parse becomes null; one with no offset is read as UTC.
+Required fields: `id` on every request and response; `editorId`, `expectedHash`, `start`, `end`, and `text` on `apply.request`, with `0 <= start <= end`; `capture` when `ok` is true and `error` when it is false; in a capture, `adapter`, `editor`, `selection`, and `thread` with `completeness` and `messages`. Optional: `editorId` on `context.request`, `pageUrl`, `capturedAt`, `subject`, `collapsedCount` (default 0), and `to` and `sent` on a message. A `sent` value that does not parse becomes null; one with no offset is read as UTC.
 
 Error payload used everywhere: `"error": {"code": "<kebab-case>", "message": "<English text for logs, never email content>"}`.
 
@@ -77,9 +77,12 @@ Sent when the extension's command fires. The app then sends `context.request`.
 
 ```json
 {"v":1,"type":"context.request","id":"c1"}
+{"v":1,"type":"context.request","id":"c2","editorId":"e-7f3a"}
 ```
 
-The extension captures from the tab that was active when the shortcut fired; if that tab is gone it answers `no-active-tab` rather than reading another tab. A request that no shortcut preceded uses the active tab of the last focused window.
+Without `editorId`, the extension captures from the tab that was active when the shortcut fired; if that tab is gone it answers `no-active-tab` rather than reading another tab. A request that no shortcut preceded uses the active tab of the last focused window.
+
+With `editorId` (a Recapture from the panel), it captures from the tab that owns that editor and does not consume a shortcut's tab. If the editor id is unknown or its tab is closed it answers `editor-gone`, never falling back to the active tab. The content script resolves the id to its editor element: `editor-gone` when that editor has left the page, `no-selection` when the selection is not inside it.
 
 ### `context.response` (extension to app)
 
@@ -114,7 +117,7 @@ Failure:
 {"v":1,"type":"context.response","id":"c1","ok":false,"error":{"code":"no-selection","message":"Nothing is selected in the editor."}}
 ```
 
-Codes: `no-active-tab`, `no-adapter` (no site adapter matched and the generic one found no editor), `no-editor` (a site adapter matched but found no editor), `no-selection`, `page-not-ready` (the content script could not be reached or injected), `internal` (including a selection too large for one frame).
+Codes: `no-active-tab`, `editor-gone` (a `context.request` with `editorId` whose editor or tab is gone), `no-adapter` (no site adapter matched and the generic one found no editor), `no-editor` (a site adapter matched but found no editor), `no-selection`, `page-not-ready` (the content script could not be reached or injected), `internal` (including a selection too large for one frame).
 
 ### `apply.request` (app to extension)
 

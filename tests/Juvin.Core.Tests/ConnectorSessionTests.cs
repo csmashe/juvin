@@ -135,9 +135,10 @@ public sealed class ConnectorSessionTests : IAsyncDisposable
     {
         await SayHelloAsync();
 
-        var pending = _session.RequestContextAsync(s_timeout, CancellationToken.None);
+        var pending = _session.RequestContextAsync(null, s_timeout, CancellationToken.None);
         var request = await _channel.NextSentAsync();
         Assert.Equal("context.request", request.GetProperty("type").GetString());
+        Assert.False(request.TryGetProperty("editorId", out _));
         var id = request.GetProperty("id").GetString()!;
 
         _channel.Deliver("""{"v":1,"type":"context.response","id":"someone-else","ok":false,"error":{"code":"internal","message":"x"}}""");
@@ -152,11 +153,26 @@ public sealed class ConnectorSessionTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task RequestContext_WithAnEditorId_SendsIt()
+    {
+        await SayHelloAsync();
+
+        var pending = _session.RequestContextAsync("e-1", s_timeout, CancellationToken.None);
+        var request = await _channel.NextSentAsync();
+        Assert.Equal("e-1", request.GetProperty("editorId").GetString());
+        _channel.Deliver(
+            $$$"""{"v":1,"type":"context.response","id":"{{{request.GetProperty("id").GetString()}}}","ok":false,"error":{"code":"editor-gone","message":"Gone."}}"""
+        );
+
+        Assert.Equal("editor-gone", (await pending).Error?.Code);
+    }
+
+    [Fact]
     public async Task RequestContext_ReturnsTheExtensionsError()
     {
         await SayHelloAsync();
 
-        var pending = _session.RequestContextAsync(s_timeout, CancellationToken.None);
+        var pending = _session.RequestContextAsync(null, s_timeout, CancellationToken.None);
         var id = (await _channel.NextSentAsync()).GetProperty("id").GetString();
         _channel.Deliver(
             $$$"""{"v":1,"type":"context.response","id":"{{{id}}}","ok":false,"error":{"code":"no-selection","message":"Nothing is selected."}}"""
@@ -236,7 +252,7 @@ public sealed class ConnectorSessionTests : IAsyncDisposable
         await SayHelloAsync();
 
         await Assert.ThrowsAsync<TimeoutException>(() =>
-            _session.RequestContextAsync(TimeSpan.FromMilliseconds(100), CancellationToken.None)
+            _session.RequestContextAsync(null, TimeSpan.FromMilliseconds(100), CancellationToken.None)
         );
     }
 
@@ -245,7 +261,7 @@ public sealed class ConnectorSessionTests : IAsyncDisposable
     {
         await SayHelloAsync();
 
-        var pending = _session.RequestContextAsync(s_timeout, CancellationToken.None);
+        var pending = _session.RequestContextAsync(null, s_timeout, CancellationToken.None);
         await _channel.NextSentAsync();
         _channel.Disconnect();
 
@@ -259,7 +275,7 @@ public sealed class ConnectorSessionTests : IAsyncDisposable
     public async Task Requests_BeforeHelloAreRefused()
     {
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            _session.RequestContextAsync(s_timeout, CancellationToken.None)
+            _session.RequestContextAsync(null, s_timeout, CancellationToken.None)
         );
     }
 
