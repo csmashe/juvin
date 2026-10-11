@@ -52,7 +52,7 @@ Sent in reply to `hello` and again whenever settings change.
 {"v":1,"type":"config",
  "actions":[{"id":"soften","title":"Soften"},{"id":"clearer","title":"Make clearer"}],
  "adapters":["gmail","generic","test-page"],
- "shortcut":"Ctrl+Shift+Y",
+ "shortcut":"Ctrl+Shift+F",
  "health":{"mode":"local","modelReachable":null}}
 ```
 
@@ -106,7 +106,7 @@ Success:
 - `selection.text` is the text to rewrite; `start` and `end` are its character offsets within the editor's plain text.
 - The generic adapter sends one message whose `from` is the page's hostname and whose body is the page's main readable text with the draft removed; `subject` is the document title.
 - The Gmail adapter clicks "Expand all" when messages are collapsed (waiting up to about 3 seconds), then sends one message per expanded row with `from` as `Name <address>`, `sent` when the date parses, and the body without hidden quoted text; `subject` is the conversation heading. Rows left collapsed and any "N older messages" bundle count toward `collapsedCount` and make it `loaded-messages-only`. A new message outside a conversation is `draft-only`; a conversation it cannot parse gets the generic adapter's capture.
-- `thread.completeness` is one of `entire-thread`, `loaded-messages-only`, `visible-text-only`, `draft-only`, `truncated`. `truncated` means the extension dropped messages to stay under the frame cap. `messages` are oldest first; `to` and `sent` may be empty or absent.
+- `thread.completeness` is one of `entire-thread`, `loaded-messages-only`, `visible-text-only`, `draft-only`, `truncated`. `truncated` means the extension dropped messages to stay under the frame cap or cut a message body at its per-message limit. `loaded-messages-only` also covers a Gmail page in a language the adapter has no labels for, since it cannot tell whether messages are hidden. `messages` are oldest first; `to` and `sent` may be empty or absent.
 
 Failure:
 

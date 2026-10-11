@@ -23,8 +23,8 @@
   "commands": {
     "rewrite": {
       "suggested_key": {
-        "default": "Ctrl+Shift+Y",
-        "mac": "Command+Shift+Y"
+        "default": "Ctrl+Shift+F",
+        "mac": "Command+Shift+F"
       },
       "description": "Rewrite the selected draft with Juvin"
     }

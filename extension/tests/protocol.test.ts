@@ -19,7 +19,7 @@ const spec = {
   config: `{"v":1,"type":"config",
  "actions":[{"id":"soften","title":"Soften"},{"id":"clearer","title":"Make clearer"}],
  "adapters":["gmail","generic","test-page"],
- "shortcut":"Ctrl+Shift+Y",
+ "shortcut":"Ctrl+Shift+F",
  "health":{"mode":"local","modelReachable":null}}`,
   ping: `{"v":1,"type":"ping","id":"p1"}`,
   pong: `{"v":1,"type":"pong","id":"p1"}`,

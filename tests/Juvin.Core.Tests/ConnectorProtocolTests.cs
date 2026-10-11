@@ -34,7 +34,7 @@ public sealed class ConnectorProtocolTests
             {"v":1,"type":"config",
              "actions":[{"id":"soften","title":"Soften"},{"id":"clearer","title":"Make clearer"}],
              "adapters":["gmail","generic","test-page"],
-             "shortcut":"Ctrl+Shift+Y",
+             "shortcut":"Ctrl+Shift+F",
              "health":{"mode":"local","modelReachable":null}}
             """,
             typeof(ConnectorConfig)

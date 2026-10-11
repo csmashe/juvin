@@ -33,7 +33,7 @@ The native host manifest allowlists these IDs, so they must not change.
    - Firefox: `npx web-ext run --source-dir dist/firefox` from `extension/`.
 4. Open the Juvin popup, check that it says "Connected to Juvin", and use "Open test page" to try a capture without Gmail.
 
-The rewrite shortcut is `Ctrl+Shift+Y` (`Command+Shift+Y` on macOS). Change it on the browser's shortcut page; the popup links to it.
+The rewrite shortcut is `Ctrl+Shift+F` (`Command+Shift+F` on macOS); Ctrl+Shift+Y was dropped because Firefox on Linux binds it to Downloads and its own shortcuts win over extension commands. Change it on the browser's shortcut page; the popup links to it.
 
 `npx web-ext lint --source-dir dist/firefox` checks the Firefox build.
 

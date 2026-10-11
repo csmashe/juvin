@@ -8,7 +8,7 @@ export function normalize(text: string): string {
 }
 
 /** Cuts at `limit` code units without splitting a surrogate pair, which JSON could not carry. */
-function truncate(text: string, limit: number): string {
+export function truncate(text: string, limit: number): string {
   if (text.length <= limit) {
     return text;
   }
