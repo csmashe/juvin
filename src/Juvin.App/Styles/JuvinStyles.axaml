@@ -172,4 +172,90 @@
     <Style Selector="ic|SymbolIcon.status.attention">
         <Setter Property="Foreground" Value="{StaticResource JuvinAccentBrush}" />
     </Style>
+
+    <!-- Rewrite panel -->
+    <Style Selector="Border.panel-frame">
+        <Setter Property="Background" Value="{StaticResource JuvinWindowBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource JuvinDividerBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="Border.panel-header">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Padding" Value="16,10,10,6" />
+        <Setter Property="Cursor" Value="SizeAll" />
+    </Style>
+    <Style Selector="TextBlock.panel-wordmark">
+        <Setter Property="FontSize" Value="16" />
+        <Setter Property="FontWeight" Value="Bold" />
+        <Setter Property="Foreground" Value="{StaticResource JuvinPrimaryTextBrush}" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.panel-close">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="6" />
+        <Setter Property="Cursor" Value="Arrow" />
+        <Setter Property="Foreground" Value="{StaticResource JuvinSecondaryTextBrush}" />
+    </Style>
+    <Style Selector="Border.panel-body">
+        <Setter Property="Background" Value="{StaticResource JuvinCardBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource JuvinHairlineBrush}" />
+        <Setter Property="BorderThickness" Value="0,1" />
+        <Setter Property="Padding" Value="16,12" />
+    </Style>
+    <Style Selector="Button.chip">
+        <Setter Property="Background" Value="#1B2430" />
+        <Setter Property="BorderBrush" Value="#223243" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="999" />
+        <Setter Property="Padding" Value="12,5" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Foreground" Value="{StaticResource JuvinNavTextBrush}" />
+    </Style>
+    <Style Selector="Button.chip.small">
+        <Setter Property="Padding" Value="10,3" />
+        <Setter Property="FontSize" Value="11" />
+    </Style>
+    <Style Selector="Button.chip.selected /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="BorderBrush" Value="{StaticResource JuvinAccentBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource JuvinPrimaryTextBrush}" />
+    </Style>
+    <Style Selector="ProgressBar.panel-progress">
+        <Setter Property="Height" Value="3" />
+        <Setter Property="MinHeight" Value="3" />
+    </Style>
+    <Style Selector="SelectableTextBlock.panel-result">
+        <Setter Property="FontSize" Value="13.5" />
+        <Setter Property="LineHeight" Value="20" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="Foreground" Value="{StaticResource JuvinPrimaryTextBrush}" />
+    </Style>
+    <Style Selector="SelectableTextBlock.panel-context-text">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="Foreground" Value="{StaticResource JuvinNavTextBrush}" />
+    </Style>
+    <Style Selector="TextBlock.panel-error">
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="Foreground" Value="{StaticResource JuvinPrimaryTextBrush}" />
+    </Style>
+    <Style Selector="Border.panel-notice">
+        <Setter Property="Background" Value="{StaticResource JuvinCardBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource JuvinHairlineBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="Padding" Value="10,8" />
+    </Style>
+    <Style Selector="Expander.panel-context">
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="Margin" Value="0,6,0,0" />
+    </Style>
+    <Style Selector="Run.diff-removed">
+        <Setter Property="Foreground" Value="{StaticResource JuvinSecondaryTextBrush}" />
+        <Setter Property="TextDecorations" Value="Strikethrough" />
+    </Style>
+    <Style Selector="Run.diff-added">
+        <Setter Property="Foreground" Value="{StaticResource JuvinAccentBrush}" />
+    </Style>
 </Styles>

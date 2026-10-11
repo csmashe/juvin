@@ -5,7 +5,10 @@ using Juvin.Core.Providers;
 
 namespace Juvin.App.Tests.Fakes;
 
-/// <summary>A provider whose probe answers from <see cref="FakeProviders" /> without touching the network.</summary>
+/// <summary>
+///     A provider whose probe answers from <see cref="FakeProviders" /> and whose completions
+///     return <see cref="Reply" />, without touching the network.
+/// </summary>
 internal sealed class FakeModelProvider : IModelProvider
 {
     private readonly Task? _gate;
@@ -14,17 +17,34 @@ internal sealed class FakeModelProvider : IModelProvider
     public FakeModelProvider(ProcessingMode mode, ProviderStatus status, Task? gate = null)
     {
         Mode = mode;
+        RunsLocally = mode == ProcessingMode.Local;
         _status = status;
         _gate = gate;
+    }
+
+    public FakeModelProvider(ProcessingMode mode)
+        : this(mode, new ProviderStatus(ProviderStatusKind.Ready, "Provider.Status.Ready", []))
+    {
     }
 
     public ProcessingMode Mode { get; }
 
     public string DisplayName => "Fake " + Mode;
 
-    public bool SupportsStreaming => true;
+    public bool SupportsStreaming { get; init; } = true;
 
-    public bool RunsLocally => Mode == ProcessingMode.Local;
+    public bool RunsLocally { get; }
+
+    /// <summary>Every request received, oldest first.</summary>
+    public List<ChatRequest> Requests { get; } = [];
+
+    public Func<ChatRequest, string> Reply { get; set; } = request => "reply " + request.Messages.Count;
+
+    /// <summary>Thrown after the first half of the reply has been previewed.</summary>
+    public Exception? Failure { get; set; }
+
+    /// <summary>When set, a completion previews half its reply and then waits for this before finishing.</summary>
+    public TaskCompletionSource? CompletionGate { get; set; }
 
     public async Task<ProviderStatus> ProbeAsync(CancellationToken ct)
     {
@@ -39,8 +59,24 @@ internal sealed class FakeModelProvider : IModelProvider
     public IAsyncEnumerable<string> StreamAsync(ChatRequest request, CancellationToken ct) =>
         throw new NotSupportedException();
 
-    public Task<ChatResult> CompleteAsync(ChatRequest request, IProgress<string>? preview, CancellationToken ct) =>
-        throw new NotSupportedException();
+    public async Task<ChatResult> CompleteAsync(ChatRequest request, IProgress<string>? preview, CancellationToken ct)
+    {
+        Requests.Add(request);
+        var text = Reply(request);
+        preview?.Report(text[..(text.Length / 2)]);
+        if (CompletionGate is not null)
+        {
+            await CompletionGate.Task.WaitAsync(ct);
+        }
+
+        if (Failure is not null)
+        {
+            throw Failure;
+        }
+
+        preview?.Report(text);
+        return new ChatResult(text, request.Model ?? "fake-model", 100, 20);
+    }
 }
 
 /// <summary>Builds a <see cref="ModelProbeService" /> over fake providers keyed by server URL.</summary>

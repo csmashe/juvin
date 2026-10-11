@@ -1,4 +1,5 @@
 using Juvin.Platform.Linux.NativeMessaging;
+using Juvin.Platform.Linux.Panel;
 using Juvin.Platform.Linux.Secrets;
 using Juvin.Platform.Linux.Tray;
 using Juvin.Platform.Unix;
@@ -15,6 +16,7 @@ public static class PlatformServices
         services.AddUnixLocalSocket();
         services.AddUnixConnectorSocket();
         services.AddSingleton<ITrayHostProbe, StatusNotifierTrayHostProbe>();
+        services.AddSingleton<IPanelWindowSupport, X11PanelWindowSupport>();
         services.AddSingleton<INativeHostRegistrar>(_ => new LinuxNativeHostRegistrar(NativeHost.Locate));
         return services;
     }

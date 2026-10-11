@@ -35,6 +35,6 @@ public sealed partial class StringTableTests
 
     // {loc:Str Some.Key} in XAML, or a quoted "Section.Key" literal in C#.
     // ReSharper disable once UseRawString -- the pattern ends with a quote, which a raw string cannot hold
-    [GeneratedRegex(@"\{loc:Str ([A-Za-z]+\.[A-Za-z.]+)\}|""((?:App|Common|Nav|Tray|Wizard|Setup|Home|General|Models|Provider|BrowserConnector)\.[A-Za-z.]+)""")]
+    [GeneratedRegex(@"\{loc:Str ([A-Za-z]+\.[A-Za-z.]+)\}|""((?:App|Common|Nav|Tray|Wizard|Setup|Home|General|Models|Provider|BrowserConnector|Panel)\.[A-Za-z.]+)""")]
     private static partial Regex KeyPattern();
 }
