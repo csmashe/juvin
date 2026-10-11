@@ -13,7 +13,7 @@ declare global {
 async function handle(registry: EditorRegistry, request: ContentRequest): Promise<CaptureResult | ApplyResult> {
   try {
     if (request.kind === "juvin.capture") {
-      return await captureContext(document, location, registry);
+      return await captureContext(document, location, registry, undefined, request.editorId);
     }
 
     return await applyReplacement(document, registry, request);

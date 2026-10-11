@@ -19,6 +19,7 @@ export type ContextErrorCode =
   | "no-editor"
   | "no-selection"
   | "page-not-ready"
+  | "editor-gone"
   | "internal";
 
 export type ApplyErrorCode = "draft-changed" | "editor-gone" | "internal";
@@ -86,6 +87,8 @@ export interface ContextRequestMessage {
   v: 1;
   type: "context.request";
   id: string;
+  /** Recapture from the tab that owns this editor instead of the shortcut's tab. */
+  editorId?: string;
 }
 
 export interface ApplyRequestMessage {
@@ -252,12 +255,17 @@ export function parseIncoming(raw: unknown): ParseResult {
       };
     case "ping":
     case "pong":
-    case "context.request":
       if (id === undefined) {
         return bad(raw.type);
       }
 
       return { ok: true, message: { v: 1, type: raw.type, id } };
+    case "context.request":
+      if (id === undefined || (raw.editorId != null && !isString(raw.editorId))) {
+        return bad("context.request");
+      }
+
+      return { ok: true, message: isString(raw.editorId) ? { v: 1, type: "context.request", id, editorId: raw.editorId } : { v: 1, type: "context.request", id } };
     case "apply.request":
       if (id === undefined || !isString(raw.editorId) || !isString(raw.expectedHash) || !isOffsets(raw.start, raw.end) || !isString(raw.text)) {
         return bad("apply.request");

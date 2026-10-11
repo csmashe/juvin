@@ -113,6 +113,48 @@ describe("captureContext", () => {
     expect(!result.ok && result.error.code).toBe("no-selection");
   });
 
+  // The generic adapter follows the selection, so only the editor id keeps a recapture on its editor.
+  describe("recapture by editor id", () => {
+    function secondEditor(): HTMLElement {
+      const other = document.createElement("div");
+      other.setAttribute("contenteditable", "true");
+      other.textContent = "another draft";
+      document.body.append(other);
+      return other;
+    }
+
+    async function firstCapture(): Promise<{ editor: HTMLElement; registry: EditorRegistry }> {
+      const editor = testPage();
+      select(editor, 4, 9);
+      let next = 0;
+      const registry = new EditorRegistry(() => `e-${++next}`);
+      expect((await captureContext(document, OTHER_SITE, registry)).ok).toBe(true);
+      return { editor, registry };
+    }
+
+    it("captures the named editor when the selection is inside it", async () => {
+      const { editor, registry } = await firstCapture();
+      select(editor, 0, 3);
+      const result = await captureContext(document, OTHER_SITE, registry, undefined, "e-1");
+      expect(result.ok && { id: result.capture.editor.id, text: result.capture.selection.text }).toEqual({ id: "e-1", text: "hey" });
+    });
+
+    it("reports editor-gone when the named editor was removed, even with another editor selected", async () => {
+      const { editor, registry } = await firstCapture();
+      editor.remove();
+      select(secondEditor(), 0, 7);
+      const result = await captureContext(document, OTHER_SITE, registry, undefined, "e-1");
+      expect(!result.ok && result.error.code).toBe("editor-gone");
+    });
+
+    it("reports no-selection when the selection is in a different editor", async () => {
+      const { registry } = await firstCapture();
+      select(secondEditor(), 0, 7);
+      const result = await captureContext(document, OTHER_SITE, registry, undefined, "e-1");
+      expect(!result.ok && result.error.code).toBe("no-selection");
+    });
+  });
+
   it("reports no-adapter when the generic adapter finds no editor", async () => {
     document.body.innerHTML = "<main><p>Just an article.</p></main>";
     document.getSelection()!.selectAllChildren(document.querySelector("p")!);

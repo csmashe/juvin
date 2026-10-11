@@ -19,14 +19,14 @@ import {
   type Status,
 } from "../shared/runtime-messages";
 import { Connection, type Reply } from "./connection";
+import { EditorTabs } from "./editor-tabs";
 import { buildTrimmedContextResponse } from "./trim";
 
 const CONTENT_SCRIPT = "content.js";
 
 const connection = new Connection(onAppRequest);
 
-// apply.request carries only the editor id, so remember which tab each captured editor lives in.
-const editorTabs = new Map<string, number>();
+const editorTabs = new EditorTabs((tabId) => browser.tabs.get(tabId));
 
 // The tab active at each shortcut press, oldest first; entries from an earlier connection are dropped.
 const shortcutTabs: { generation: number; tabId: number | undefined }[] = [];
@@ -93,8 +93,8 @@ async function injectContentScript(tabId: number): Promise<boolean> {
   }
 }
 
-async function capture(tab: Tabs.Tab & { id: number }): Promise<CaptureResult | undefined> {
-  const request: ContentRequest = { kind: "juvin.capture" };
+async function capture(tab: Tabs.Tab & { id: number }, editorId: string | undefined): Promise<CaptureResult | undefined> {
+  const request: ContentRequest = editorId === undefined ? { kind: "juvin.capture" } : { kind: "juvin.capture", editorId };
   const reply = await sendToTab(tab.id, request);
   if (reply !== undefined) {
     return reply as CaptureResult;
@@ -108,14 +108,22 @@ async function capture(tab: Tabs.Tab & { id: number }): Promise<CaptureResult | 
   return undefined;
 }
 
-async function handleContextRequest({ id }: ContextRequestMessage, reply: Reply): Promise<void> {
-  const tab = await requestedTab();
+async function handleContextRequest({ id, editorId }: ContextRequestMessage, reply: Reply): Promise<void> {
+  // A recapture names its editor and never falls back to the active tab.
+  const tab = editorId === undefined ? await requestedTab() : await editorTabs.find(editorId);
   if (tab?.id === undefined) {
-    reply(contextError(id, { code: "no-active-tab", message: "No browser tab is active." }));
+    reply(
+      contextError(
+        id,
+        editorId === undefined
+          ? { code: "no-active-tab", message: "No browser tab is active." }
+          : { code: "editor-gone", message: "The editor is no longer open." },
+      ),
+    );
     return;
   }
 
-  const result = await capture({ ...tab, id: tab.id });
+  const result = await capture({ ...tab, id: tab.id }, editorId);
   if (!result) {
     reply(contextError(id, { code: "page-not-ready", message: "The page cannot be read yet. Reload it, or allow Juvin on all sites from its popup." }));
     return;
@@ -127,7 +135,7 @@ async function handleContextRequest({ id }: ContextRequestMessage, reply: Reply)
     return;
   }
 
-  editorTabs.set(result.capture.editor.id, tab.id);
+  editorTabs.remember(result.capture.editor.id, tab.id);
   const response = buildTrimmedContextResponse(id, result.capture);
   if (!response) {
     reply(contextError(id, { code: "internal", message: "The selection is too large to send." }));
@@ -148,23 +156,15 @@ async function handleContextRequest({ id }: ContextRequestMessage, reply: Reply)
 }
 
 async function handleApplyRequest({ id, editorId, expectedHash, start, end, text }: ApplyRequestMessage, reply: Reply): Promise<void> {
-  const tabId = editorTabs.get(editorId);
+  const tab = await editorTabs.find(editorId);
   const gone = applyError(id, { code: "editor-gone", message: "The editor is no longer open." });
-  if (tabId === undefined) {
-    reply(gone);
-    return;
-  }
-
-  try {
-    await browser.tabs.get(tabId);
-  } catch {
-    editorTabs.delete(editorId);
+  if (!tab) {
     reply(gone);
     return;
   }
 
   // No injection here: a freshly injected script would not know the editor id.
-  const result = (await sendToTab(tabId, { kind: "juvin.apply", editorId, expectedHash, start, end, text })) as ApplyResult | undefined;
+  const result = (await sendToTab(tab.id, { kind: "juvin.apply", editorId, expectedHash, start, end, text })) as ApplyResult | undefined;
   if (!result) {
     reply(gone);
     return;
@@ -228,10 +228,4 @@ browser.commands.onCommand.addListener((command: string, commandTab: Tabs.Tab | 
 
 browser.runtime.onMessage.addListener((message: unknown) => (isPopupRequest(message) ? onPopupRequest(message) : undefined));
 
-browser.tabs.onRemoved.addListener((tabId: number) => {
-  for (const [editorId, editorTab] of editorTabs) {
-    if (editorTab === tabId) {
-      editorTabs.delete(editorId);
-    }
-  }
-});
+browser.tabs.onRemoved.addListener((tabId: number) => editorTabs.forgetTab(tabId));

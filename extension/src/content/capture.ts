@@ -44,13 +44,19 @@ export async function captureContext(
   location: PageLocation & { href: string },
   registry: EditorRegistry,
   adapters?: readonly SiteAdapter[],
+  editorId?: string,
 ): Promise<CaptureResult> {
   const adapter = selectAdapter(location, adapters);
   if (!adapter) {
     return failure("no-adapter", "No adapter supports this page.");
   }
 
-  const editor = adapter.findEditor(doc);
+  // A recapture reads only the editor it names.
+  const editor = editorId === undefined ? adapter.findEditor(doc) : registry.find(editorId);
+  if (!editor && editorId !== undefined) {
+    return failure("editor-gone", "The editor is no longer open.");
+  }
+
   if (!editor) {
     return adapter.fallback
       ? failure("no-adapter", "No adapter supports this page and the selection is not in an editor.")
@@ -66,6 +72,10 @@ export async function captureContext(
   const hash = await hashText(text);
   const thread = await adapter.captureThread(doc, editor);
   if (!editor.isConnected) {
+    if (editorId !== undefined) {
+      return failure("editor-gone", "The editor is no longer open.");
+    }
+
     return failure("no-editor", "The draft editor left the page while the thread was being read.");
   }
 

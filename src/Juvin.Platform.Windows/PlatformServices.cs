@@ -1,5 +1,6 @@
 using Juvin.Platform.Windows.Ipc;
 using Juvin.Platform.Windows.NativeMessaging;
+using Juvin.Platform.Windows.Panel;
 using Juvin.Platform.Windows.Secrets;
 using Juvin.Platform.Windows.Tray;
 using Microsoft.Extensions.DependencyInjection;
@@ -18,6 +19,7 @@ public static class PlatformServices
         services.AddSingleton<IConnectorSocketServer, NamedPipeConnectorServer>();
         services.AddSingleton<IConnectorSocketClient, NamedPipeConnectorClient>();
         services.AddSingleton<ITrayHostProbe, NotificationAreaTrayHostProbe>();
+        services.AddSingleton<IPanelWindowSupport, WindowsPanelWindowSupport>();
         services.AddSingleton<INativeHostRegistrar>(_ => new WindowsNativeHostRegistrar(NativeHost.Locate));
         return services;
     }

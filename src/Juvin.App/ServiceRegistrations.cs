@@ -1,3 +1,4 @@
+using Avalonia.Threading;
 using Juvin.App.Services;
 using Juvin.App.ViewModels;
 using Juvin.App.ViewModels.Sections;
@@ -15,6 +16,8 @@ namespace Juvin.App;
 
 public static class ServiceRegistrations
 {
+    private static readonly TimeSpan s_rewriteTimeout = TimeSpan.FromMinutes(5);
+
     public static ServiceProvider Build()
     {
         var services = new ServiceCollection();
@@ -23,7 +26,7 @@ public static class ServiceRegistrations
         services.AddSingleton<Localizer>();
         AddPlatform(services);
 
-        // Probes use this client; the rewrite path sets its own timeout when it lands.
+        // Probes use this client; the rewrite panel has its own with a longer timeout.
         services.AddSingleton(_ => new HttpClient { Timeout = TimeSpan.FromSeconds(30) });
         services.AddSingleton<IProcessRunner, ProcessRunner>();
         services.AddSingleton(sp =>
@@ -34,6 +37,24 @@ public static class ServiceRegistrations
         services.AddSingleton<TrayIconService>();
         services.AddSingleton<ControlCommandHandler>();
         services.AddSingleton<ConnectorService>();
+
+        // Rewrites get a longer idle limit than probes: a local model can take minutes to load.
+        services.AddSingleton(sp => new RewritePanelViewModel(
+            ProviderSelector.CreateDefault(
+                new HttpClient { Timeout = s_rewriteTimeout },
+                sp.GetRequiredService<IProcessRunner>()
+            ),
+            sp.GetRequiredService<ISettingsService>(),
+            sp.GetRequiredService<Localizer>(),
+            action => Dispatcher.UIThread.Post(action)
+        ));
+        services.AddSingleton<RewritePanelWindow>();
+        services.AddSingleton(sp => new RewritePanelService(
+            sp.GetRequiredService<ConnectorService>(),
+            sp.GetRequiredService<RewritePanelViewModel>(),
+            sp.GetRequiredService<RewritePanelWindow>(),
+            action => Dispatcher.UIThread.Post(action)
+        ));
 
         services.AddSingleton<HomeSectionViewModel>();
         services.AddSingleton<ShortcutsSectionViewModel>();

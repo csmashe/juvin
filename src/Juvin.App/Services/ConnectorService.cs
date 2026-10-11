@@ -30,6 +30,7 @@ public sealed class ConnectorService
     private readonly IConnectorSocketServer _server;
     private readonly List<ConnectorSession> _sessions = [];
     private readonly ISettingsService _settings;
+    private long _latestCapture;
 
     public ConnectorService(
         IConnectorSocketServer server,
@@ -64,8 +65,11 @@ public sealed class ConnectorService
     /// <summary>Raised when an extension says hello or disconnects.</summary>
     public event Action? ClientsChanged;
 
-    /// <summary>Raised when a capture requested by the extension's shortcut finishes, successfully or not.</summary>
-    public event Action<ConnectorSession, ContextResult>? CaptureCompleted;
+    /// <summary>
+    ///     Raised when a capture requested by the extension's shortcut finishes, successfully or not,
+    ///     with its sequence number; a higher number is a later shortcut press.
+    /// </summary>
+    public event Action<ConnectorSession, long, ContextResult>? CaptureCompleted;
 
     public async Task StartAsync(CancellationToken ct)
     {
@@ -174,14 +178,23 @@ public sealed class ConnectorService
 
     private async Task CaptureAsync(ConnectorSession session)
     {
+        var number = Interlocked.Increment(ref _latestCapture);
         ContextResult result;
         try
         {
-            result = await session.RequestContextAsync(s_captureTimeout, CancellationToken.None);
+            result = await session.RequestContextAsync(null, s_captureTimeout, CancellationToken.None);
         }
         catch (Exception ex) when (ex is TimeoutException or ConnectorException)
         {
             Trace.WriteLine($"[ConnectorService] Capture failed ({ex.GetType().Name}).");
+            return;
+        }
+
+        // A slow capture (Gmail expanding a thread) must not replace one from a later shortcut press.
+        var latest = Interlocked.Read(ref _latestCapture);
+        if (number != latest)
+        {
+            Trace.WriteLine($"[ConnectorService] Discarded capture {number}; capture {latest} is newer.");
             return;
         }
 
@@ -200,7 +213,7 @@ public sealed class ConnectorService
 
         try
         {
-            CaptureCompleted?.Invoke(session, result);
+            CaptureCompleted?.Invoke(session, number, result);
         }
         catch (Exception ex)
         {

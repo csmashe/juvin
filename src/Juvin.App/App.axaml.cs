@@ -51,6 +51,8 @@ public class App : Application
 
         var main = services.GetRequiredService<MainWindow>();
         desktop.MainWindow = main;
+        // The rewrite panel stays open while hidden, so it must not keep the app alive.
+        desktop.ShutdownMode = ShutdownMode.OnMainWindowClose;
 
         main.Closing += (_, e) =>
         {
@@ -79,12 +81,16 @@ public class App : Application
         commands.ShowRequested += () => Dispatcher.UIThread.Post(() => ShowMainWindow(main));
         _ = StartControlSocketAsync(services.GetRequiredService<ILocalSocketServer>(), commands);
 
+        // The panel subscribes before the connector starts so no capture goes unanswered.
+        var panel = services.GetRequiredService<RewritePanelService>();
+        panel.Start();
         var connector = services.GetRequiredService<ConnectorService>();
         _ = StartConnectorAsync(connector);
 
         desktop.Exit += (_, _) =>
         {
             _exiting = true;
+            panel.Stop();
             _socketLifetime.Cancel();
             services.GetRequiredService<ILocalSocketServer>().StopAsync().GetAwaiter().GetResult();
             connector.StopAsync().GetAwaiter().GetResult();

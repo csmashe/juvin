@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net.Sockets;
 using System.Text.Json;
 using Juvin.App.Services;
@@ -101,8 +102,8 @@ public sealed class ConnectorServiceTests : IAsyncDisposable
 
         Assert.Equal("chrome", Assert.Single(_service.Clients).Client?.Browser.Name);
         await stream.DisposeAsync();
-        await WaitUntilAsync(() => _service.Clients.Count == 0);
-        Assert.Equal(2, Volatile.Read(ref changes));
+        // The session leaves the list before ClientsChanged is raised.
+        await WaitUntilAsync(() => _service.Clients.Count == 0 && Volatile.Read(ref changes) == 2);
     }
 
     [Fact]
@@ -123,7 +124,7 @@ public sealed class ConnectorServiceTests : IAsyncDisposable
     {
         await _service.StartAsync(CancellationToken.None);
         var completed = new TaskCompletionSource<ContextResult>();
-        _service.CaptureCompleted += (_, result) => completed.TrySetResult(result);
+        _service.CaptureCompleted += (_, _, result) => completed.TrySetResult(result);
         await using var stream = await ConnectAndSayHelloAsync();
 
         await WriteAsync(stream, """{"v":1,"type":"shortcut.pressed"}""");
@@ -143,6 +144,33 @@ public sealed class ConnectorServiceTests : IAsyncDisposable
         var result = await completed.Task.WaitAsync(s_timeout);
         Assert.Equal("Draft", result.Capture?.Context.Draft);
         Assert.Equal(ThreadCompleteness.DraftOnly, result.Capture?.Context.Completeness);
+    }
+
+    [Fact]
+    public async Task ShortcutPressed_DiscardsACaptureThatFinishesAfterANewerOne()
+    {
+        await _service.StartAsync(CancellationToken.None);
+        var drafts = new ConcurrentQueue<string?>();
+        _service.CaptureCompleted += (_, _, result) => drafts.Enqueue(result.Capture?.Context.Draft);
+        await using var stream = await ConnectAndSayHelloAsync();
+
+        await WriteAsync(stream, """{"v":1,"type":"shortcut.pressed"}""");
+        var older = (await ReadAsync(stream)).GetProperty("id").GetString()!;
+        await WriteAsync(stream, """{"v":1,"type":"shortcut.pressed"}""");
+        var newer = (await ReadAsync(stream)).GetProperty("id").GetString()!;
+
+        await WriteAsync(stream, CaptureResponse(newer, "Newer"));
+        await WaitUntilAsync(() => !drafts.IsEmpty);
+        await WriteAsync(stream, CaptureResponse(older, "Older"));
+
+        // The pong is read after the older response, which gives that capture time to finish.
+        var ping = _service.PingAsync(s_timeout, CancellationToken.None);
+        var pingRequest = await ReadAsync(stream);
+        await WriteAsync(stream, $$"""{"v":1,"type":"pong","id":"{{pingRequest.GetProperty("id").GetString()}}"}""");
+        Assert.NotNull(await ping);
+        await Task.Delay(50);
+
+        Assert.Equal(["Newer"], drafts);
     }
 
     [Fact]
@@ -168,6 +196,15 @@ public sealed class ConnectorServiceTests : IAsyncDisposable
         await WaitUntilAsync(() => _service.Clients.Count > 0);
         return stream;
     }
+
+    private static string CaptureResponse(string id, string draft) =>
+        $$$"""
+        {"v":1,"type":"context.response","id":"{{{id}}}","ok":true,"capture":{
+          "adapter":"test-page","editor":{"id":"e-1","hash":"sha256:ab"},
+          "selection":{"text":"{{{draft}}}","start":0,"end":{{{draft.Length}}}},
+          "thread":{"completeness":"draft-only","messages":[]}}
+        }
+        """;
 
     private static Task WriteAsync(Stream stream, string json) =>
         NativeMessagingFraming.WriteFrameAsync(stream, json, CancellationToken.None);
