@@ -3,7 +3,7 @@ using Juvin.Core.Connector;
 
 namespace Juvin.App.Services;
 
-/// <summary>The browser tab a capture came from, which Apply and Recapture go back to.</summary>
+/// <summary>The browser tab a capture came from, which Apply and Recapture go back to. Every failure comes back as an error, never an exception.</summary>
 public interface IRewriteTarget
 {
     /// <summary>
@@ -21,6 +21,7 @@ public sealed class ConnectorRewriteTarget : IRewriteTarget
 {
     public const string TimeoutCode = "timeout";
     public const string TooLargeCode = "too-large";
+    public const string FailedCode = "failed";
 
     private static readonly TimeSpan s_timeout = TimeSpan.FromSeconds(10);
 
@@ -37,7 +38,7 @@ public sealed class ConnectorRewriteTarget : IRewriteTarget
         {
             return await _session.RequestContextAsync(editorId, s_timeout, ct);
         }
-        catch (Exception ex) when (ex is TimeoutException or ConnectorException or ConnectorFrameException)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Trace.WriteLine($"[RewriteTarget] Recapture failed ({ex.GetType().Name}).");
             return new ContextResult(null, ErrorOf(ex));
@@ -58,7 +59,7 @@ public sealed class ConnectorRewriteTarget : IRewriteTarget
                 ct
             );
         }
-        catch (Exception ex) when (ex is TimeoutException or ConnectorException or ConnectorFrameException)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Trace.WriteLine($"[RewriteTarget] Apply failed ({ex.GetType().Name}).");
             return ErrorOf(ex);
@@ -70,6 +71,7 @@ public sealed class ConnectorRewriteTarget : IRewriteTarget
         {
             TimeoutException => new ConnectorError(TimeoutCode, "The extension did not answer in time."),
             ConnectorFrameException => new ConnectorError(TooLargeCode, "The request is too large for the connector."),
-            _ => new ConnectorError(((ConnectorException)ex).Code, ex.Message),
+            ConnectorException connector => new ConnectorError(connector.Code, connector.Message),
+            _ => new ConnectorError(FailedCode, "The request failed."),
         };
 }
