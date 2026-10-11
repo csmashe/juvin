@@ -19,7 +19,7 @@ public sealed class ConnectorSessionTests : IAsyncDisposable
 
     public ConnectorSessionTests()
     {
-        _session = new ConnectorSession(_channel, () => Config("Ctrl+Shift+Y"));
+        _session = new ConnectorSession(_channel, () => Config("Ctrl+Shift+F"));
         _loop = _session.RunAsync(CancellationToken.None);
     }
 
@@ -63,7 +63,7 @@ public sealed class ConnectorSessionTests : IAsyncDisposable
 
         var reply = await _channel.NextSentAsync();
         Assert.Equal("config", reply.GetProperty("type").GetString());
-        Assert.Equal("Ctrl+Shift+Y", reply.GetProperty("shortcut").GetString());
+        Assert.Equal("Ctrl+Shift+F", reply.GetProperty("shortcut").GetString());
         Assert.Equal(JsonValueKind.Null, reply.GetProperty("health").GetProperty("modelReachable").ValueKind);
         await helloSeen.Task.WaitAsync(s_timeout);
         Assert.Equal("extension@juvin.app", _session.Client?.Extension.Id);

@@ -22,7 +22,7 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.Equal(ProcessingMode.Local, settings.ProcessingMode);
         Assert.Equal("http://localhost:11434", settings.LocalServerUrl);
         Assert.True(settings.LocalThinkingDisabled);
-        Assert.Equal("Ctrl+Shift+Y", settings.RewriteShortcut);
+        Assert.Equal("Ctrl+Shift+F", settings.RewriteShortcut);
         Assert.False(settings.HistoryEnabled);
         Assert.Equal(30, settings.HistoryRetentionDays);
         Assert.False(settings.ProvenanceCaptureEnabled);
@@ -74,7 +74,7 @@ public sealed class SettingsServiceTests : IDisposable
         var service = new SettingsService(path);
 
         Assert.Equal(ProcessingMode.Codex, service.Current.ProcessingMode);
-        Assert.Equal("Ctrl+Shift+Y", service.Current.RewriteShortcut);
+        Assert.Equal("Ctrl+Shift+F", service.Current.RewriteShortcut);
     }
 
     [Fact]

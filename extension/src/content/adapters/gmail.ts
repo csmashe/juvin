@@ -1,16 +1,16 @@
 import type { ThreadMessage } from "../../shared/protocol";
 import { isRendered, readPlainText } from "../plain-text";
 import { editorForSelection, type SiteAdapter, type ThreadSnapshot } from "./adapter";
-import { genericAdapter, normalize } from "./generic";
+import { genericAdapter, normalize, PAGE_TEXT_LIMIT, truncate } from "./generic";
 
-// Gmail localizes these; add other locales here without touching the logic below.
+// Gmail localizes these; add locales here. A page in a language without an entry is never reported as the whole thread.
 const LABELS = {
   messageBody: "Message Body",
   expandAll: "Expand all",
   olderMessages: /^(\d+)\s+older messages?\b/i,
 };
 
-// Class names are Gmail's obfuscated ones: hints that the self-check in captureThread guards.
+// Gmail's obfuscated class names; captureThread falls back to the generic capture when the body class is gone.
 const SELECTORS = {
   main: 'div[role="main"]',
   editor: 'div[contenteditable="true"][role="textbox"]',
@@ -83,33 +83,44 @@ function scan(main: Element, editor: HTMLElement): ThreadState {
 const hiddenCount = (state: ThreadState): number => state.collapsed + state.older;
 const stateKey = (state: ThreadState): string => `${state.rows.length}/${state.collapsed}/${state.older}`;
 
-async function expandAll(main: Element, editor: HTMLElement, timing: GmailTiming): Promise<void> {
+/** Hidden messages after Expand all: collapsed rows plus bundle messages still shown or never delivered. */
+function hiddenAfter(state: ThreadState, expectedRows: number): number {
+  return state.collapsed + Math.max(state.older, expectedRows - state.rows.length);
+}
+
+/** Clicks Expand all when messages are hidden and waits for them; returns how many are still hidden. */
+async function expandAll(main: Element, editor: HTMLElement, timing: GmailTiming): Promise<number> {
   const button = Array.from(main.querySelectorAll<HTMLElement>(SELECTORS.expandAll)).find(isRendered);
   const initial = scan(main, editor);
   if (!button || button.getAttribute("aria-disabled") === "true" || hiddenCount(initial) === 0) {
-    return;
+    return hiddenCount(initial);
   }
 
   button.click();
+  // The bundle label can vanish before its rows arrive, so the rows it promised must show up before the thread is whole.
+  const expectedRows = initial.rows.length + initial.older;
   const initialKey = stateKey(initial);
   let lastKey = initialKey;
   let stablePolls = 0;
+  let state = initial;
   // Wall clock, not a sleep count: a throttled tab stretches each sleep well past pollMs.
   const deadline = timing.now() + timing.deadlineMs;
   while (timing.now() < deadline) {
     await timing.sleep(timing.pollMs);
-    const state = scan(main, editor);
-    if (hiddenCount(state) === 0) {
-      return;
+    state = scan(main, editor);
+    if (hiddenAfter(state, expectedRows) === 0) {
+      break;
     }
 
     const key = stateKey(state);
     stablePolls = key === lastKey ? stablePolls + 1 : 0;
     lastKey = key;
-    if (key !== initialKey && stablePolls >= STABLE_POLLS) {
-      return;
+    if (key !== initialKey && stablePolls >= STABLE_POLLS && state.rows.length >= expectedRows) {
+      break;
     }
   }
+
+  return hiddenAfter(state, expectedRows);
 }
 
 function sender(row: Element): string {
@@ -127,6 +138,11 @@ function sender(row: Element): string {
 function sentAt(row: Element): string | undefined {
   const title = row.querySelector(SELECTORS.date)?.getAttribute("title");
   if (!title) {
+    return undefined;
+  }
+
+  // Date.parse turns a bare "Oct 7" into a date in 2001, so only a title with a year and a time counts.
+  if (!/\d{4}/.test(title) || !/\d{1,2}:\d{2}/.test(title)) {
     return undefined;
   }
 
@@ -153,21 +169,30 @@ export function createGmailAdapter(timing: GmailTiming = DEFAULT_TIMING): SiteAd
         return { messages: [], completeness: "draft-only", collapsedCount: 0 };
       }
 
-      await expandAll(main, editor, timing);
+      const hidden = await expandAll(main, editor, timing);
       const state = scan(main, editor);
+      let cut = false;
       const messages: ThreadMessage[] = state.rows.flatMap((row) => {
         const body = bodyOf(row, editor);
-        return body ? [{ from: sender(row), sent: sentAt(row), body: normalize(readPlainText(body, editor).text) }] : [];
+        if (!body) {
+          return [];
+        }
+
+        const text = normalize(readPlainText(body, editor).text);
+        cut ||= text.length > PAGE_TEXT_LIMIT;
+        return [{ from: sender(row), sent: sentAt(row), body: truncate(text, PAGE_TEXT_LIMIT) }];
       });
 
-      if (messages.length === 0 && !state.rows.some((row) => row.querySelector(SELECTORS.sender))) {
+      // Rows without even a hidden body element mean the body class moved, not that the messages are collapsed.
+      if (messages.length === 0 && !state.rows.some((row) => row.querySelector(SELECTORS.body))) {
         return genericAdapter.captureThread(doc, editor);
       }
 
       const heading = main.querySelector(SELECTORS.subject);
       const subject = heading ? readPlainText(heading).text.trim() || undefined : undefined;
-      const collapsedCount = hiddenCount(state);
-      return { subject, messages, completeness: collapsedCount === 0 ? "entire-thread" : "loaded-messages-only", collapsedCount };
+      const lang = doc.documentElement.lang;
+      const unchecked = hidden > 0 || (lang !== "" && !/^en(-|$)/i.test(lang));
+      return { subject, messages, completeness: cut ? "truncated" : unchecked ? "loaded-messages-only" : "entire-thread", collapsedCount: hidden };
     },
   };
 }
