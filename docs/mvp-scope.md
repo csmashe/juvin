@@ -146,7 +146,7 @@ The TypeWhisper code is Linux-only and has no OS abstraction layer. Juvin needs 
 
 | Feature | Detail |
 | --- | --- |
-| Trigger | Global hotkey or extension command, both configurable, default Ctrl+Shift+J |
+| Trigger | Global hotkey or extension command, both configurable, default Ctrl+Shift+F (Cmd+Shift+F on macOS) |
 | Capture | Selection, editor identity, thread messages, participants, subject, page URL, capture time, completeness state |
 | Actions | Soften, Clearer, Shorter, Fix grammar, Custom instruction, "What am I missing?" (checks the draft against requests in the thread) |
 | Preview | Streamed result, side-by-side or inline diff toggle, follow-up input retaining context |
