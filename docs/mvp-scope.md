@@ -67,6 +67,8 @@ The user edits the shortcut in Juvin's settings. Two triggers map to it:
 - **Desktop global hotkey.** Owned by the Juvin app. On Linux this reuses TypeWhisper's backend chain (evdev on Wayland with the uaccess udev rule, SharpHook on X11, desktop-environment shortcut writers for GNOME/KDE/Hyprland/Sway). On Windows and macOS, SharpHook provides a global hook, with macOS needing Accessibility permission. On press, the app asks the extension for the context of the active tab in the focused browser window.
 - **Extension command shortcut.** WebExtensions have a `commands` API with a user-configurable shortcut that works whenever the browser has focus, on every OS, with no Wayland caveats. The extension forwards the press to the desktop app. Juvin's settings show both and deep-link to the browser's shortcut page (`chrome://extensions/shortcuts`, Firefox "Manage Extension Shortcuts") when the two drift.
 
+The default is Ctrl+Shift+F (Cmd+Shift+F on macOS). Ctrl+Shift+Y was the first choice and was dropped on October 10, 2026: Firefox binds it to Downloads on Linux and a browser's own shortcuts win over extension commands, so the key had to be one no browser binds on any OS.
+
 Recommendation: ship both. The extension command is the one that always works; the global hotkey is the one the user asked for and keeps the door open for non-browser apps later. If Phase 0 shows the global hotkey is unreliable on one platform, the extension command carries that platform alone.
 
 ### 2.4 Thread capture uses site adapters with a generic fallback
@@ -336,7 +338,11 @@ Settled on October 8, 2026:
 4. **Panel location:** a desktop window owned by Juvin, not injected into the page.
 5. **Product name:** Juvin.
 
-No decisions remain open. Phase 0 can start.
+Settled on October 10, 2026:
+
+6. **Default shortcut:** Ctrl+Shift+F (Cmd+Shift+F on macOS), for both the extension command and the global hotkey, after a real key press showed Firefox's Downloads binding wins over Ctrl+Shift+Y on Linux (section 2.3).
+
+No decisions remain open.
 
 Phase 0 results so far:
 
