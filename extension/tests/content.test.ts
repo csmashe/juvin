@@ -470,6 +470,21 @@ describe("Gmail adapter", () => {
     expect(result.ok && result.capture.thread.messages).toEqual([{ from: "ana@example.com", sent: undefined, body: "Hello" }]);
   });
 
+  it("leaves sent out when the date title has no year or no time", async () => {
+    const editor = gmailThread(expandedRow("Ana", "ana@example.com", "Oct 7", "Hello") + expandedRow("Sam", "sam@example.com", "Wed, Oct 7, 2026", "Again"));
+    select(editor, 0, 2);
+    const result = await captureContext(document, GMAIL, new EditorRegistry(), instantGmail().adapters);
+    expect(result.ok && result.capture.thread.messages.map((m) => m.sent)).toEqual([undefined, undefined]);
+  });
+
+  it("caps each message body at the page text limit and reports the thread as truncated", async () => {
+    const editor = gmailThread(expandedRow("Ana", "ana@example.com", "Wed, Oct 7, 2026, 9:12 AM", "x".repeat(PAGE_TEXT_LIMIT + 5)));
+    select(editor, 0, 2);
+    const result = await captureContext(document, GMAIL, new EditorRegistry(), instantGmail().adapters);
+    expect(result.ok && result.capture.thread).toMatchObject({ completeness: "truncated", collapsedCount: 0 });
+    expect(result.ok && result.capture.thread.messages[0]?.body.length).toBe(PAGE_TEXT_LIMIT);
+  });
+
   it("clicks Expand all and waits for the collapsed messages to open", async () => {
     const editor = gmailThread(collapsedRow("Ana", "ana@example.com", "First message") + collapsedRow("Sam", "sam@example.com", "Second message"), EXPAND_ALL);
     let clicked = false;
@@ -486,6 +501,93 @@ describe("Gmail adapter", () => {
     expect(timed.ticks()).toBe(4);
     expect(result.ok && result.capture.thread).toMatchObject({ completeness: "entire-thread", collapsedCount: 0 });
     expect(result.ok && result.capture.thread.messages.map((m) => m.body)).toEqual(["First message", "Second message"]);
+  });
+
+  it("keeps waiting when the older-messages bundle vanishes a poll before its rows arrive", async () => {
+    const editor = gmailThread(
+      `<div id="bundle"><span role="button" aria-label="2 older messages">2</span></div>` + expandedRow("Sam", "sam@example.com", "Wed, Oct 7, 2026, 10:05 AM", "Third message"),
+      EXPAND_ALL,
+    );
+    select(editor, 0, 2);
+    const timed = instantGmail((tick) => {
+      if (tick === 2) {
+        document.getElementById("bundle")!.remove();
+      }
+
+      if (tick === 3) {
+        document.querySelector('[role="list"]')!.insertAdjacentHTML(
+          "afterbegin",
+          expandedRow("Ana", "ana@example.com", "Wed, Oct 7, 2026, 9:12 AM", "First message") + expandedRow("Ana", "ana@example.com", "Wed, Oct 7, 2026, 9:30 AM", "Second message"),
+        );
+      }
+    });
+    const result = await captureContext(document, GMAIL, new EditorRegistry(), timed.adapters);
+
+    expect(timed.ticks()).toBe(3);
+    expect(result.ok && result.capture.thread).toMatchObject({ completeness: "entire-thread", collapsedCount: 0 });
+    expect(result.ok && result.capture.thread.messages.map((m) => m.body)).toEqual(["First message", "Second message", "Third message"]);
+  });
+
+  it("counts the bundle's messages as hidden when they never arrive", async () => {
+    const editor = gmailThread(
+      `<div id="bundle"><span role="button" aria-label="2 older messages">2</span></div>` + expandedRow("Sam", "sam@example.com", "Wed, Oct 7, 2026, 10:05 AM", "Third message"),
+      EXPAND_ALL,
+    );
+    select(editor, 0, 2);
+    const timed = instantGmail((tick) => {
+      if (tick === 2) {
+        document.getElementById("bundle")!.remove();
+      }
+    });
+    const result = await captureContext(document, GMAIL, new EditorRegistry(), timed.adapters);
+
+    expect(timed.ticks()).toBe(30);
+    expect(result.ok && result.capture.thread).toMatchObject({ completeness: "loaded-messages-only", collapsedCount: 2 });
+    expect(result.ok && result.capture.thread.messages.map((m) => m.body)).toEqual(["Third message"]);
+  });
+
+  it("counts a bundle that stays on the page once", async () => {
+    const editor = gmailThread(
+      `<span role="button" aria-label="2 older messages">2</span>` + expandedRow("Sam", "sam@example.com", "Wed, Oct 7, 2026, 10:05 AM", "Third message"),
+      EXPAND_ALL,
+    );
+    select(editor, 0, 2);
+    const result = await captureContext(document, GMAIL, new EditorRegistry(), instantGmail().adapters);
+    expect(result.ok && result.capture.thread).toMatchObject({ completeness: "loaded-messages-only", collapsedCount: 2 });
+  });
+
+  it("reports truncated over loaded-messages-only and keeps the hidden count", async () => {
+    const editor = gmailThread(
+      expandedRow("Ana", "ana@example.com", "Wed, Oct 7, 2026, 9:12 AM", "x".repeat(PAGE_TEXT_LIMIT + 1)) + collapsedRow("Sam", "sam@example.com", "Second message"),
+    );
+    select(editor, 0, 2);
+    const result = await captureContext(document, GMAIL, new EditorRegistry(), instantGmail().adapters);
+    expect(result.ok && result.capture.thread).toMatchObject({ completeness: "truncated", collapsedCount: 1 });
+  });
+
+  it("refuses the capture when the draft editor leaves the page during the wait", async () => {
+    const editor = gmailThread(collapsedRow("Ana", "ana@example.com", "First message"), EXPAND_ALL);
+    select(editor, 0, 2);
+    const timed = instantGmail((tick) => {
+      if (tick === 2) {
+        document.querySelector('[role="main"]')!.innerHTML = `<h2 class="hP">Another conversation</h2><div role="listitem"><div class="a3s">Other message</div></div>`;
+      }
+    });
+    const result = await captureContext(document, GMAIL, new EditorRegistry(), timed.adapters);
+    expect(result).toEqual({ ok: false, error: { code: "no-editor", message: "The draft editor left the page while the thread was being read." } });
+  });
+
+  it("never reports the whole thread on a page in a language it has no labels for", async () => {
+    const editor = gmailThread(expandedRow("Ana", "ana@example.com", "Wed, Oct 7, 2026, 9:12 AM", "First message"));
+    document.documentElement.lang = "de";
+    select(editor, 0, 2);
+    try {
+      const result = await captureContext(document, GMAIL, new EditorRegistry(), instantGmail().adapters);
+      expect(result.ok && result.capture.thread).toMatchObject({ completeness: "loaded-messages-only", collapsedCount: 0 });
+      expect(result.ok && result.capture.thread.messages).toHaveLength(1);
+    } finally {
+      document.documentElement.lang = "";
+    }
   });
 
   it("stops waiting once the thread stops changing after Expand all", async () => {
@@ -620,6 +722,18 @@ describe("Gmail adapter", () => {
     } finally {
       document.title = "";
     }
+  });
+
+  it("falls back to visible text when rows keep their senders but the body class is gone", async () => {
+    document.body.innerHTML = `
+      <div role="main">
+        <div role="listitem"><div class="gE"><span class="gD" email="ana@example.com">Ana</span><span class="g3" title="Wed, Oct 7, 2026, 9:12 AM">Oct 7</span></div><div class="renamed-body">First message</div></div>
+        <div role="listitem"><div id="reply" ${GMAIL_EDITOR_ATTRIBUTES}>hi ana</div></div>
+      </div>`;
+    select(document.getElementById("reply")!, 0, 2);
+    const result = await captureContext(document, GMAIL, new EditorRegistry(), instantGmail().adapters);
+    expect(result.ok && result.capture.thread).toMatchObject({ completeness: "visible-text-only", collapsedCount: 0 });
+    expect(result.ok && result.capture.thread.messages.map((m) => m.body)).toEqual(["AnaOct 7\nFirst message"]);
   });
 
   it("applies a rewrite into the reply draft, leaving its hidden quoted text alone", async () => {
