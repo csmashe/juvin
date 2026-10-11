@@ -78,6 +78,9 @@ public sealed record ShortcutPressedMessage() : ConnectorMessage(ConnectorMessag
 
 public sealed record ContextRequestMessage() : ConnectorMessage(ConnectorMessageTypes.ContextRequest)
 {
+    /// <summary>Recapture from the tab that owns this editor; null captures the shortcut's tab.</summary>
+    public string? EditorId { get; init; }
+
     internal override bool IsWellFormed => Id is not null;
 }
 

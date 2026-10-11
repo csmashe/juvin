@@ -22,7 +22,7 @@ Run after steps 1 to 5, signed in to a Gmail account with test conversations onl
 4. With a reply draft captured, apply a replacement for that capture. The selected text must change in place, and Ctrl+Z (Cmd+Z on macOS) must restore the original draft.
 5. Capture again, type one character in the draft, then apply. The apply must be refused with `draft-changed` and the draft must stay as typed.
 
-Until the rewrite panel can send an apply (Phase 4), run steps 4 and 5 from the extension's background console (Chrome: Inspect the service worker on the extensions page; Firefox: Inspect on `about:debugging`). Find the Gmail tab's id with `tabs.query`, send `{kind: "juvin.capture"}` with `tabs.sendMessage`, then send `{kind: "juvin.apply", editorId, expectedHash, start, end, text}` using the `editor.id`, `editor.hash`, and `selection` offsets from that capture.
+Steps 4 and 5 run through the rewrite panel (Phase 4): pressing the shortcut on a selected draft opens the panel at the top-right of the primary screen and the default action's result streams in. For step 4 press Apply once the result is complete: the panel hides, the selection is replaced, and Ctrl+Z (Cmd+Z on macOS) in the editor restores the draft. For step 5 wait for the result, type one character in the draft, then press Apply: the panel must show "Draft changed" with Copy and Recapture, Apply must stay disabled, and the draft must stay as typed.
 
 ### Gmail results
 
@@ -33,6 +33,15 @@ Until the rewrite panel can send an apply (Phase 4), run steps 4 and 5 from the 
 | October 10, 2026 | Ubuntu 25.04, GNOME Wayland | Zen 1.23.2b (Flatpak, Gecko 157) | yes, 3 of 3 | yes, 6 of 6 after one Expand all click (429 ms; 269 to 410 ms with the popup tab selected) | yes | yes | yes |
 
 The Ubuntu row ran in Flatpak Zen on a copy of the signed-in Zen profile from the Fedora desktop, because no browser on that VM held a Gmail session; copying only the Google cookies into the Snap Firefox profile signed in for one page load and was then signed out, so the Snap Firefox route is covered by the connector rows only. On Windows a real Ctrl+Shift+Y press fired the extension command on both Gmail drafts. The October 10 Linux run found and fixed two things only real Gmail showed: the inline reply editor lives inside the row of the message it answers, so that row must stay a message, and the Expand all wait must use the wall clock because a background tab stretches each timer. Confirmed on the same run: `h2[data-thread-perm-id]` and `h2.hP` both match the subject, every row has `span.g3[title]` whose title (with a U+202F space before AM or PM) parses in Gecko, the "N older messages" bundle is a `span[role="button"]` with an `aria-label`, `[aria-label="Expand all"]` matches and `[data-tooltip="Expand all"]` does not, every row has `span.gD[email]`, and Undo after `insertText` restores the draft hash exactly.
+
+### Rewrite panel results
+
+Run with the test page or Gmail. Hide and show: close the panel with Escape or its close button, press the shortcut again, and check that it reappears in the same corner above the browser. Both rows below ran on the bundled test page with qwen3.5:27b on the LAN server; the Fedora buttons were driven through AT-SPI and the command fired through Marionette, the Windows run used real key presses and UI Automation from the interactive session. Gmail was not rerun for the panel: the Windows Chrome profile had been signed out again.
+
+| Date | OS | Browser | Panel shows and streams | Switch action | Follow-up | Changes view | Apply and Undo | Edited draft refused | Hide and show again |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| October 11, 2026 | Fedora 44, GNOME Wayland | Firefox 156 (RPM, XWayland) | yes, qwen3.5:27b on the LAN server | yes | yes, turn 2 of the same session | yes | yes | yes, Draft changed with Apply disabled | yes, three cycles, above and sticky re-asserted |
+| October 11, 2026 | Windows 11 | Chrome 155 | yes, real Ctrl+Shift+F, topmost above maximized Chrome at (804,16) | yes | yes | yes | yes, real Ctrl+Z restored the draft | yes, Draft changed with Apply disabled | yes, real Escape, reopened at the same place and still topmost |
 
 ## Results
 

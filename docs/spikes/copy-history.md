@@ -95,6 +95,7 @@ Two files were added by a commit titled "Port plugin loader + core Linux service
 | `Linux/Services/Setup/KwinActiveWindowSetupTask.cs` | 8479e7b2 | 2026-06-08 | Linux original |
 | `Linux/Services/Setup/PackageInstaller.cs` | 997ed6b7 | 2026-06-08 | Linux original |
 | `Linux/Services/WaylandSessionDetector.cs` | b4b7b20f | 2026-07-17 | Linux original |
+| `Linux/Services/X11StickyWindow.cs` | be88b7e9 | 2026-06-15 | Linux original |
 | `Linux/ViewModels/MainWindowViewModel.cs` | b7ab2cd5 | 2026-04-21 | Linux original |
 | `Linux/Views/Sections/AboutSection.axaml` | 4f3a75df | 2026-04-21 | Linux original |
 | `Linux/Views/Sections/AboutSection.axaml.cs` | 4f3a75df | 2026-04-21 | Linux original |

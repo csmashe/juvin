@@ -1,0 +1,192 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Juvin.App.ViewModels"
+        xmlns:ic="using:FluentIcons.Avalonia"
+        xmlns:loc="using:Juvin.App.Localization"
+        x:Class="Juvin.App.Views.RewritePanelWindow"
+        x:DataType="vm:RewritePanelViewModel"
+        Title="{loc:Str Panel.Title}"
+        Icon="/Assets/juvin-mark-color-256.png"
+        Width="460" Height="640"
+        WindowDecorations="None"
+        Topmost="True"
+        ShowInTaskbar="False"
+        CanResize="False">
+
+    <Window.KeyBindings>
+        <KeyBinding Gesture="Escape" Command="{Binding CloseCommand}" />
+    </Window.KeyBindings>
+
+    <Border Classes="panel-frame">
+        <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
+            <!-- Header: drag to move -->
+            <Border Grid.Row="0" Classes="panel-header" PointerPressed="OnHeaderPointerPressed">
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Classes="panel-wordmark" Text="{loc:Str App.Name}" />
+                    <Button Grid.Column="1"
+                            Classes="panel-close"
+                            ToolTip.Tip="{loc:Str Panel.Close}"
+                            AutomationProperties.Name="{loc:Str Panel.Close}"
+                            Command="{Binding CloseCommand}">
+                        <ic:SymbolIcon Symbol="Dismiss" FontSize="14" />
+                    </Button>
+                </Grid>
+            </Border>
+
+            <StackPanel Grid.Row="1" Margin="16,4,16,10" Spacing="10">
+                <WrapPanel IsVisible="{Binding HasCapture}" ItemSpacing="6" LineSpacing="6">
+                    <Border Classes="badge">
+                        <TextBlock Classes="badge-text" Text="{Binding AdapterLabel}" />
+                    </Border>
+                    <Border Classes="badge">
+                        <TextBlock Classes="badge-text" Text="{Binding MessageCountLabel}" />
+                    </Border>
+                    <Border Classes="badge">
+                        <TextBlock Classes="badge-text" Text="{Binding CompletenessLabel}" />
+                    </Border>
+                    <Border Classes="badge">
+                        <TextBlock Classes="badge-text" Text="{Binding ProviderLabel}" />
+                    </Border>
+                </WrapPanel>
+                <ItemsControl ItemsSource="{Binding Actions}" IsEnabled="{Binding HasCapture}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel ItemSpacing="6" LineSpacing="6" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:PanelActionChip">
+                            <Button Classes="chip"
+                                    Classes.selected="{Binding IsSelected}"
+                                    Content="{Binding Title}"
+                                    Command="{Binding $parent[Window].((vm:RewritePanelViewModel)DataContext).SelectActionCommand, FallbackValue={x:Null}}"
+                                    CommandParameter="{Binding}" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+
+            <Border Grid.Row="2" Classes="panel-body">
+                <Grid RowDefinitions="Auto,*">
+                    <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
+                        <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding CanShowChanges}">
+                            <Button Classes="chip small"
+                                    Classes.selected="{Binding !ShowChanges}"
+                                    Content="{loc:Str Panel.View.Rewrite}"
+                                    Command="{Binding ShowRewriteViewCommand}" />
+                            <Button Classes="chip small"
+                                    Classes.selected="{Binding ShowChanges}"
+                                    Content="{loc:Str Panel.View.Changes}"
+                                    Command="{Binding ShowChangesViewCommand}" />
+                        </StackPanel>
+                        <Button Grid.Column="1"
+                                Content="{loc:Str Panel.Cancel}"
+                                IsVisible="{Binding IsRunning}"
+                                Command="{Binding CancelCommand}" />
+                    </Grid>
+
+                    <ScrollViewer Grid.Row="1"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel Spacing="10">
+                            <ProgressBar Classes="panel-progress" IsIndeterminate="True" IsVisible="{Binding IsRunning}" />
+                            <TextBlock Classes="row-hint" Text="{Binding WorkingText}" IsVisible="{Binding IsWorking}" />
+
+                            <SelectableTextBlock Classes="panel-result"
+                                                 Text="{Binding ResultText}"
+                                                 IsVisible="{Binding IsTextVisible}" />
+                            <SelectableTextBlock x:Name="ChangesText"
+                                                 Classes="panel-result"
+                                                 IsVisible="{Binding IsChangesVisible}" />
+
+                            <StackPanel Spacing="8" IsVisible="{Binding HasError}">
+                                <TextBlock Classes="panel-error" Text="{Binding ErrorMessage}" />
+                                <Button Content="{loc:Str Panel.Retry}"
+                                        IsVisible="{Binding CanRetry}"
+                                        Command="{Binding RetryCommand}" />
+                            </StackPanel>
+
+                            <Expander Classes="panel-context"
+                                      Header="{loc:Str Panel.Context}"
+                                      IsVisible="{Binding HasCapture}">
+                                <StackPanel Spacing="10">
+                                    <StackPanel IsVisible="{Binding HasSubject}">
+                                        <TextBlock Classes="section-label" Margin="0" Text="{loc:Str Panel.Subject}" />
+                                        <SelectableTextBlock Classes="panel-context-text" Text="{Binding Subject}" />
+                                    </StackPanel>
+                                    <TextBlock Classes="row-hint"
+                                               Margin="0"
+                                               Text="{loc:Str Panel.NoMessages}"
+                                               IsVisible="{Binding !HasContextMessages}" />
+                                    <TextBlock Classes="row-hint"
+                                               Margin="0"
+                                               TextWrapping="Wrap"
+                                               Text="{Binding OlderMessagesHint}"
+                                               IsVisible="{Binding HasOlderMessagesHint}" />
+                                    <ItemsControl ItemsSource="{Binding ContextMessages}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <StackPanel Spacing="10" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:ContextMessageItem">
+                                                <StackPanel Spacing="2">
+                                                    <TextBlock Classes="row-title" Text="{Binding From}" TextWrapping="Wrap" />
+                                                    <TextBlock Classes="row-hint" Margin="0" Text="{Binding Sent}" IsVisible="{Binding HasSent}" />
+                                                    <SelectableTextBlock Classes="panel-context-text" Text="{Binding Body}" />
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Expander>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
+            <Grid Grid.Row="3" Margin="16,10,16,0" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                <TextBox Text="{Binding FollowUpText}"
+                         PlaceholderText="{loc:Str Panel.FollowUpPlaceholder}"
+                         IsEnabled="{Binding HasCapture}">
+                    <TextBox.KeyBindings>
+                        <KeyBinding Gesture="Enter" Command="{Binding SendFollowUpCommand}" />
+                    </TextBox.KeyBindings>
+                </TextBox>
+                <Button Grid.Column="1"
+                        Content="{loc:Str Panel.Send}"
+                        Command="{Binding SendFollowUpCommand}" />
+            </Grid>
+
+            <StackPanel Grid.Row="4" Margin="16,10,16,16" Spacing="8">
+                <Border Classes="panel-notice" IsVisible="{Binding HasNotice}">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                        <ic:SymbolIcon Classes="status attention" Symbol="Warning" VerticalAlignment="Top" />
+                        <TextBlock Grid.Column="1" Classes="row-hint" Margin="0" Text="{Binding Notice}" />
+                    </Grid>
+                </Border>
+                <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8">
+                    <Button Grid.Column="0"
+                            Content="{loc:Str Panel.Recapture}"
+                            Command="{Binding RecaptureCommand}" />
+                    <TextBlock Grid.Column="1"
+                               Classes="row-hint"
+                               Margin="0"
+                               VerticalAlignment="Center"
+                               HorizontalAlignment="Right"
+                               Text="{loc:Str Panel.Copied}"
+                               IsVisible="{Binding ShowCopied}" />
+                    <Button Grid.Column="2"
+                            Content="{loc:Str Panel.Copy}"
+                            Command="{Binding CopyCommand}" />
+                    <Button Grid.Column="3"
+                            Classes="accent"
+                            MinWidth="90"
+                            Content="{loc:Str Panel.Apply}"
+                            Command="{Binding ApplyCommand}" />
+                </Grid>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>
