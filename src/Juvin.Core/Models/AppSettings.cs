@@ -21,7 +21,7 @@ public sealed record AppSettings
     public string? CodexBinaryPath { get; init; }
     public string? CodexModel { get; init; }
 
-    public string RewriteShortcut { get; init; } = "Ctrl+Shift+Y";
+    public string RewriteShortcut { get; init; } = "Ctrl+Shift+F";
 
     public bool HistoryEnabled { get; init; }
     public int HistoryRetentionDays { get; init; } = 30;

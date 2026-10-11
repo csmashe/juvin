@@ -65,6 +65,10 @@ export async function captureContext(
   const text = editorText(editor);
   const hash = await hashText(text);
   const thread = await adapter.captureThread(doc, editor);
+  if (!editor.isConnected) {
+    return failure("no-editor", "The draft editor left the page while the thread was being read.");
+  }
+
   const id = registry.idFor(editor);
 
   return {
