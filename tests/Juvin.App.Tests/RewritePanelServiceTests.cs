@@ -77,6 +77,64 @@ public sealed class RewritePanelServiceTests
         Assert.Equal(1, hides);
     }
 
+    [Fact]
+    public async Task AHotkeyWithNoBrowser_ShowsTheErrorWithRecaptureDisabled()
+    {
+        var settings = new FakeSettingsService();
+        var localizer = new Localizer();
+        var viewModel = new RewritePanelViewModel(
+            new ProviderSelector(_ => new FakeModelProvider(ProcessingMode.Local), _ => new FakeModelProvider(ProcessingMode.Codex)),
+            settings,
+            localizer,
+            action => action()
+        );
+        var connector = new ConnectorService(new FakeConnectorSocket(), new FakeNativeHostRegistrar(), settings, localizer);
+        var shows = 0;
+        var service = new RewritePanelService(connector, viewModel, () => shows++, () => { }, action => action());
+        service.Start();
+
+        await connector.TriggerCaptureAsync();
+
+        Assert.Equal(1, shows);
+        Assert.True(viewModel.HasError);
+        Assert.Equal(localizer["Panel.Error.NoBrowser"], viewModel.ErrorMessage);
+        Assert.False(viewModel.CanRecapture);
+    }
+
+    [Theory]
+    [InlineData("browser-not-focused", true)]
+    [InlineData("timeout", false)]
+    [InlineData("no-selection", true)]
+    public void AnsweredByBrowser_OnlyABrowsersOwnAnswerCounts(string code, bool expected) =>
+        Assert.Equal(expected, ConnectorService.AnsweredByBrowser(new ContextResult(null, new ConnectorError(code, "x"))));
+
+    [Fact]
+    public void ANotFocusedBrowser_ShowsTheErrorWithRecaptureDisabled() => AssertRecaptureDisabled(ConnectorService.BrowserNotFocusedCode);
+
+    [Fact]
+    public void ATimedOutBrowser_ShowsTheErrorWithRecaptureDisabled() => AssertRecaptureDisabled(ConnectorRewriteTarget.TimeoutCode);
+
+    private static void AssertRecaptureDisabled(string code)
+    {
+        var settings = new FakeSettingsService();
+        var localizer = new Localizer();
+        var viewModel = new RewritePanelViewModel(
+            new ProviderSelector(_ => new FakeModelProvider(ProcessingMode.Local), _ => new FakeModelProvider(ProcessingMode.Codex)),
+            settings,
+            localizer,
+            action => action()
+        );
+        var connector = new ConnectorService(new FakeConnectorSocket(), new FakeNativeHostRegistrar(), settings, localizer);
+        var service = new RewritePanelService(connector, viewModel, () => { }, () => { }, action => action());
+        service.Start();
+        var session = new ConnectorSession(new StreamConnectorChannel(new MemoryStream()), () => throw new NotSupportedException());
+
+        service.OnCaptureCompleted(session, 1, new ContextResult(null, new ConnectorError(code, "Not from a focused browser.")));
+
+        Assert.True(viewModel.HasError);
+        Assert.False(viewModel.CanRecapture);
+    }
+
     private static ContextResult Capture(string subject)
     {
         var context = new RewriteContext("draft", [], subject, ThreadCompleteness.DraftOnly, 0);

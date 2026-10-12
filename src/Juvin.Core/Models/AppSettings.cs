@@ -23,6 +23,9 @@ public sealed record AppSettings
 
     public string RewriteShortcut { get; init; } = "Ctrl+Shift+F";
 
+    /// <summary>The id of the hotkey backend the user picked; null chooses the first available one.</summary>
+    public string? HotkeyBackend { get; init; }
+
     /// <summary>The id of the action run as soon as a capture arrives.</summary>
     public string DefaultRewriteAction { get; init; } = "clearer";
 

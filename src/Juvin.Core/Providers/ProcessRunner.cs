@@ -57,10 +57,10 @@ public sealed class ProcessRunner : IProcessRunner
         var stderr = process.StandardError.ReadToEndAsync(CancellationToken.None);
         try
         {
-            await WriteInputAsync(process, standardInput, ct);
-            await process.WaitForExitAsync(ct);
+            await WriteInputAsync(process, standardInput, ct).ConfigureAwait(false);
+            await process.WaitForExitAsync(ct).ConfigureAwait(false);
             // A descendant can keep a pipe open after the child exits, so the drains are supervised too.
-            return new ProcessResult(process.ExitCode, await stdout.WaitAsync(ct), await stderr.WaitAsync(ct));
+            return new ProcessResult(process.ExitCode, await stdout.WaitAsync(ct).ConfigureAwait(false), await stderr.WaitAsync(ct).ConfigureAwait(false));
         }
         catch (OperationCanceledException)
         {
@@ -110,7 +110,7 @@ public sealed class ProcessRunner : IProcessRunner
         {
             if (input is not null)
             {
-                await process.StandardInput.WriteAsync(input.AsMemory(), ct);
+                await process.StandardInput.WriteAsync(input.AsMemory(), ct).ConfigureAwait(false);
             }
 
             process.StandardInput.Close();

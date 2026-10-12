@@ -22,10 +22,11 @@ public sealed class ConnectorServiceTests : IAsyncDisposable
     private readonly ConnectorService _service;
     private readonly FakeSettingsService _settings = new();
     private readonly FakeConnectorSocket _socket = new();
+    private readonly FakeTimeProvider _time = new();
 
     public ConnectorServiceTests()
     {
-        _service = new ConnectorService(_socket, _registrar, _settings, new Localizer());
+        _service = new ConnectorService(_socket, _registrar, _settings, new Localizer(), _time);
     }
 
     public async ValueTask DisposeAsync()
@@ -156,6 +157,7 @@ public sealed class ConnectorServiceTests : IAsyncDisposable
 
         await WriteAsync(stream, """{"v":1,"type":"shortcut.pressed"}""");
         var older = (await ReadAsync(stream)).GetProperty("id").GetString()!;
+        _time.Advance(TimeSpan.FromSeconds(1));
         await WriteAsync(stream, """{"v":1,"type":"shortcut.pressed"}""");
         var newer = (await ReadAsync(stream)).GetProperty("id").GetString()!;
 
@@ -174,6 +176,158 @@ public sealed class ConnectorServiceTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task TriggerCapture_WithNoBrowser_ReportsNoBrowserWithoutASession()
+    {
+        await _service.StartAsync(CancellationToken.None);
+        ContextResult? failed = null;
+        var completed = 0;
+        _service.TriggerFailed += (_, result) => failed = result;
+        _service.CaptureCompleted += (_, _, _) => completed++;
+
+        await _service.TriggerCaptureAsync();
+
+        Assert.Equal(ConnectorService.NoBrowserCode, failed?.Error?.Code);
+        Assert.Equal(0, completed);
+    }
+
+    [Fact]
+    public async Task TriggerCapture_AsksEveryBrowserAndTakesTheFirstCaptureWithoutWaitingForTheRest()
+    {
+        await _service.StartAsync(CancellationToken.None);
+        var completed = new TaskCompletionSource<(ConnectorSession Session, ContextResult Result)>();
+        _service.CaptureCompleted += (client, _, outcome) => completed.TrySetResult((client, outcome));
+        await using var silent = await ConnectAndSayHelloAsync();
+        await using var answering = await ConnectAndSayHelloAsync();
+
+        var trigger = _service.TriggerCaptureAsync();
+        var silentRequest = await ReadAsync(silent);
+        var request = await ReadAsync(answering);
+        Assert.True(silentRequest.GetProperty("requireFocus").GetBoolean());
+        Assert.True(request.GetProperty("requireFocus").GetBoolean());
+        await WriteAsync(answering, CaptureResponse(request.GetProperty("id").GetString()!, "Draft"));
+
+        var (session, result) = await completed.Task.WaitAsync(s_timeout);
+        Assert.Equal("Draft", result.Capture?.Context.Draft);
+        Assert.Same(_service.Clients[1], session);
+        await trigger.WaitAsync(s_timeout);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task TriggerCapture_PrefersAnErrorOtherThanBrowserNotFocused(bool notFocusedFirst)
+    {
+        await _service.StartAsync(CancellationToken.None);
+        var completed = new TaskCompletionSource<(ConnectorSession Session, ContextResult Result)>();
+        _service.CaptureCompleted += (client, _, outcome) => completed.TrySetResult((client, outcome));
+        await using var unfocused = await ConnectAndSayHelloAsync();
+        await using var focused = await ConnectAndSayHelloAsync();
+
+        _ = _service.TriggerCaptureAsync();
+        var unfocusedId = (await ReadAsync(unfocused)).GetProperty("id").GetString()!;
+        var focusedId = (await ReadAsync(focused)).GetProperty("id").GetString()!;
+        if (notFocusedFirst)
+        {
+            await WriteAsync(unfocused, ErrorResponse(unfocusedId, ConnectorService.BrowserNotFocusedCode));
+            await Task.Delay(50);
+            await WriteAsync(focused, ErrorResponse(focusedId, "no-selection"));
+        }
+        else
+        {
+            await WriteAsync(focused, ErrorResponse(focusedId, "no-selection"));
+            await Task.Delay(50);
+            await WriteAsync(unfocused, ErrorResponse(unfocusedId, ConnectorService.BrowserNotFocusedCode));
+        }
+
+        var (session, result) = await completed.Task.WaitAsync(s_timeout);
+        Assert.Equal("no-selection", result.Error?.Code);
+        Assert.Same(_service.Clients[1], session);
+    }
+
+    [Fact]
+    public async Task TriggerCapture_ReportsBrowserNotFocusedWhenEveryBrowserSaysSo()
+    {
+        await _service.StartAsync(CancellationToken.None);
+        var completed = new TaskCompletionSource<ContextResult>();
+        _service.CaptureCompleted += (_, _, result) => completed.TrySetResult(result);
+        await using var first = await ConnectAndSayHelloAsync();
+        await using var second = await ConnectAndSayHelloAsync();
+
+        _ = _service.TriggerCaptureAsync();
+        await WriteAsync(first, ErrorResponse((await ReadAsync(first)).GetProperty("id").GetString()!, ConnectorService.BrowserNotFocusedCode));
+        await WriteAsync(second, ErrorResponse((await ReadAsync(second)).GetProperty("id").GetString()!, ConnectorService.BrowserNotFocusedCode));
+
+        Assert.Equal(ConnectorService.BrowserNotFocusedCode, (await completed.Task.WaitAsync(s_timeout)).Error?.Code);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task OnePressSeenByTheHotkeyAndTheExtension_CapturesOnce(bool hotkeyFirst)
+    {
+        await _service.StartAsync(CancellationToken.None);
+        var completed = new ConcurrentQueue<long>();
+        _service.CaptureCompleted += (_, number, _) => completed.Enqueue(number);
+        await using var stream = await ConnectAndSayHelloAsync();
+
+        if (hotkeyFirst)
+        {
+            _ = _service.TriggerCaptureAsync();
+            var request = await ReadAsync(stream);
+            _time.Advance(ConnectorService.CoalesceWindow - TimeSpan.FromMilliseconds(1));
+            await WriteAsync(stream, """{"v":1,"type":"shortcut.pressed"}""");
+            await WriteAsync(stream, CaptureResponse(request.GetProperty("id").GetString()!, "Draft"));
+        }
+        else
+        {
+            await WriteAsync(stream, """{"v":1,"type":"shortcut.pressed"}""");
+            var request = await ReadAsync(stream);
+            _time.Advance(ConnectorService.CoalesceWindow - TimeSpan.FromMilliseconds(1));
+            await _service.TriggerCaptureAsync();
+            await WriteAsync(stream, CaptureResponse(request.GetProperty("id").GetString()!, "Draft"));
+        }
+
+        await WaitUntilAsync(() => !completed.IsEmpty);
+        await AssertNoRequestPendingAsync(stream);
+        Assert.Equal([1L], completed);
+    }
+
+    [Fact]
+    public async Task TriggerWithNoBrowser_DoesNotSwallowAShortcutPressThatFollows()
+    {
+        await _service.StartAsync(CancellationToken.None);
+        var failed = new TaskCompletionSource<ContextResult>();
+        _service.TriggerFailed += (_, result) => failed.TrySetResult(result);
+        var completed = new TaskCompletionSource<ContextResult>();
+        _service.CaptureCompleted += (_, _, result) => completed.TrySetResult(result);
+
+        await _service.TriggerCaptureAsync();
+        Assert.Equal(ConnectorService.NoBrowserCode, (await failed.Task.WaitAsync(s_timeout)).Error?.Code);
+
+        await using var stream = await ConnectAndSayHelloAsync();
+        _time.Advance(TimeSpan.FromMilliseconds(1));
+        await WriteAsync(stream, """{"v":1,"type":"shortcut.pressed"}""");
+        var request = await ReadAsync(stream);
+        await WriteAsync(stream, CaptureResponse(request.GetProperty("id").GetString()!, "Draft"));
+
+        Assert.True((await completed.Task.WaitAsync(s_timeout)).Ok);
+    }
+
+    [Fact]
+    public async Task PressesASecondApart_BothCapture()
+    {
+        await _service.StartAsync(CancellationToken.None);
+        await using var stream = await ConnectAndSayHelloAsync();
+
+        await WriteAsync(stream, """{"v":1,"type":"shortcut.pressed"}""");
+        Assert.Equal("context.request", (await ReadAsync(stream)).GetProperty("type").GetString());
+        _time.Advance(TimeSpan.FromSeconds(1));
+        _ = _service.TriggerCaptureAsync();
+
+        Assert.True((await ReadAsync(stream)).GetProperty("requireFocus").GetBoolean());
+    }
+
+    [Fact]
     public async Task Ping_ReturnsLatencyFromTheConnectedClient()
     {
         await _service.StartAsync(CancellationToken.None);
@@ -189,13 +343,27 @@ public sealed class ConnectorServiceTests : IAsyncDisposable
 
     private async Task<Stream> ConnectAndSayHelloAsync()
     {
+        var connected = _service.Clients.Count;
         var stream = await _socket.ConnectAsync(s_timeout);
         Assert.NotNull(stream);
         await WriteAsync(stream, Hello);
         Assert.Equal("config", (await ReadAsync(stream)).GetProperty("type").GetString());
-        await WaitUntilAsync(() => _service.Clients.Count > 0);
+        await WaitUntilAsync(() => _service.Clients.Count > connected);
         return stream;
     }
+
+    /// <summary>A ping is answered in order, so a pong as the next frame means no other request was sent.</summary>
+    private async Task AssertNoRequestPendingAsync(Stream stream)
+    {
+        var ping = _service.PingAsync(s_timeout, CancellationToken.None);
+        var next = await ReadAsync(stream);
+        Assert.Equal("ping", next.GetProperty("type").GetString());
+        await WriteAsync(stream, $$"""{"v":1,"type":"pong","id":"{{next.GetProperty("id").GetString()}}"}""");
+        Assert.NotNull(await ping);
+    }
+
+    private static string ErrorResponse(string id, string code) =>
+        $$$"""{"v":1,"type":"context.response","id":"{{{id}}}","ok":false,"error":{"code":"{{{code}}}","message":"Declined."}}""";
 
     private static string CaptureResponse(string id, string draft) =>
         $$$"""

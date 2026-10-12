@@ -21,7 +21,7 @@ public sealed class ConnectorRewriteTarget : IRewriteTarget
 {
     public const string TimeoutCode = "timeout";
     public const string TooLargeCode = "too-large";
-    public const string FailedCode = "failed";
+    internal const string FailedCode = "failed";
 
     private static readonly TimeSpan s_timeout = TimeSpan.FromSeconds(10);
 
@@ -66,7 +66,7 @@ public sealed class ConnectorRewriteTarget : IRewriteTarget
         }
     }
 
-    private static ConnectorError ErrorOf(Exception ex) =>
+    internal static ConnectorError ErrorOf(Exception ex) =>
         ex switch
         {
             TimeoutException => new ConnectorError(TimeoutCode, "The extension did not answer in time."),

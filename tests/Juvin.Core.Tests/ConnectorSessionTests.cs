@@ -139,6 +139,7 @@ public sealed class ConnectorSessionTests : IAsyncDisposable
         var request = await _channel.NextSentAsync();
         Assert.Equal("context.request", request.GetProperty("type").GetString());
         Assert.False(request.TryGetProperty("editorId", out _));
+        Assert.False(request.TryGetProperty("requireFocus", out _));
         var id = request.GetProperty("id").GetString()!;
 
         _channel.Deliver("""{"v":1,"type":"context.response","id":"someone-else","ok":false,"error":{"code":"internal","message":"x"}}""");
@@ -150,6 +151,22 @@ public sealed class ConnectorSessionTests : IAsyncDisposable
         Assert.Equal(ThreadCompleteness.VisibleTextOnly, result.Capture.Context.Completeness);
         Assert.Equal("e-1", result.Capture.EditorId);
         Assert.Equal("sha256:ab", result.Capture.EditorHash);
+    }
+
+    [Fact]
+    public async Task RequestFocusedContext_AsksForAFocusedWindowWithoutAnEditor()
+    {
+        await SayHelloAsync();
+
+        var pending = _session.RequestFocusedContextAsync(s_timeout, CancellationToken.None);
+        var request = await _channel.NextSentAsync();
+        Assert.True(request.GetProperty("requireFocus").GetBoolean());
+        Assert.False(request.TryGetProperty("editorId", out _));
+        _channel.Deliver(
+            $$$"""{"v":1,"type":"context.response","id":"{{{request.GetProperty("id").GetString()}}}","ok":false,"error":{"code":"browser-not-focused","message":"Focus."}}"""
+        );
+
+        Assert.Equal("browser-not-focused", (await pending).Error?.Code);
     }
 
     [Fact]

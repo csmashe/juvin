@@ -64,3 +64,4 @@ Throwaway code lives in `spikes/global-hotkey/` (see its README to rerun).
 - Physical key presses by a user and non-US layouts. Key codes are layout independent for evdev; the GNOME binding string and SharpHook key codes may need layout handling.
 - Sway, River, Niri, and X11 sessions. X11 is the backend SharpHook was built for, so it is expected to be global there.
 - The GlobalShortcuts portal and a Flatpak build of the app.
+- Session lock: the reference project gates evdev on logind session activity so a locked screen cannot trigger it. Juvin's press-only backend (Phase 4, slice 2) does not carry that monitor: a press on a locked screen still reaches evdev and asks the browser, which is not focused and declines. Add the monitor if that ever matters.

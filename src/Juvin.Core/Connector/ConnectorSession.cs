@@ -96,9 +96,20 @@ public sealed class ConnectorSession : IAsyncDisposable
     /// </summary>
     /// <exception cref="TimeoutException">No response within <paramref name="timeout" />.</exception>
     /// <exception cref="ConnectorException">The connection closed first.</exception>
-    public async Task<ContextResult> RequestContextAsync(string? editorId, TimeSpan timeout, CancellationToken ct)
+    public Task<ContextResult> RequestContextAsync(string? editorId, TimeSpan timeout, CancellationToken ct) =>
+        RequestContextAsync(new ContextRequestMessage { Id = NextId("c"), EditorId = editorId }, timeout, ct);
+
+    /// <summary>
+    ///     Asks for a capture on behalf of the desktop hotkey: the shortcut's tab, or the active tab of a
+    ///     focused window; a browser with no focused window answers <c>browser-not-focused</c>.
+    /// </summary>
+    /// <exception cref="TimeoutException">No response within <paramref name="timeout" />.</exception>
+    /// <exception cref="ConnectorException">The connection closed first.</exception>
+    public Task<ContextResult> RequestFocusedContextAsync(TimeSpan timeout, CancellationToken ct) =>
+        RequestContextAsync(new ContextRequestMessage { Id = NextId("c"), RequireFocus = true }, timeout, ct);
+
+    private async Task<ContextResult> RequestContextAsync(ContextRequestMessage request, TimeSpan timeout, CancellationToken ct)
     {
-        var request = new ContextRequestMessage { Id = NextId("c"), EditorId = editorId };
         var response = await RequestAsync(request, timeout, ct).ConfigureAwait(false);
         return response switch
         {

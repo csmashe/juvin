@@ -9,5 +9,6 @@ public interface IPanelWindowSupport
     ///     nothing where the platform has no such hint or the request fails.
     /// </summary>
     /// <param name="windowHandle">The native window handle Avalonia reports for the panel.</param>
-    void ShowOnAllWorkspaces(nint windowHandle);
+    /// <param name="title">The panel's window title, for compositors that list windows by class and title only.</param>
+    void ShowOnAllWorkspaces(nint windowHandle, string title);
 }

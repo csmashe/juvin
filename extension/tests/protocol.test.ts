@@ -26,6 +26,7 @@ const spec = {
   shortcutPressed: `{"v":1,"type":"shortcut.pressed"}`,
   contextRequest: `{"v":1,"type":"context.request","id":"c1"}`,
   recaptureRequest: `{"v":1,"type":"context.request","id":"c2","editorId":"e-7f3a"}`,
+  hotkeyRequest: `{"v":1,"type":"context.request","id":"c3","requireFocus":true}`,
   contextOk: `{"v":1,"type":"context.response","id":"c1","ok":true,
  "capture":{
    "adapter":"gmail",
@@ -83,6 +84,7 @@ describe("parseIncoming", () => {
     ["pong", spec.pong],
     ["context.request", spec.contextRequest],
     ["context.request with an editor", spec.recaptureRequest],
+    ["context.request from the desktop hotkey", spec.hotkeyRequest],
     ["apply.request", spec.applyRequest],
     ["error", spec.error],
   ])("accepts the spec example for %s", (_, text) => {
@@ -128,6 +130,7 @@ describe("parseIncoming", () => {
   it("rejects requests with missing fields", () => {
     expect(parseIncoming({ v: 1, type: "context.request" }).ok).toBe(false);
     expect(parseIncoming({ v: 1, type: "context.request", id: "c1", editorId: 7 }).ok).toBe(false);
+    expect(parseIncoming({ v: 1, type: "context.request", id: "c1", requireFocus: "yes" }).ok).toBe(false);
     expect(parseIncoming({ v: 1, type: "apply.request", id: "a1", editorId: "e-1", expectedHash: "sha256:00", text: "t" }).ok).toBe(false);
     expect(parseIncoming({ v: 1, type: "apply.request", id: "a1", editorId: "e-1", expectedHash: "sha256:00", start: 3, end: 1, text: "t" }).ok).toBe(false);
     expect(parseIncoming({ v: 1, type: "config", actions: [], adapters: [], shortcut: "x", health: { mode: "cloud", modelReachable: null } }).ok).toBe(false);
