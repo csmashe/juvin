@@ -56,11 +56,8 @@ jobs:
           name: test-results-${{ matrix.os }}
           path: artifacts/test-results
 
-  # CodeQL runs under the same gate. Code scanning is not available on a free private
-  # repository, so the results are not uploaded: the SARIF is kept as an artifact and any
-  # error-level finding fails the job. Once the repository is public or has code security
-  # enabled, switch "upload" to "always" and give this job "security-events: write"; the
-  # findings then appear in the Security tab.
+  # CodeQL runs under the same gate. The findings go to the Security tab and the SARIF is
+  # kept as an artifact as well; any error-level finding fails the job.
   codeql:
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci')
     runs-on: ubuntu-24.04
@@ -68,6 +65,7 @@ jobs:
     permissions:
       contents: read
       actions: read
+      security-events: write
     strategy:
       fail-fast: false
       matrix:
@@ -90,7 +88,7 @@ jobs:
       - uses: github/codeql-action/analyze@v4
         with:
           category: /language:${{ matrix.language }}
-          upload: never
+          upload: always
           output: artifacts/codeql
 
       - name: Upload CodeQL results
