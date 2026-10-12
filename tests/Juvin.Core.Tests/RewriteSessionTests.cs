@@ -210,7 +210,8 @@ public sealed class RewriteSessionTests
     [Fact]
     public void DefaultSelector_BuildsTheRealProviders()
     {
-        var selector = ProviderSelector.CreateDefault(new HttpClient(), new FakeProcessRunner(_ => new ProcessResult(0, "", "")));
+        using var http = new HttpClient();
+        var selector = ProviderSelector.CreateDefault(http, new FakeProcessRunner(_ => new ProcessResult(0, "", "")));
 
         Assert.IsType<OpenAiCompatibleProvider>(selector.Select(new AppSettings()));
         Assert.IsType<CodexCliProvider>(selector.Select(new AppSettings { ProcessingMode = ProcessingMode.Codex }));

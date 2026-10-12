@@ -58,6 +58,7 @@ public sealed class NamedPipeServer : ILocalSocketServer, IDisposable
         var drain = new byte[256];
         while (await pipe.ReadAsync(drain, timeout.Token).ConfigureAwait(false) > 0)
         {
+            // Discard until the client hangs up.
         }
     }
 }

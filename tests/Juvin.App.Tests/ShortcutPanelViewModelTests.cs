@@ -172,20 +172,14 @@ public sealed class ShortcutPanelViewModelTests
     [Fact]
     public void KeyMap_EveryMappedKeyIsAValidChordKey()
     {
-        foreach (var key in Enum.GetValues<Key>())
+        foreach (var name in Enum.GetValues<Key>().Select(ShortcutKeyMap.KeyName).OfType<string>())
         {
-            if (ShortcutKeyMap.KeyName(key) is { } name)
-            {
-                Assert.Contains(name, KeyChord.KeyNames);
-            }
+            Assert.Contains(name, KeyChord.KeyNames);
         }
 
-        foreach (var key in Enum.GetValues<PhysicalKey>())
+        foreach (var name in Enum.GetValues<PhysicalKey>().Select(ShortcutKeyMap.PhysicalKeyName).OfType<string>())
         {
-            if (ShortcutKeyMap.PhysicalKeyName(key) is { } name)
-            {
-                Assert.Contains(name, KeyChord.KeyNames);
-            }
+            Assert.Contains(name, KeyChord.KeyNames);
         }
     }
 
@@ -327,11 +321,12 @@ public sealed class ShortcutPanelViewModelTests
     public async Task ADisposedPanelsPendingResume_DoesNotResumeAnotherRecorder()
     {
         var hotkeys = Hotkeys();
-        var wizard = Create(hotkeys: hotkeys);
-        var settings = Create(hotkeys: hotkeys);
+        using var wizard = Create(hotkeys: hotkeys);
+        using var settings = Create(hotkeys: hotkeys);
 
         wizard.BeginRecording();
         wizard.HandleKey(Key.J, KeyModifiers.Control, PhysicalKey.None);
+        // ReSharper disable once DisposeOnUsingVariable -- the mid-test Dispose is the behaviour under test; the using only covers a failing assertion
         wizard.Dispose();
         Assert.False(hotkeys.Suspended);
         settings.BeginRecording();
@@ -344,12 +339,13 @@ public sealed class ShortcutPanelViewModelTests
     public void Dispose_ResumesWhenClosedRightAfterTheKeyWasReleased()
     {
         var hotkeys = Hotkeys();
-        var vm = Create(hotkeys: hotkeys);
+        using var vm = Create(hotkeys: hotkeys);
         vm.BeginRecording();
         vm.HandleKey(Key.J, KeyModifiers.Control, PhysicalKey.None);
         vm.HandleKeyUp(Key.J);
         Assert.True(hotkeys.Suspended);
 
+        // ReSharper disable once DisposeOnUsingVariable -- the mid-test Dispose is the behaviour under test; the using only covers a failing assertion
         vm.Dispose();
 
         Assert.False(hotkeys.Suspended);

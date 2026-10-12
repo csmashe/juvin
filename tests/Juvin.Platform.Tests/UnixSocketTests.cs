@@ -190,8 +190,9 @@ public sealed class UnixSocketTests : IDisposable
     [UnixFact]
     public void Guard_CanBeReacquiredAfterRelease()
     {
-        var first = new UnixSingleInstanceGuard(SocketPath);
+        using var first = new UnixSingleInstanceGuard(SocketPath);
         Assert.True(first.TryAcquire());
+        // ReSharper disable once DisposeOnUsingVariable -- the mid-test Dispose is the behaviour under test; the using only covers a failing assertion
         first.Dispose();
 
         using var second = new UnixSingleInstanceGuard(SocketPath);

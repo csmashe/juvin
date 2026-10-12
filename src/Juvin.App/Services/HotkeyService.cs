@@ -249,7 +249,7 @@ public sealed class HotkeyService : IHotkeyRestart
     {
         foreach (var backend in _backends)
         {
-            if (backend == active || backend is not IDesktopShortcutInfo desktop || !backend.IsAvailable)
+            if (ReferenceEquals(backend, active) || backend is not IDesktopShortcutInfo desktop || !backend.IsAvailable)
             {
                 continue;
             }
