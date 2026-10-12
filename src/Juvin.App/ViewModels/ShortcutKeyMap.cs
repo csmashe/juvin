@@ -9,6 +9,14 @@ public static class ShortcutKeyMap
 {
     private static readonly Dictionary<Key, string> s_keys = BuildKeys();
 
+    private static readonly Dictionary<PhysicalKey, string> s_physicalAliases = new()
+    {
+        [PhysicalKey.ArrowUp] = "Up",
+        [PhysicalKey.ArrowDown] = "Down",
+        [PhysicalKey.ArrowLeft] = "Left",
+        [PhysicalKey.ArrowRight] = "Right",
+    };
+
     private static readonly HashSet<Key> s_modifierKeys =
     [
         Key.LeftCtrl, Key.RightCtrl, Key.LeftShift, Key.RightShift, Key.LeftAlt, Key.RightAlt, Key.LWin, Key.RWin,
@@ -18,6 +26,22 @@ public static class ShortcutKeyMap
 
     /// <summary>The chord name of <paramref name="key" />, or null when a shortcut cannot use it.</summary>
     public static string? KeyName(Key key) => s_keys.GetValueOrDefault(key);
+
+    /// <summary>The chord name of the US key at position <paramref name="key" />, or null when a shortcut cannot use it.</summary>
+    public static string? PhysicalKeyName(PhysicalKey key)
+    {
+        if (s_physicalAliases.TryGetValue(key, out var alias))
+        {
+            return alias;
+        }
+
+        if (key is >= PhysicalKey.Digit0 and <= PhysicalKey.Digit9)
+        {
+            return (key - PhysicalKey.Digit0).ToString(CultureInfo.InvariantCulture);
+        }
+
+        return Enum.GetName(key) is { } name && KeyChord.KeyNames.Contains(name) ? name : null;
+    }
 
     /// <summary>
     ///     On macOS the Command key (<see cref="KeyModifiers.Meta" />) is the chord's primary modifier and the

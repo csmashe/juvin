@@ -23,6 +23,7 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.Equal("http://localhost:11434", settings.LocalServerUrl);
         Assert.True(settings.LocalThinkingDisabled);
         Assert.Equal("Ctrl+Shift+F", settings.RewriteShortcut);
+        Assert.Null(settings.RewriteShortcutPhysicalKey);
         Assert.False(settings.HistoryEnabled);
         Assert.Equal(30, settings.HistoryRetentionDays);
         Assert.False(settings.ProvenanceCaptureEnabled);
@@ -106,6 +107,18 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.Equal("Be gentle.", Assert.Single(loaded.RewriteInstructionOverrides, pair => pair.Key == "soften").Value);
         Assert.Equal(new CustomRewriteAction("custom-1", "Formal", "Make it formal."), Assert.Single(loaded.CustomRewriteActions));
         Assert.Equal("custom-1", loaded.DefaultRewriteAction);
+    }
+
+    [Fact]
+    public void RewriteShortcutPhysicalKey_RoundTripsThroughTheFile()
+    {
+        var path = _temp.File("settings.json");
+        new SettingsService(path).Update(s => s with { RewriteShortcut = "Ctrl+Shift+A", RewriteShortcutPhysicalKey = "Q" });
+
+        var loaded = new SettingsService(path).Current;
+
+        Assert.Equal("Ctrl+Shift+A", loaded.RewriteShortcut);
+        Assert.Equal("Q", loaded.RewriteShortcutPhysicalKey);
     }
 
     [Theory]

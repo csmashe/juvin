@@ -154,6 +154,21 @@ public sealed class HotkeyServiceTests
     }
 
     [Fact]
+    public async Task PhysicalKeyChange_RestartsWithTheRecordedKeyPosition()
+    {
+        var backend = new FakeHotkeyBackend("evdev");
+        var service = Create(backend);
+        await service.StartAsync(CancellationToken.None);
+        Assert.Equal("F", backend.Chord?.PhysicalKey);
+
+        _settings.Update(settings => settings with { RewriteShortcutPhysicalKey = "R" });
+
+        await WaitUntilAsync(() => backend.StartCount == 2);
+        Assert.Equal("Ctrl+Shift+F", backend.Chord?.ToString());
+        Assert.Equal("R", backend.Chord?.PhysicalKey);
+    }
+
+    [Fact]
     public async Task Stop_StopsTheBackendAndIgnoresLaterSettingsChanges()
     {
         var backend = new FakeHotkeyBackend("sharphook");
