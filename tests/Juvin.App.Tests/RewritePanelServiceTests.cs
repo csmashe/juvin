@@ -20,6 +20,7 @@ public sealed class RewritePanelServiceTests
         var viewModel = new RewritePanelViewModel(
             new ProviderSelector(_ => local, _ => new FakeModelProvider(ProcessingMode.Codex)),
             settings,
+            new FakeHistoryService(),
             localizer,
             action => action()
         );
@@ -55,6 +56,7 @@ public sealed class RewritePanelServiceTests
         var viewModel = new RewritePanelViewModel(
             new ProviderSelector(_ => local, _ => new FakeModelProvider(ProcessingMode.Codex)),
             settings,
+            new FakeHistoryService(),
             localizer,
             action => action()
         );
@@ -85,6 +87,7 @@ public sealed class RewritePanelServiceTests
         var viewModel = new RewritePanelViewModel(
             new ProviderSelector(_ => new FakeModelProvider(ProcessingMode.Local), _ => new FakeModelProvider(ProcessingMode.Codex)),
             settings,
+            new FakeHistoryService(),
             localizer,
             action => action()
         );
@@ -121,6 +124,7 @@ public sealed class RewritePanelServiceTests
         var viewModel = new RewritePanelViewModel(
             new ProviderSelector(_ => new FakeModelProvider(ProcessingMode.Local), _ => new FakeModelProvider(ProcessingMode.Codex)),
             settings,
+            new FakeHistoryService(),
             localizer,
             action => action()
         );

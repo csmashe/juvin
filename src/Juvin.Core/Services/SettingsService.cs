@@ -56,4 +56,10 @@ public sealed class SettingsService : ISettingsService
             SettingsChanged?.Invoke(next);
         }
     }
+
+    public void Reset()
+    {
+        Update(_ => new AppSettings());
+        _store.DeleteCopies();
+    }
 }

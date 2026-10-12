@@ -153,4 +153,27 @@ public sealed class SettingsServiceTests : IDisposable
 
         Assert.Equal(4, raised);
     }
+
+    [Fact]
+    public void Reset_RestoresDefaultsAndRemovesTheCopies()
+    {
+        var path = _temp.File("settings.json");
+        var service = new SettingsService(path);
+        service.Update(s => s with { LocalModel = "llama3", HasCompletedOnboarding = true });
+        service.Update(s => s with { HistoryEnabled = true });
+        File.WriteAllText(path + ".broken-1", "{ old");
+        File.WriteAllText(path + ".bak.broken-1", "{ old");
+        AppSettings? changed = null;
+        service.SettingsChanged += s => changed = s;
+
+        service.Reset();
+
+        Assert.NotNull(changed);
+        Assert.Null(service.Current.LocalModel);
+        Assert.False(service.Current.HasCompletedOnboarding);
+        Assert.False(File.Exists(path + ".bak"));
+        Assert.False(File.Exists(path + ".broken-1"));
+        Assert.False(File.Exists(path + ".bak.broken-1"));
+        Assert.Null(new SettingsService(path).Current.LocalModel);
+    }
 }

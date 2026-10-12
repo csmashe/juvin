@@ -179,6 +179,39 @@ public sealed class AtomicJsonStore<T>
         }
     }
 
+    /// <summary>
+    ///     Deletes the backup, the preserved copies of a corrupt primary, and staging files an
+    ///     interrupted write left behind, for stores whose content must not outlive a deletion.
+    ///     With <paramref name="writtenBefore" /> set, only copies last written before that moment go.
+    /// </summary>
+    public void DeleteCopies(DateTime? writtenBefore = null)
+    {
+        lock (_coordinator.Gate)
+        {
+            var copies = CopiesOf(_filePath).Concat(CopiesOf(_backupPath)).Append(_backupPath);
+            foreach (var copy in copies)
+            {
+                if (File.Exists(copy) && (writtenBefore is null || File.GetLastWriteTimeUtc(copy) < writtenBefore))
+                {
+                    File.Delete(copy);
+                }
+            }
+        }
+    }
+
+    private static IEnumerable<string> CopiesOf(string path)
+    {
+        var directory = Path.GetDirectoryName(path);
+        if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
+        {
+            return [];
+        }
+
+        var name = Path.GetFileName(path);
+        return Directory.EnumerateFiles(directory, name + ".broken-*")
+            .Concat(Directory.EnumerateFiles(directory, AtomicFile.TempFilePattern(name)));
+    }
+
     // ReSharper disable once UnusedMethodReturnValue.Global -- returns the published snapshot for callers that need it
     public T Update(Func<T, T> update) => Update(update, out _);
 

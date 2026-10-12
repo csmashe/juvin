@@ -39,6 +39,7 @@ public sealed partial class RewritePanelViewModel : ObservableObject
     private static readonly TimeSpan s_copiedHintDuration = TimeSpan.FromSeconds(2);
 
     private readonly RewritePromptBuilder? _builder;
+    private readonly IHistoryService _history;
     private readonly Localizer _localizer;
     private readonly Action<Action> _post;
     private readonly ProviderSelector _providers;
@@ -48,6 +49,9 @@ public sealed partial class RewritePanelViewModel : ObservableObject
     private IReadOnlyList<DiffSegment>? _changes;
     private int _copiedHints;
     private int _generation;
+
+    // Marked applied when Apply succeeds.
+    private string? _historyEntryId;
     private RewriteAction _lastAction = RewriteAction.Clearer;
     private string? _lastInstruction;
     private CancellationTokenSource? _recapture;
@@ -116,12 +120,14 @@ public sealed partial class RewritePanelViewModel : ObservableObject
 
     /// <param name="providers">Builds the provider for each new session from the current settings.</param>
     /// <param name="settings">The settings each new session is built from.</param>
+    /// <param name="history">Where completed rewrites are kept when history is turned on.</param>
     /// <param name="localizer">The string table for labels and messages.</param>
     /// <param name="post">Runs an action on the UI thread; tests pass one that runs it inline.</param>
     /// <param name="builder">Builds each session's first prompt; null uses the default budget.</param>
     public RewritePanelViewModel(
         ProviderSelector providers,
         ISettingsService settings,
+        IHistoryService history,
         Localizer localizer,
         Action<Action> post,
         RewritePromptBuilder? builder = null
@@ -130,6 +136,7 @@ public sealed partial class RewritePanelViewModel : ObservableObject
         _providers = providers;
         _builder = builder;
         _settings = settings;
+        _history = history;
         _localizer = localizer;
         _post = post;
         RebuildChips(settings.Current);
@@ -266,6 +273,7 @@ public sealed partial class RewritePanelViewModel : ObservableObject
         var target = _target!;
         var text = ResultText;
         var generation = _generation;
+        var historyEntryId = _historyEntryId;
         Notice = null;
         IsBusy = true;
         ConnectorError? error;
@@ -276,6 +284,11 @@ public sealed partial class RewritePanelViewModel : ObservableObject
         finally
         {
             IsBusy = false;
+        }
+
+        if (error is null && historyEntryId is not null)
+        {
+            WriteHistory(() => _history.MarkApplied(historyEntryId));
         }
 
         if (generation != _generation)
@@ -438,6 +451,7 @@ public sealed partial class RewritePanelViewModel : ObservableObject
         var generation = _generation;
         _lastAction = action;
         _lastInstruction = instruction;
+        _historyEntryId = null;
         ResultText = "";
         ErrorMessage = null;
         // A known-stale capture stays stale until a new capture arrives, so Apply is not offered again.
@@ -446,6 +460,7 @@ public sealed partial class RewritePanelViewModel : ObservableObject
             Notice = null;
         }
 
+        session.CaptureProvenance = _settings.Current.ProvenanceCaptureEnabled;
         IsStreaming = session.Provider.SupportsStreaming;
         WorkingText = _localizer.Format("Panel.Working", session.Provider.DisplayName);
         State = RewritePanelState.Running;
@@ -481,6 +496,7 @@ public sealed partial class RewritePanelViewModel : ObservableObject
             Trace.WriteLine(
                 $"[RewritePanel] {action.Id} done, {result.Text.Length} chars in {(int)result.Provenance.Duration.TotalMilliseconds} ms."
             );
+            RecordHistory(action, capture, result);
         }
         catch (ProviderException ex) when (generation == _generation)
         {
@@ -504,6 +520,58 @@ public sealed partial class RewritePanelViewModel : ObservableObject
             }
 
             run.Dispose();
+        }
+    }
+
+    /// <summary>Keeps the result in history when it is turned on. A failed write never hides the result.</summary>
+    private void RecordHistory(RewriteAction action, CapturedContext capture, RewriteResult result)
+    {
+        var settings = _settings.Current;
+        if (!settings.HistoryEnabled)
+        {
+            return;
+        }
+
+        var provenance = result.Provenance;
+        var entry = new HistoryEntry
+        {
+            Id = HistoryEntry.NewId(),
+            CreatedAt = DateTimeOffset.UtcNow,
+            ActionId = action.Id,
+            ActionTitle = action.DisplayName(_localizer),
+            Subject = capture.Context.Subject,
+            Adapter = capture.Adapter,
+            Draft = capture.Context.Draft,
+            Result = result.Text,
+            Mode = provenance.Mode,
+            ProviderName = provenance.ProviderName,
+            ModelId = provenance.ModelId,
+            RanLocally = provenance.RanLocally,
+            ThreadMessageCount = provenance.ThreadMessageCount,
+            Completeness = provenance.Completeness,
+            Duration = provenance.Duration,
+            // The session captured with the settings it was created from; consent is checked again now.
+            SystemPrompt = settings.ProvenanceCaptureEnabled ? provenance.SystemPromptSent : null,
+            MessagesSent = settings.ProvenanceCaptureEnabled ? provenance.MessagesSent : null,
+        };
+        WriteHistory(() =>
+        {
+            _history.Add(entry);
+            _historyEntryId = entry.Id;
+            Trace.WriteLine($"[RewritePanel] Kept history entry {entry.Id}.");
+            _history.Prune(settings.HistoryRetentionDays, entry.CreatedAt);
+        });
+    }
+
+    private static void WriteHistory(Action write)
+    {
+        try
+        {
+            write();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Trace.WriteLine($"[RewritePanel] Could not save history: {ex.GetType().Name}");
         }
     }
 
@@ -568,13 +636,7 @@ public sealed partial class RewritePanelViewModel : ObservableObject
         }
 
         var context = capture.Context;
-        AdapterLabel = capture.Adapter switch
-        {
-            "gmail" => _localizer["Panel.Adapter.Gmail"],
-            "generic" => _localizer["Panel.Adapter.Generic"],
-            "test-page" => _localizer["Panel.Adapter.TestPage"],
-            var other => other,
-        };
+        AdapterLabel = AdapterLabels.Describe(capture.Adapter, _localizer);
 
         var count = provenance?.ThreadMessageCount ?? context.Thread.Count;
         MessageCountLabel = count == 1 ? _localizer["Panel.MessageCountOne"] : _localizer.Format("Panel.MessageCount", count);

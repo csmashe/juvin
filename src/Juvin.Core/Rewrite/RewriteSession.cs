@@ -32,9 +32,13 @@ public sealed class RewriteSession
         _settings = settings;
         _context = context;
         _builder = builder ?? new RewritePromptBuilder();
+        CaptureProvenance = settings.ProvenanceCaptureEnabled;
     }
 
     public IModelProvider Provider { get; }
+
+    /// <summary>Whether the next run records the prompt and response; the panel refreshes it from the settings before each run.</summary>
+    public bool CaptureProvenance { get; set; }
 
     public IReadOnlyList<ChatMessage> History => _history;
 
@@ -121,7 +125,7 @@ public sealed class RewriteSession
         TimeSpan duration
     )
     {
-        var capture = _settings.ProvenanceCaptureEnabled;
+        var capture = CaptureProvenance;
         return new RewriteProvenance
         {
             Mode = Provider.Mode,
