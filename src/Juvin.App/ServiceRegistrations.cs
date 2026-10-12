@@ -17,6 +17,7 @@ namespace Juvin.App;
 
 public static class ServiceRegistrations
 {
+    private const string RewriteHttpClientKey = "rewrite";
     private static readonly TimeSpan s_rewriteTimeout = TimeSpan.FromMinutes(5);
 
     public static ServiceProvider Build()
@@ -42,9 +43,10 @@ public static class ServiceRegistrations
         services.AddSingleton<IHotkeyRestart>(sp => sp.GetRequiredService<HotkeyService>());
 
         // Rewrites get a longer idle limit than probes: a local model can take minutes to load.
+        services.AddKeyedSingleton(RewriteHttpClientKey, (_, _) => new HttpClient { Timeout = s_rewriteTimeout });
         services.AddSingleton(sp => new RewritePanelViewModel(
             ProviderSelector.CreateDefault(
-                new HttpClient { Timeout = s_rewriteTimeout },
+                sp.GetRequiredKeyedService<HttpClient>(RewriteHttpClientKey),
                 sp.GetRequiredService<IProcessRunner>()
             ),
             sp.GetRequiredService<ISettingsService>(),

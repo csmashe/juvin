@@ -108,7 +108,7 @@ public sealed partial class ShortcutPanelViewModel : ObservableObject, IDisposab
     public string RecorderText => IsRecording ? _localizer["Shortcuts.Recorder.Prompt"] : ShortcutText;
     public bool HasRecordHint => !string.IsNullOrWhiteSpace(RecordHint);
     public bool ShowDesktopShortcut => DesktopShortcut is not null;
-    public bool ShowSignInNote => DesktopShortcut?.RequiresSessionRestartToApply == true;
+    public bool ShowSignInNote => DesktopShortcut is { RequiresSessionRestartToApply: true };
     public bool HasDesktopShortcutMessage => !string.IsNullOrWhiteSpace(DesktopShortcutMessage);
 
     private bool IsDisposed => _lifetime.IsCancellationRequested;

@@ -208,7 +208,13 @@ public sealed class ConnectorService
         }
 
         Trace.WriteLine($"[ConnectorService] Hotkey capture asked {clients.Count} browsers.");
-        Report(chosen!.Value.Session, number, chosen.Value.Result);
+        if (chosen is not { } winner)
+        {
+            ReleaseCapture();
+            return;
+        }
+
+        Report(winner.Session, number, winner.Result);
     }
 
     /// <summary>

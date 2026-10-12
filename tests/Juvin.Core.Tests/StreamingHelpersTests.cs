@@ -11,7 +11,8 @@ public sealed class StreamingHelpersTests
     {
         const string input = ": keep-alive\n\ndata: one\ndata: two\n\nevent: custom\nid: 7\ndata: three\n\nevent: dropped\n\ndata: four\n\n";
 
-        var events = await Collect(SseEventDecoder.DecodeAsync(new StringReader(input)));
+        using var reader = new StringReader(input);
+        var events = await Collect(SseEventDecoder.DecodeAsync(reader));
 
         Assert.Equal(["one\ntwo", "three", "four"], events.Select(e => e.Data));
         Assert.Equal("custom", events[1].EventType);
@@ -22,7 +23,8 @@ public sealed class StreamingHelpersTests
     [Fact]
     public async Task SseDecoder_DropsAnUnterminatedEvent()
     {
-        var events = await Collect(SseEventDecoder.DecodeAsync(new StringReader("data: one\n\ndata: partial")));
+        using var reader = new StringReader("data: one\n\ndata: partial");
+        var events = await Collect(SseEventDecoder.DecodeAsync(reader));
 
         Assert.Equal("one", Assert.Single(events).Data);
     }

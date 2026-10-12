@@ -9,3 +9,17 @@ paths-ignore:
 query-filters:
   - exclude:
       id: cs/missed-readonly-modifier
+
+  # Doc comments carry only what the code does not show, so many have a <param> or <remarks> and no <summary>.
+  - exclude:
+      id: cs/xmldoc/missing-summary
+  # Catch-all clauses are deliberate at the process edges (tray, hotkey, sockets, settings): a failure there is
+  # logged and reported to the user rather than taking the app down.
+  - exclude:
+      id: cs/catch-of-all-exceptions
+  # The manual dispose-in-finally sites transfer ownership (handles, responses, cancellation sources) on success.
+  - exclude:
+      id: cs/missed-using-statement
+  # Diff and framing loops are long by nature; splitting them hides the algorithm.
+  - exclude:
+      id: cs/complex-block

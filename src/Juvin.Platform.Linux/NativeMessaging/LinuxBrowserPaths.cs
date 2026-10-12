@@ -49,9 +49,8 @@ internal sealed record LinuxBrowserPaths(
     {
         const UnixFileMode anyExecute = UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute;
 
-        foreach (var directory in ExecutableDirectories)
+        foreach (var candidate in ExecutableDirectories.Select(directory => Path.Join(directory, name)))
         {
-            var candidate = Path.Join(directory, name);
             try
             {
                 if (File.Exists(candidate) && (File.GetUnixFileMode(candidate) & anyExecute) != 0)
