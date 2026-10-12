@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
@@ -15,12 +16,22 @@ public partial class PrivacyAndDataSection : UserControl
         InitializeComponent();
     }
 
-    // ReSharper disable once AsyncVoidEventHandlerMethod -- Avalonia click handlers must return void; the launcher throws nothing the user can act on
+    // ReSharper disable once AsyncVoidEventHandlerMethod -- Avalonia click handlers must return void; every failure is caught below
     private async void OnOpenFolderClick(object? sender, RoutedEventArgs e)
     {
-        if (DataContext is PrivacyAndDataSectionViewModel viewModel && TopLevel.GetTopLevel(this) is { } topLevel)
+        if (DataContext is not PrivacyAndDataSectionViewModel viewModel || TopLevel.GetTopLevel(this) is not { } topLevel)
         {
+            return;
+        }
+
+        try
+        {
+            Directory.CreateDirectory(viewModel.DataFolder);
             await topLevel.Launcher.LaunchDirectoryInfoAsync(new DirectoryInfo(viewModel.DataFolder));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Trace.WriteLine($"[PrivacyAndDataSection] Could not open the data folder: {ex.GetType().Name}");
         }
     }
 
