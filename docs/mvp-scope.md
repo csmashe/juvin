@@ -286,7 +286,7 @@ Result (October 10, 2026): done on Linux and Windows; macOS assumed. With the ap
 
 ### Phase 4: shortcut and rewrite panel (2 weeks)
 
-- Global hotkey per platform, Shortcuts section, wizard step 3, DE shortcut writers on Linux.
+- Global hotkey per platform, Shortcuts section, wizard step 4 (the connector slice added a step), DE shortcut writers on Linux.
 - Rewrite panel window: actions, streaming preview, diff toggle, follow-ups, Apply/Copy/Recapture, context chips.
 - Apply safety: editor and hash verification, "Draft changed" path.
 - Rewrite actions section with editable prompts.
