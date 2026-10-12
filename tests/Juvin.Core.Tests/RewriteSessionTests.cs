@@ -220,4 +220,17 @@ public sealed class RewriteSessionTests
     private ProviderSelector Selector() => new(_ => _local, _ => _codex);
 
     private RewriteSession Session(AppSettings settings) => new(Selector(), settings, s_context);
+
+    [Fact]
+    public async Task Provenance_FollowsCaptureProvenanceSetBetweenRuns()
+    {
+        var session = Session(new AppSettings());
+        await session.RunAsync(RewriteAction.Soften, null, null, CancellationToken.None);
+        session.CaptureProvenance = true;
+
+        var result = await session.RunAsync(RewriteAction.Custom, "Warmer", null, CancellationToken.None);
+
+        Assert.NotNull(result.Provenance.SystemPromptSent);
+        Assert.Equal(3, result.Provenance.MessagesSent!.Count);
+    }
 }

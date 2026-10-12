@@ -14,6 +14,7 @@ public sealed class RewritePanelViewModelTests
 
     private readonly FakeModelProvider _codex = new(ProcessingMode.Codex) { SupportsStreaming = false };
     private readonly Localizer _localizer = new();
+    private readonly FakeHistoryService _history = new();
     private readonly FakeSettingsService _settings = new();
     private readonly FakeRewriteTarget _target = new();
     private FakeModelProvider _local = new(ProcessingMode.Local);
@@ -298,6 +299,7 @@ public sealed class RewritePanelViewModelTests
         var vm = new RewritePanelViewModel(
             new ProviderSelector(s => s.LocalModel == "fixed" ? _local : broken, _ => _codex),
             _settings,
+            _history,
             _localizer,
             action => action()
         );
@@ -656,8 +658,157 @@ public sealed class RewritePanelViewModelTests
         Assert.True(vm.ShowCopied);
     }
 
+    [Fact]
+    public async Task WithHistoryOn_EachCompletedRunIsKept()
+    {
+        _settings.Update(s => s with { HistoryEnabled = true, HistoryRetentionDays = 7 });
+        var vm = Create();
+
+        await vm.LoadAsync(_target, Capture());
+        vm.FollowUpText = "shorter please";
+        await vm.SendFollowUpCommand.ExecuteAsync(null);
+
+        Assert.Equal(2, _history.Entries.Count);
+        Assert.Equal("reply 3", _history.Entries[0].Result);
+        Assert.Equal("custom", _history.Entries[0].ActionId);
+        var first = _history.Entries[1];
+        Assert.Equal(32, first.Id.Length);
+        Assert.Equal("clearer", first.ActionId);
+        Assert.Equal("Make clearer", first.ActionTitle);
+        Assert.Equal("Re: timeline", first.Subject);
+        Assert.Equal("gmail", first.Adapter);
+        Assert.Equal(Draft, first.Draft);
+        Assert.Equal("reply 1", first.Result);
+        Assert.Equal(ProcessingMode.Local, first.Mode);
+        Assert.Equal("Fake Local", first.ProviderName);
+        Assert.Equal("fake-model", first.ModelId);
+        Assert.True(first.RanLocally);
+        Assert.Equal(2, first.ThreadMessageCount);
+        Assert.Equal(ThreadCompleteness.EntireThread, first.Completeness);
+        Assert.False(first.Applied);
+        Assert.Null(first.SystemPrompt);
+        Assert.Null(first.MessagesSent);
+        Assert.All(_history.Prunes, prune => Assert.Equal(7, prune.RetentionDays));
+        Assert.Equal(2, _history.Prunes.Count);
+    }
+
+    [Fact]
+    public async Task WithProvenanceCaptureOn_TheEntryKeepsThePrompts()
+    {
+        _settings.Update(s => s with { HistoryEnabled = true, ProvenanceCaptureEnabled = true });
+        var vm = Create();
+
+        await vm.LoadAsync(_target, Capture());
+        vm.FollowUpText = "shorter please";
+        await vm.SendFollowUpCommand.ExecuteAsync(null);
+
+        var followUp = _history.Entries[0];
+        Assert.Equal(_local.Requests[1].SystemPrompt, followUp.SystemPrompt);
+        Assert.Equal(_local.Requests[1].Messages, followUp.MessagesSent);
+        Assert.Equal(3, followUp.MessagesSent!.Count);
+        Assert.Contains(Draft, followUp.MessagesSent[0].Content);
+    }
+
+    [Fact]
+    public async Task ProvenanceCaptureTurnedOnMidSession_KeepsPromptsFromTheNextRun()
+    {
+        _settings.Update(s => s with { HistoryEnabled = true });
+        var vm = Create();
+        await vm.LoadAsync(_target, Capture());
+        _settings.Update(s => s with { ProvenanceCaptureEnabled = true });
+
+        vm.FollowUpText = "shorter please";
+        await vm.SendFollowUpCommand.ExecuteAsync(null);
+
+        Assert.Null(_history.Entries[1].MessagesSent);
+        Assert.Equal(3, _history.Entries[0].MessagesSent!.Count);
+    }
+
+    [Fact]
+    public async Task ProvenanceCaptureTurnedOffMidSession_StopsKeepingPrompts()
+    {
+        _settings.Update(s => s with { HistoryEnabled = true, ProvenanceCaptureEnabled = true });
+        var vm = Create();
+        await vm.LoadAsync(_target, Capture());
+        _settings.Update(s => s with { ProvenanceCaptureEnabled = false });
+
+        vm.FollowUpText = "shorter please";
+        await vm.SendFollowUpCommand.ExecuteAsync(null);
+
+        Assert.NotNull(_history.Entries[1].MessagesSent);
+        Assert.Null(_history.Entries[0].SystemPrompt);
+        Assert.Null(_history.Entries[0].MessagesSent);
+    }
+
+    [Fact]
+    public async Task WithHistoryOff_NothingIsKept()
+    {
+        var vm = Create();
+
+        await vm.LoadAsync(_target, Capture());
+        await vm.ApplyCommand.ExecuteAsync(null);
+
+        Assert.Empty(_history.Entries);
+        Assert.Empty(_history.Prunes);
+    }
+
+    [Fact]
+    public async Task ASuccessfulApply_MarksTheEntryApplied()
+    {
+        _settings.Update(s => s with { HistoryEnabled = true });
+        var vm = Create();
+        await vm.LoadAsync(_target, Capture());
+        await vm.SelectActionCommand.ExecuteAsync(vm.Actions.Single(chip => chip.Action == RewriteAction.Shorter));
+
+        await vm.ApplyCommand.ExecuteAsync(null);
+
+        Assert.True(_history.Entries[0].Applied);
+        Assert.False(_history.Entries[1].Applied);
+    }
+
+    [Fact]
+    public async Task ARefusedApply_LeavesTheEntryUnapplied()
+    {
+        _settings.Update(s => s with { HistoryEnabled = true });
+        _target.ApplyError = new ConnectorError("draft-changed", "The draft changed since it was captured.");
+        var vm = Create();
+        await vm.LoadAsync(_target, Capture());
+
+        await vm.ApplyCommand.ExecuteAsync(null);
+
+        Assert.False(Assert.Single(_history.Entries).Applied);
+    }
+
+    [Fact]
+    public async Task AFailedRun_KeepsNothing()
+    {
+        _settings.Update(s => s with { HistoryEnabled = true });
+        _local.Failure = new ProviderException(ProviderFailureKind.Unreachable, "The local model server did not respond in time.");
+        var vm = Create();
+
+        await vm.LoadAsync(_target, Capture());
+
+        Assert.True(vm.HasError);
+        Assert.Empty(_history.Entries);
+    }
+
+    [Fact]
+    public async Task AHistoryWriteFailure_StillShowsTheResult()
+    {
+        _settings.Update(s => s with { HistoryEnabled = true });
+        _history.Failure = new IOException("disk full");
+        var vm = Create();
+
+        await vm.LoadAsync(_target, Capture());
+        await vm.ApplyCommand.ExecuteAsync(null);
+
+        Assert.Equal(RewritePanelState.Done, vm.State);
+        Assert.Equal("reply 1", vm.ResultText);
+        Assert.Single(_target.Applied);
+    }
+
     private RewritePanelViewModel Create(RewritePromptBuilder? builder = null) =>
-        new(new ProviderSelector(_ => _local, _ => _codex), _settings, _localizer, action => action(), builder);
+        new(new ProviderSelector(_ => _local, _ => _codex), _settings, _history, _localizer, action => action(), builder);
 
     /// <summary>The smallest budget that keeps the newest <paramref name="count" /> messages of <see cref="Capture" />.</summary>
     private static RewritePromptBuilder BuilderKeeping(int count)

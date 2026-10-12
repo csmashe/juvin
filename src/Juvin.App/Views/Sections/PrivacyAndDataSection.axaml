@@ -21,9 +21,28 @@
                                     <TextBlock Classes="row-title" Text="{loc:Str PrivacyAndData.History}" />
                                     <TextBlock Classes="row-hint" Text="{loc:Str PrivacyAndData.HistoryHint}" />
                                 </StackPanel>
-                                <Border Grid.Column="1" Classes="badge">
-                                    <TextBlock Classes="badge-text" Text="{loc:Str Common.ComingSoon}" />
-                                </Border>
+                                <ToggleSwitch Grid.Column="1"
+                                              VerticalAlignment="Center"
+                                              IsChecked="{Binding HistoryEnabled}" />
+                            </Grid>
+                        </Border>
+                        <Border Classes="section-row divided">
+                            <Grid ColumnDefinitions="*,220" ColumnSpacing="16">
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Classes="row-title" Text="{loc:Str PrivacyAndData.Retention}" />
+                                    <TextBlock Classes="row-hint" Text="{loc:Str PrivacyAndData.RetentionHint}" />
+                                </StackPanel>
+                                <ComboBox Grid.Column="1"
+                                          HorizontalAlignment="Stretch"
+                                          VerticalAlignment="Center"
+                                          ItemsSource="{Binding RetentionOptions}"
+                                          SelectedItem="{Binding SelectedRetention}">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:RetentionOption">
+                                            <TextBlock Text="{Binding Title}" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
                             </Grid>
                         </Border>
                         <Border Classes="section-row divided">
@@ -32,9 +51,9 @@
                                     <TextBlock Classes="row-title" Text="{loc:Str PrivacyAndData.Provenance}" />
                                     <TextBlock Classes="row-hint" Text="{loc:Str PrivacyAndData.ProvenanceHint}" />
                                 </StackPanel>
-                                <Border Grid.Column="1" Classes="badge">
-                                    <TextBlock Classes="badge-text" Text="{loc:Str Common.ComingSoon}" />
-                                </Border>
+                                <ToggleSwitch Grid.Column="1"
+                                              VerticalAlignment="Center"
+                                              IsChecked="{Binding ProvenanceCaptureEnabled}" />
                             </Grid>
                         </Border>
                         <Border Classes="section-row divided">
@@ -62,6 +81,44 @@
                                     <TextBlock Classes="row-title" Text="{loc:Str PrivacyAndData.DataFolder}" />
                                     <TextBlock Classes="row-hint" Text="{Binding DataFolder}" />
                                 </StackPanel>
+                                <Button Grid.Column="1"
+                                        VerticalAlignment="Center"
+                                        Content="{loc:Str PrivacyAndData.OpenFolder}"
+                                        Click="OnOpenFolderClick" />
+                            </Grid>
+                        </Border>
+                        <Border Classes="section-row divided">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Classes="row-title" Text="{loc:Str PrivacyAndData.SavedHistory}" />
+                                    <TextBlock Classes="row-hint" Text="{Binding HistorySummary}" />
+                                </StackPanel>
+                                <Button Grid.Column="1"
+                                        VerticalAlignment="Center"
+                                        Content="{loc:Str PrivacyAndData.Export}"
+                                        IsEnabled="{Binding HasEntries}"
+                                        Click="OnExportClick" />
+                            </Grid>
+                        </Border>
+                        <Border Classes="section-row divided">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Classes="row-title" Text="{loc:Str PrivacyAndData.Clear}" />
+                                    <TextBlock Classes="row-hint" Text="{loc:Str PrivacyAndData.ClearHint}" />
+                                </StackPanel>
+                                <Button Grid.Column="1"
+                                        VerticalAlignment="Center"
+                                        Content="{loc:Str PrivacyAndData.Clear}"
+                                        Command="{Binding RequestClearCommand}"
+                                        IsVisible="{Binding !IsConfirmingClear}" />
+                                <StackPanel Grid.Column="1"
+                                            Orientation="Horizontal"
+                                            Spacing="8"
+                                            VerticalAlignment="Center"
+                                            IsVisible="{Binding IsConfirmingClear}">
+                                    <Button Content="{loc:Str PrivacyAndData.ConfirmClear}" Command="{Binding ConfirmClearCommand}" />
+                                    <Button Content="{loc:Str PrivacyAndData.Cancel}" Command="{Binding CancelClearCommand}" />
+                                </StackPanel>
                             </Grid>
                         </Border>
                         <Border Classes="section-row divided">
@@ -70,10 +127,23 @@
                                     <TextBlock Classes="row-title" Text="{loc:Str PrivacyAndData.DeleteAll}" />
                                     <TextBlock Classes="row-hint" Text="{loc:Str PrivacyAndData.DeleteAllHint}" />
                                 </StackPanel>
-                                <Border Grid.Column="1" Classes="badge">
-                                    <TextBlock Classes="badge-text" Text="{loc:Str Common.ComingSoon}" />
-                                </Border>
+                                <Button Grid.Column="1"
+                                        VerticalAlignment="Center"
+                                        Content="{loc:Str PrivacyAndData.DeleteAll}"
+                                        Command="{Binding RequestDeleteAllCommand}"
+                                        IsVisible="{Binding !IsConfirmingDeleteAll}" />
+                                <StackPanel Grid.Column="1"
+                                            Orientation="Horizontal"
+                                            Spacing="8"
+                                            VerticalAlignment="Center"
+                                            IsVisible="{Binding IsConfirmingDeleteAll}">
+                                    <Button Content="{loc:Str PrivacyAndData.ConfirmDeleteAll}" Command="{Binding ConfirmDeleteAllCommand}" />
+                                    <Button Content="{loc:Str PrivacyAndData.Cancel}" Command="{Binding CancelDeleteAllCommand}" />
+                                </StackPanel>
                             </Grid>
+                        </Border>
+                        <Border Classes="section-row divided" IsVisible="{Binding HasError}">
+                            <TextBlock Classes="row-hint" Margin="0" Text="{Binding ErrorMessage}" />
                         </Border>
                     </StackPanel>
                 </Border>

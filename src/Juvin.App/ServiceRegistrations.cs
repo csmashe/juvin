@@ -25,6 +25,7 @@ public static class ServiceRegistrations
         var services = new ServiceCollection();
 
         services.AddSingleton<ISettingsService, SettingsService>();
+        services.AddSingleton<IHistoryService, HistoryService>();
         services.AddSingleton<Localizer>();
         AddPlatform(services);
 
@@ -50,6 +51,7 @@ public static class ServiceRegistrations
                 sp.GetRequiredService<IProcessRunner>()
             ),
             sp.GetRequiredService<ISettingsService>(),
+            sp.GetRequiredService<IHistoryService>(),
             sp.GetRequiredService<Localizer>(),
             action => Dispatcher.UIThread.Post(action)
         ));
