@@ -10,6 +10,7 @@ public sealed class ControlCommandHandlerTests
     [InlineData("""{"v":1,"cmd":"show"}""", ControlCommand.Show)]
     [InlineData("""{"cmd":"ping","v":1}""", ControlCommand.Ping)]
     [InlineData("""{"v":1,"cmd":"ping","extra":true}""", ControlCommand.Ping)]
+    [InlineData("""{"v":1,"cmd":"trigger"}""", ControlCommand.Trigger)]
     public void Parse_AcceptsKnownCommands(string line, ControlCommand expected)
     {
         var (command, error) = ControlCommandHandler.Parse(line);
@@ -46,6 +47,22 @@ public sealed class ControlCommandHandlerTests
         var reply = await handler.HandleAsync(ControlCommandHandler.ShowRequestLine, CancellationToken.None);
 
         Assert.Equal(1, shown);
+        Assert.Equal("""{"v":1,"ok":true}""", reply);
+    }
+
+    [Fact]
+    public async Task Trigger_RaisesTriggerRequestedAndRepliesOk()
+    {
+        var handler = new ControlCommandHandler();
+        var triggered = 0;
+        var shown = 0;
+        handler.TriggerRequested += () => triggered++;
+        handler.ShowRequested += () => shown++;
+
+        var reply = await handler.HandleAsync(ControlCommandHandler.TriggerRequestLine, CancellationToken.None);
+
+        Assert.Equal(1, triggered);
+        Assert.Equal(0, shown);
         Assert.Equal("""{"v":1,"ok":true}""", reply);
     }
 

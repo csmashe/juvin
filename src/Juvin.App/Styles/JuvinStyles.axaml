@@ -1,7 +1,8 @@
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ic="using:FluentIcons.Avalonia"
-        xmlns:loc="using:Juvin.App.Localization">
+        xmlns:loc="using:Juvin.App.Localization"
+        xmlns:controls="using:Juvin.App.Views.Controls">
 
     <Styles.Resources>
         <SolidColorBrush x:Key="JuvinNavyBrush" Color="#0F2D5B" />
@@ -171,6 +172,26 @@
     </Style>
     <Style Selector="ic|SymbolIcon.status.attention">
         <Setter Property="Foreground" Value="{StaticResource JuvinAccentBrush}" />
+    </Style>
+
+    <!-- Shortcut recorder -->
+    <Style Selector="controls|ShortcutRecorder.shortcut-recorder">
+        <Setter Property="Background" Value="#1B2430" />
+        <Setter Property="BorderBrush" Value="#223243" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Padding" Value="12,6" />
+        <Setter Property="MinWidth" Value="160" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="controls|ShortcutRecorder.shortcut-recorder:focus-visible, controls|ShortcutRecorder.shortcut-recorder.recording">
+        <Setter Property="BorderBrush" Value="{StaticResource JuvinNavTextBrush}" />
+    </Style>
+    <Style Selector="TextBlock.shortcut-recorder-text">
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="HorizontalAlignment" Value="Center" />
+        <Setter Property="Foreground" Value="{StaticResource JuvinPrimaryTextBrush}" />
     </Style>
 
     <!-- Rewrite panel -->

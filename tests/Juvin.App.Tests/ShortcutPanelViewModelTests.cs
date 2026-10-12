@@ -1,0 +1,359 @@
+using Avalonia.Input;
+using Juvin.App.Services;
+using Juvin.App.Tests.Fakes;
+using Juvin.App.ViewModels;
+using Juvin.Core.Hotkeys;
+using Juvin.Core.Localization;
+using Juvin.Platform.Hotkeys;
+
+namespace Juvin.App.Tests;
+
+public sealed class ShortcutPanelViewModelTests
+{
+    private readonly Localizer _localizer = new();
+    private readonly FakeSettingsService _settings = new();
+
+    [Fact]
+    public void Recording_SavesTheChordInCanonicalForm()
+    {
+        var vm = Create();
+        vm.BeginRecording();
+
+        Assert.True(vm.HandleKey(Key.J, KeyModifiers.Control | KeyModifiers.Alt));
+
+        Assert.Equal("Ctrl+Alt+J", _settings.Current.RewriteShortcut);
+        Assert.False(vm.IsRecording);
+        Assert.Equal("Ctrl+Alt+J", vm.RecorderText);
+    }
+
+    [Fact]
+    public void Recording_ShowsThePromptWhileRecording()
+    {
+        var vm = Create();
+
+        vm.BeginRecording();
+
+        Assert.Equal(_localizer["Shortcuts.Recorder.Prompt"], vm.RecorderText);
+    }
+
+    [Fact]
+    public void Recording_OnMac_SwapsCommandAndControl()
+    {
+        var vm = Create(isMac: true);
+
+        vm.BeginRecording();
+        vm.HandleKey(Key.J, KeyModifiers.Meta | KeyModifiers.Shift);
+        Assert.Equal("Ctrl+Shift+J", _settings.Current.RewriteShortcut);
+        Assert.Equal("Cmd+Shift+J", vm.ShortcutText);
+
+        vm.BeginRecording();
+        vm.HandleKey(Key.K, KeyModifiers.Control);
+        Assert.Equal("Super+K", _settings.Current.RewriteShortcut);
+        Assert.Equal("Ctrl+K", vm.ShortcutText);
+    }
+
+    [Fact]
+    public void Recording_OffMac_MapsMetaToSuper()
+    {
+        var vm = Create();
+        vm.BeginRecording();
+
+        vm.HandleKey(Key.F5, KeyModifiers.Meta);
+
+        Assert.Equal("Super+F5", _settings.Current.RewriteShortcut);
+    }
+
+    [Theory]
+    [InlineData(Key.J, KeyModifiers.None)]
+    [InlineData(Key.CapsLock, KeyModifiers.Control)]
+    [InlineData(Key.LeftCtrl, KeyModifiers.Control)]
+    [InlineData(Key.LeftShift, KeyModifiers.Shift)]
+    public void Recording_RefusesAKeyWithoutModifiersAModifierAloneOrAnUnusableKey(Key key, KeyModifiers modifiers)
+    {
+        var vm = Create();
+        vm.BeginRecording();
+
+        Assert.True(vm.HandleKey(key, modifiers));
+
+        Assert.Equal(0, _settings.SaveCount);
+        Assert.True(vm.IsRecording);
+        Assert.True(vm.HasRecordHint);
+    }
+
+    [Fact]
+    public void Escape_CancelsWithoutSaving()
+    {
+        var vm = Create();
+        vm.BeginRecording();
+
+        Assert.True(vm.HandleKey(Key.Escape, KeyModifiers.Control));
+
+        Assert.False(vm.IsRecording);
+        Assert.Equal(0, _settings.SaveCount);
+        Assert.Equal("Ctrl+Shift+F", vm.RecorderText);
+    }
+
+    [Fact]
+    public void Keys_AreIgnoredWhenNotRecording()
+    {
+        var vm = Create();
+
+        Assert.False(vm.HandleKey(Key.J, KeyModifiers.Control));
+        Assert.Equal(0, _settings.SaveCount);
+    }
+
+    [Fact]
+    public void BareTab_IsLeftForFocusNavigation()
+    {
+        var vm = Create();
+        vm.BeginRecording();
+
+        Assert.False(vm.HandleKey(Key.Tab, KeyModifiers.None));
+    }
+
+    [Theory]
+    [InlineData(Key.A, "A")]
+    [InlineData(Key.Z, "Z")]
+    [InlineData(Key.D0, "0")]
+    [InlineData(Key.D9, "9")]
+    [InlineData(Key.F1, "F1")]
+    [InlineData(Key.F24, "F24")]
+    [InlineData(Key.Back, "Backspace")]
+    [InlineData(Key.PageDown, "PageDown")]
+    [InlineData(Key.OemComma, "Comma")]
+    [InlineData(Key.OemQuestion, "Slash")]
+    [InlineData(Key.OemTilde, "Backquote")]
+    public void KeyMap_NamesKeysAsTheChordDoes(Key key, string name)
+    {
+        Assert.Equal(name, ShortcutKeyMap.KeyName(key));
+        Assert.True(KeyChord.TryCreate(ChordModifiers.Ctrl, name, out _));
+    }
+
+    [Fact]
+    public void KeyMap_EveryMappedKeyIsAValidChordKey()
+    {
+        foreach (var key in Enum.GetValues<Key>())
+        {
+            if (ShortcutKeyMap.KeyName(key) is { } name)
+            {
+                Assert.Contains(name, KeyChord.KeyNames);
+            }
+        }
+    }
+
+    [Fact]
+    public void BackendOptions_ListAutomaticThenEachAvailableBackend()
+    {
+        var vm = Create(hotkeys: Hotkeys(new FakeHotkeyBackend("evdev"), new FakeHotkeyBackend("x11", isAvailable: false), new FakeHotkeyBackend("sharphook")));
+
+        Assert.Equal([null, "evdev", "sharphook"], vm.BackendOptions.Select(option => option.Id));
+        Assert.Equal(["Automatic", "Keyboard devices", "System keyboard hook"], vm.BackendOptions.Select(option => option.Name));
+        Assert.Null(vm.SelectedBackend?.Id);
+        Assert.Equal(0, _settings.SaveCount);
+    }
+
+    [Fact]
+    public void PickingABackend_SavesItsId_AndAutomaticClearsIt()
+    {
+        var vm = Create(hotkeys: Hotkeys(new FakeHotkeyBackend("evdev"), new FakeHotkeyBackend("sharphook")));
+
+        vm.SelectedBackend = vm.BackendOptions.Single(option => option.Id == "sharphook");
+        Assert.Equal("sharphook", _settings.Current.HotkeyBackend);
+
+        vm.SelectedBackend = vm.BackendOptions[0];
+        Assert.Null(_settings.Current.HotkeyBackend);
+    }
+
+    [Fact]
+    public async Task Status_NamesTheListeningBackend()
+    {
+        var hotkeys = Hotkeys(new FakeHotkeyBackend("evdev"));
+        var vm = Create(hotkeys: hotkeys);
+
+        await hotkeys.StartAsync(CancellationToken.None);
+
+        Assert.True(vm.IsListening);
+        Assert.Equal("Listening through Keyboard devices.", vm.StatusText);
+    }
+
+    [Fact]
+    public async Task Status_ShowsTheBackendFailure()
+    {
+        var hotkeys = Hotkeys(new FakeHotkeyBackend("evdev") { StartFailure = "No keyboard access." });
+        var vm = Create(hotkeys: hotkeys);
+
+        await hotkeys.StartAsync(CancellationToken.None);
+
+        Assert.False(vm.IsListening);
+        Assert.Equal("Keyboard devices could not start: No keyboard access.", vm.StatusText);
+    }
+
+    [Fact]
+    public async Task Status_ReportsNoBackendAndInvalidShortcut()
+    {
+        var hotkeys = Hotkeys();
+        var vm = Create(hotkeys: hotkeys);
+
+        await hotkeys.StartAsync(CancellationToken.None);
+        Assert.Equal(_localizer["Shortcuts.Status.NoBackend"], vm.StatusText);
+
+        _settings.Update(s => s with { RewriteShortcut = "F" });
+        await hotkeys.StartAsync(CancellationToken.None);
+        Assert.Equal(_localizer["Shortcuts.Status.InvalidShortcut"], vm.StatusText);
+    }
+
+    [Fact]
+    public async Task Press_ShowsDetected()
+    {
+        var backend = new FakeHotkeyBackend("evdev");
+        var hotkeys = Hotkeys(backend);
+        var vm = Create(hotkeys: hotkeys);
+        await hotkeys.StartAsync(CancellationToken.None);
+
+        backend.Press();
+
+        Assert.True(vm.IsDetected);
+    }
+
+    [Fact]
+    public async Task DesktopShortcutBackend_OffersRemovalAndTheSignInNote()
+    {
+        var backend = new FakeDesktopShortcutBackend(requiresSessionRestart: true);
+        var hotkeys = Hotkeys(backend);
+        var vm = Create(hotkeys: hotkeys);
+        Assert.False(vm.ShowDesktopShortcut);
+
+        await hotkeys.StartAsync(CancellationToken.None);
+        Assert.True(vm.ShowDesktopShortcut);
+        Assert.True(vm.ShowSignInNote);
+
+        await vm.RemoveDesktopShortcutCommand.ExecuteAsync(null);
+        Assert.Equal(1, backend.RemoveCount);
+        // Removal stops the backend and hides the block; the message survives that refresh.
+        Assert.False(vm.ShowDesktopShortcut);
+        Assert.Equal(_localizer["Shortcuts.DesktopShortcut.RemovedUntilSignIn"], vm.DesktopShortcutMessage);
+    }
+
+    [Fact]
+    public async Task DesktopShortcutBackend_HidesTheNoteWhenNoSignInIsNeeded()
+    {
+        var hotkeys = Hotkeys(new FakeDesktopShortcutBackend(requiresSessionRestart: false));
+        var vm = Create(hotkeys: hotkeys);
+
+        await hotkeys.StartAsync(CancellationToken.None);
+
+        Assert.True(vm.ShowDesktopShortcut);
+        Assert.False(vm.ShowSignInNote);
+
+        await vm.RemoveDesktopShortcutCommand.ExecuteAsync(null);
+        Assert.Equal(_localizer["Shortcuts.DesktopShortcut.Removed"], vm.DesktopShortcutMessage);
+    }
+
+    [Fact]
+    public async Task Recording_SuspendsTheHotkey_UntilBlurEscapeOrSave()
+    {
+        var hotkeys = Hotkeys();
+        var vm = Create(hotkeys: hotkeys);
+
+        vm.BeginRecording();
+        Assert.True(hotkeys.Suspended);
+        vm.CancelRecording();
+        Assert.False(hotkeys.Suspended);
+
+        vm.BeginRecording();
+        vm.HandleKey(Key.Escape, KeyModifiers.None);
+        Assert.False(hotkeys.Suspended);
+
+        vm.BeginRecording();
+        vm.HandleKey(Key.J, KeyModifiers.Control);
+        Assert.True(hotkeys.Suspended);
+        await Task.Delay(ShortcutPanelViewModel.ResumeGrace * 3);
+        Assert.True(hotkeys.Suspended);
+        vm.HandleKeyUp(Key.LeftCtrl);
+        vm.HandleKeyUp(Key.J);
+        await Task.Delay(ShortcutPanelViewModel.ResumeGrace * 3);
+        Assert.False(hotkeys.Suspended);
+    }
+
+    [Fact]
+    public async Task ADisposedPanelsPendingResume_DoesNotResumeAnotherRecorder()
+    {
+        var hotkeys = Hotkeys();
+        var wizard = Create(hotkeys: hotkeys);
+        var settings = Create(hotkeys: hotkeys);
+
+        wizard.BeginRecording();
+        wizard.HandleKey(Key.J, KeyModifiers.Control);
+        wizard.Dispose();
+        Assert.False(hotkeys.Suspended);
+        settings.BeginRecording();
+        await Task.Delay(ShortcutPanelViewModel.ReleaseCap + ShortcutPanelViewModel.ResumeGrace);
+
+        Assert.True(hotkeys.Suspended);
+    }
+
+    [Fact]
+    public void Dispose_ResumesWhenClosedRightAfterTheKeyWasReleased()
+    {
+        var hotkeys = Hotkeys();
+        var vm = Create(hotkeys: hotkeys);
+        vm.BeginRecording();
+        vm.HandleKey(Key.J, KeyModifiers.Control);
+        vm.HandleKeyUp(Key.J);
+        Assert.True(hotkeys.Suspended);
+
+        vm.Dispose();
+
+        Assert.False(hotkeys.Suspended);
+    }
+
+    [Fact]
+    public async Task ASecondRecording_OutlivesTheFirstSavesForcedResume()
+    {
+        var hotkeys = Hotkeys();
+        var vm = Create(hotkeys: hotkeys);
+        vm.BeginRecording();
+        vm.HandleKey(Key.J, KeyModifiers.Control);
+        vm.HandleKeyUp(Key.J);
+        await Task.Delay(ShortcutPanelViewModel.ResumeGrace * 3);
+        Assert.False(hotkeys.Suspended);
+
+        vm.BeginRecording();
+        vm.HandleKey(Key.K, KeyModifiers.Control);
+        await Task.Delay(ShortcutPanelViewModel.ReleaseCap - ShortcutPanelViewModel.ResumeGrace);
+
+        // The first save's cap has passed, but the second chord is still held.
+        Assert.True(hotkeys.Suspended);
+    }
+
+    [Fact]
+    public async Task Save_ResumesAnywayWhenTheKeyIsNeverReleased()
+    {
+        var hotkeys = Hotkeys();
+        var vm = Create(hotkeys: hotkeys);
+
+        vm.BeginRecording();
+        vm.HandleKey(Key.J, KeyModifiers.Control);
+        await Task.Delay(ShortcutPanelViewModel.ReleaseCap + ShortcutPanelViewModel.ResumeGrace);
+
+        Assert.False(hotkeys.Suspended);
+    }
+
+    [Fact]
+    public void Dispose_ResumesTheHotkey()
+    {
+        var hotkeys = Hotkeys();
+        var vm = Create(hotkeys: hotkeys);
+        vm.BeginRecording();
+
+        vm.Dispose();
+
+        Assert.False(hotkeys.Suspended);
+    }
+
+    private HotkeyService Hotkeys(params IHotkeyBackend[] backends) =>
+        new(backends, _settings, new ConnectorService(new FakeConnectorSocket(), new FakeNativeHostRegistrar(), _settings, _localizer));
+
+    private ShortcutPanelViewModel Create(bool isMac = false, HotkeyService? hotkeys = null) =>
+        new(hotkeys ?? Hotkeys(), _settings, _localizer, action => action(), isMac);
+}

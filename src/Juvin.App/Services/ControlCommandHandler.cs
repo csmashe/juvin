@@ -8,22 +8,29 @@ public enum ControlCommand
 {
     Show,
     Ping,
+    Trigger,
 }
 
 /// <summary>
 ///     Answers requests on the app's control socket. Parsing and replies are pure; window
-///     activation is left to whoever handles <see cref="ShowRequested" />.
+///     activation and captures are left to whoever handles <see cref="ShowRequested" /> and
+///     <see cref="TriggerRequested" />.
 /// </summary>
 public sealed class ControlCommandHandler
 {
     public const string ShowRequestLine = """{"v":1,"cmd":"show"}""";
 
+    /// <summary>Sent by <c>juvin --trigger</c>, which a desktop environment's own shortcut runs.</summary>
+    public const string TriggerRequestLine = """{"v":1,"cmd":"trigger"}""";
+
     public event Action? ShowRequested;
+
+    public event Action? TriggerRequested;
 
     public Task<string> HandleAsync(string line, CancellationToken ct)
     {
         var (command, error) = Parse(line);
-        // ReSharper disable once ConvertIfStatementToSwitchStatement -- a null guard and one side effect, not a dispatch
+        // ReSharper disable once ConvertIfStatementToSwitchStatement -- the rejection is a guard clause; Ping needs no dispatch
         if (command is null)
         {
             Trace.WriteLine($"[ControlCommandHandler] Rejected request ({error}, {line.Length} chars).");
@@ -33,6 +40,10 @@ public sealed class ControlCommandHandler
         if (command == ControlCommand.Show)
         {
             ShowRequested?.Invoke();
+        }
+        else if (command == ControlCommand.Trigger)
+        {
+            TriggerRequested?.Invoke();
         }
 
         return Task.FromResult(LocalSocketProtocol.SerializeOk());
@@ -65,6 +76,7 @@ public sealed class ControlCommandHandler
             {
                 "show" => (ControlCommand.Show, null),
                 "ping" => (ControlCommand.Ping, null),
+                "trigger" => (ControlCommand.Trigger, null),
                 _ => (null, LocalSocketProtocol.ErrUnknownCommand),
             };
         }

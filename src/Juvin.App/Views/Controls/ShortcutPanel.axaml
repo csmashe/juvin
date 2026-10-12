@@ -1,0 +1,86 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Juvin.App.ViewModels"
+             xmlns:controls="using:Juvin.App.Views.Controls"
+             xmlns:ic="using:FluentIcons.Avalonia"
+             xmlns:loc="using:Juvin.App.Localization"
+             x:Class="Juvin.App.Views.Controls.ShortcutPanel"
+             x:DataType="vm:ShortcutPanelViewModel">
+    <StackPanel Spacing="8">
+        <TextBlock Classes="section-label" Text="{loc:Str Shortcuts.RewriteLabel}" />
+        <Border Classes="panel">
+            <StackPanel>
+                <Border Classes="section-row">
+                    <StackPanel Spacing="6">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Classes="row-title" Text="{loc:Str Shortcuts.Rewrite}" />
+                                <TextBlock Classes="row-hint" Text="{loc:Str Shortcuts.RewriteHint}" />
+                            </StackPanel>
+                            <controls:ShortcutRecorder Grid.Column="1"
+                                                       Classes="shortcut-recorder"
+                                                       Classes.recording="{Binding IsRecording}">
+                                <TextBlock Classes="shortcut-recorder-text" Text="{Binding RecorderText}" />
+                            </controls:ShortcutRecorder>
+                        </Grid>
+                        <TextBlock Classes="row-hint" Text="{Binding RecordHint}" IsVisible="{Binding HasRecordHint}" />
+                    </StackPanel>
+                </Border>
+                <Border Classes="section-row divided">
+                    <StackPanel Spacing="10">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Classes="row-title" Text="{loc:Str Shortcuts.Backend}" />
+                                <TextBlock Classes="row-hint" Text="{loc:Str Shortcuts.BackendHint}" />
+                            </StackPanel>
+                            <ComboBox Grid.Column="1"
+                                      MinWidth="200"
+                                      VerticalAlignment="Center"
+                                      ItemsSource="{Binding BackendOptions}"
+                                      SelectedItem="{Binding SelectedBackend}">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:BackendOption">
+                                        <TextBlock Text="{Binding Name}" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </Grid>
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                            <ic:SymbolIcon Classes="status satisfied" Symbol="CheckmarkCircle" IsVisible="{Binding IsListening}"
+                                           VerticalAlignment="Top" />
+                            <ic:SymbolIcon Grid.Column="0" Classes="status" Symbol="Warning" IsVisible="{Binding !IsListening}"
+                                           VerticalAlignment="Top" />
+                            <TextBlock Grid.Column="1" Classes="row-hint" Margin="0" Text="{Binding StatusText}" />
+                        </Grid>
+                        <StackPanel Spacing="8" IsVisible="{Binding ShowDesktopShortcut}">
+                            <TextBlock Classes="row-hint" Margin="0"
+                                       Text="{loc:Str Shortcuts.DesktopShortcut.SignInNote}"
+                                       IsVisible="{Binding ShowSignInNote}" />
+                            <Button HorizontalAlignment="Left"
+                                    Content="{loc:Str Shortcuts.DesktopShortcut.Remove}"
+                                    Command="{Binding RemoveDesktopShortcutCommand}" />
+                        </StackPanel>
+                        <!-- Outside the desktop block: a successful removal stops that backend and hides the block. -->
+                        <TextBlock Classes="row-hint" Margin="0"
+                                   Text="{Binding DesktopShortcutMessage}"
+                                   IsVisible="{Binding HasDesktopShortcutMessage}" />
+                    </StackPanel>
+                </Border>
+                <Border Classes="section-row divided">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Classes="row-title" Text="{loc:Str Shortcuts.Test}" />
+                            <TextBlock Classes="row-hint" Text="{loc:Str Shortcuts.TestHint}" />
+                        </StackPanel>
+                        <Border Grid.Column="1" Classes="badge" IsVisible="{Binding IsDetected}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <ic:SymbolIcon Classes="status satisfied" Symbol="CheckmarkCircle" FontSize="14" />
+                                <TextBlock Classes="badge-text" VerticalAlignment="Center" Text="{loc:Str Shortcuts.Detected}" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </Border>
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>
