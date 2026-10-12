@@ -89,6 +89,15 @@
         <Setter Property="BorderBrush" Value="{StaticResource JuvinHairlineBrush}" />
         <Setter Property="BorderThickness" Value="0,1,0,0" />
     </Style>
+    <Style Selector="ItemsControl.divided-rows ContentPresenter:nth-child(n+2) > Border.section-row">
+        <Setter Property="BorderBrush" Value="{StaticResource JuvinHairlineBrush}" />
+        <Setter Property="BorderThickness" Value="0,1,0,0" />
+    </Style>
+    <Style Selector="TextBox.instruction">
+        <Setter Property="AcceptsReturn" Value="True" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="MinHeight" Value="72" />
+    </Style>
     <Style Selector="Border.badge">
         <Setter Property="Background" Value="#1B2430" />
         <Setter Property="BorderBrush" Value="#223243" />

@@ -118,8 +118,6 @@ public sealed class RewritePromptBuilderTests
 
         Assert.Equal(6, RewriteAction.BuiltIn.Select(a => a.Id).Distinct().Count());
         Assert.All(RewriteAction.BuiltIn, a => Assert.NotEqual(a.TitleKey, localizer[a.TitleKey]));
-        Assert.Same(RewriteAction.Missing, RewriteAction.Find("MISSING"));
-        Assert.Null(RewriteAction.Find("nope"));
     }
 
     private static int Count(string text, string value) =>

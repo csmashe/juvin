@@ -7,7 +7,8 @@ internal sealed record CliOptions
 {
     public bool Help { get; private init; }
 
-    public RewriteAction Action { get; private init; } = RewriteAction.Clearer;
+    /// <summary>The --action value; null runs clearer, or the custom action when --instruction is given.</summary>
+    public string? ActionId { get; private init; }
 
     public string? Instruction { get; private init; }
 
@@ -64,7 +65,6 @@ internal sealed record CliOptions
 
         var options = new CliOptions();
         var stdin = false;
-        string? actionId = null;
         for (var i = 1; i < args.Count; i++)
         {
             var name = args[i];
@@ -92,7 +92,7 @@ internal sealed record CliOptions
             switch (name)
             {
                 case "--action":
-                    actionId = value;
+                    options = options with { ActionId = value };
                     break;
                 case "--instruction":
                     options = options with { Instruction = value };
@@ -124,23 +124,6 @@ internal sealed record CliOptions
             return null;
         }
 
-        var action = actionId is null
-            ? options.Instruction is null ? RewriteAction.Clearer : RewriteAction.Custom
-            : RewriteAction.Find(actionId);
-        if (action is null)
-        {
-            error =
-                $"Unknown action '{actionId}'. Use one of: {string.Join(", ", RewriteAction.BuiltIn.Select(a => a.Id))}.";
-            return null;
-        }
-
-        // ReSharper disable twice ArrangeRedundantParentheses -- the parentheses make the comparison readable
-        if ((action == RewriteAction.Custom) != (options.Instruction is not null))
-        {
-            error = "--instruction goes with the custom action, and the custom action needs --instruction.";
-            return null;
-        }
-
         // ReSharper disable once InvertIf -- a guard that reads top-down like the ones above it
         if (string.IsNullOrWhiteSpace(options.Instruction) && options.Instruction is not null)
         {
@@ -148,6 +131,33 @@ internal sealed record CliOptions
             return null;
         }
 
-        return options with { Action = action };
+        return options;
+    }
+
+    /// <summary>
+    ///     Resolves --action against the settings, so edited instructions and the user's own
+    ///     actions apply. Returns null with <paramref name="error" /> set for a usage error.
+    /// </summary>
+    public RewriteAction? ResolveAction(AppSettings settings, out string? error)
+    {
+        error = null;
+        var id = ActionId ?? (Instruction is null ? RewriteAction.Clearer.Id : RewriteAction.Custom.Id);
+        var action = RewriteActionCatalog.Find(settings, id);
+        if (action is null)
+        {
+            error =
+                $"Unknown action '{id}'. Use one of: {string.Join(", ", RewriteActionCatalog.Resolve(settings).Select(a => a.Id))}.";
+            return null;
+        }
+
+        // ReSharper disable once InvertIf -- a guard that reads top-down like the one above it
+        // ReSharper disable once ArrangeRedundantParentheses -- the parentheses make the comparison readable
+        if (action.IsCustom != (Instruction is not null))
+        {
+            error = "--instruction goes with the custom action, and the custom action needs --instruction.";
+            return null;
+        }
+
+        return action;
     }
 }
