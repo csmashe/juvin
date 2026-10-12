@@ -19,6 +19,7 @@ public sealed partial class RewriteActionsSectionViewModel : ObservableObject
     private readonly Localizer _localizer;
     private readonly ISettingsService _settings;
     private bool _applyingSettings;
+    private bool _rowsUnsaved;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSaveError))]
@@ -91,6 +92,7 @@ public sealed partial class RewriteActionsSectionViewModel : ObservableObject
     {
         try
         {
+            _rowsUnsaved = false;
             SaveError = null;
             _settings.Update(s =>
             {
@@ -125,6 +127,7 @@ public sealed partial class RewriteActionsSectionViewModel : ObservableObject
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             Trace.WriteLine($"[RewriteActionsSection] Could not save settings: {ex.GetType().Name}");
+            _rowsUnsaved = true;
             SaveError = _localizer.Format("RewriteActions.SaveFailed", ex.Message);
         }
     }
@@ -134,6 +137,10 @@ public sealed partial class RewriteActionsSectionViewModel : ObservableObject
         try
         {
             _settings.Update(s => s with { DefaultRewriteAction = id });
+            if (!_rowsUnsaved)
+            {
+                SaveError = null;
+            }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -150,7 +157,7 @@ public sealed partial class RewriteActionsSectionViewModel : ObservableObject
         {
             var actions = RewriteActionCatalog.Resolve(settings);
             // Unsaved drafts stay in their boxes until Retry saves them.
-            if (!HasSaveError)
+            if (!_rowsUnsaved)
             {
                 foreach (var row in BuiltInActions.Where(row => !row.IsInvalid))
                 {
