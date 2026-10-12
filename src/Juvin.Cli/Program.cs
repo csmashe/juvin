@@ -21,7 +21,8 @@ public static class Program
         or plain text, taken as the draft alone.
 
         Options:
-          --action <id>          soften, clearer, shorter, grammar, custom, missing (default clearer)
+          --action <id>          soften, clearer, shorter, grammar, custom, missing, or the id
+                                 of an action added in Settings (default clearer)
           --instruction <text>   the instruction for the custom action
           --mode <local|codex>   processing mode for this run
           --model <id>           model for this run
@@ -89,6 +90,13 @@ public static class Program
             return 2;
         }
 
+        var action = options.ResolveAction(new RewriteActionCatalog(settings), out error);
+        if (action is null)
+        {
+            Console.Error.WriteLine(error);
+            return 2;
+        }
+
         using var cancellation = new CancellationTokenSource();
         // ReSharper disable once AccessToDisposedClosure -- Ctrl+C after Main returns has nothing left to cancel
         Console.CancelKeyPress += (_, e) =>
@@ -117,7 +125,7 @@ public static class Program
         try
         {
             session = new RewriteSession(selector, settings, context);
-            var result = await session.RunAsync(options.Action, options.Instruction, preview, cancellation.Token);
+            var result = await session.RunAsync(action, options.Instruction, preview, cancellation.Token);
             preview.Report(result.Text);
             Console.Out.WriteLine();
             WriteProvenance(options, session);

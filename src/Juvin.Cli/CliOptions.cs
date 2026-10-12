@@ -7,7 +7,8 @@ internal sealed record CliOptions
 {
     public bool Help { get; private init; }
 
-    public RewriteAction Action { get; private init; } = RewriteAction.Clearer;
+    /// <summary>The --action value; null runs Clearer, or the free-text action when --instruction is given.</summary>
+    private string? ActionId { get; init; }
 
     public string? Instruction { get; private init; }
 
@@ -124,18 +125,10 @@ internal sealed record CliOptions
             return null;
         }
 
-        var action = actionId is null
-            ? options.Instruction is null ? RewriteAction.Clearer : RewriteAction.Custom
-            : RewriteAction.Find(actionId);
-        if (action is null)
-        {
-            error =
-                $"Unknown action '{actionId}'. Use one of: {string.Join(", ", RewriteAction.BuiltIn.Select(a => a.Id))}.";
-            return null;
-        }
-
-        // ReSharper disable twice ArrangeRedundantParentheses -- the parentheses make the comparison readable
-        if ((action == RewriteAction.Custom) != (options.Instruction is not null))
+        var isFreeText = actionId is null
+            ? options.Instruction is not null
+            : string.Equals(actionId, RewriteAction.Custom.Id, StringComparison.OrdinalIgnoreCase);
+        if (isFreeText != options.Instruction is not null)
         {
             error = "--instruction goes with the custom action, and the custom action needs --instruction.";
             return null;
@@ -148,6 +141,24 @@ internal sealed record CliOptions
             return null;
         }
 
-        return options with { Action = action };
+        return options with { ActionId = actionId };
+    }
+
+    /// <returns>The action, or null with <paramref name="error" /> set when the id is unknown.</returns>
+    public RewriteAction? ResolveAction(RewriteActionCatalog catalog, out string? error)
+    {
+        error = null;
+        if (ActionId is null)
+        {
+            return Instruction is null ? catalog.Find(RewriteAction.Clearer.Id) : RewriteAction.Custom;
+        }
+
+        var action = catalog.Find(ActionId);
+        if (action is null)
+        {
+            error = $"Unknown action '{ActionId}'. Use one of: {string.Join(", ", catalog.All.Select(a => a.Id))}.";
+        }
+
+        return action;
     }
 }

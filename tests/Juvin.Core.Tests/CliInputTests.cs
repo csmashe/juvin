@@ -69,7 +69,7 @@ public sealed class CliInputTests
 
         Assert.Null(error);
         Assert.NotNull(options);
-        Assert.Same(RewriteAction.Missing, options.Action);
+        Assert.Same(RewriteAction.Missing, options.ResolveAction(new RewriteActionCatalog(new AppSettings()), out _));
         Assert.Equal(ProcessingMode.Codex, options.Mode);
         Assert.True(options.Provenance);
         Assert.Equal("/s.json", options.SettingsPath);
@@ -94,14 +94,13 @@ public sealed class CliInputTests
     {
         var options = CliOptions.Parse(["rewrite", "--stdin", "--instruction", "Be brief"], out _);
 
-        Assert.Same(RewriteAction.Custom, options?.Action);
+        Assert.Same(RewriteAction.Custom, options?.ResolveAction(new RewriteActionCatalog(new AppSettings()), out _));
         Assert.Equal("Be brief", options?.Instruction);
     }
 
     [Theory]
     [InlineData("")]
     [InlineData("rewrite")]
-    [InlineData("rewrite --stdin --action nope")]
     [InlineData("rewrite --stdin --action custom")]
     [InlineData("rewrite --stdin --mode 99")]
     [InlineData("rewrite --stdin --action soften --instruction x")]
@@ -113,6 +112,34 @@ public sealed class CliInputTests
     {
         Assert.Null(CliOptions.Parse(commandLine.Split(' ', StringSplitOptions.RemoveEmptyEntries), out var error));
         Assert.False(string.IsNullOrEmpty(error));
+    }
+
+    [Fact]
+    public void Options_ResolveAnActionAddedInSettings()
+    {
+        var settings = new AppSettings
+        {
+            CustomRewriteActions = [new CustomRewriteAction("custom-1a2b", "Pirate", "Talk like a pirate.")],
+            RewriteActionPrompts = new Dictionary<string, string> { ["clearer"] = "Be clear." },
+        };
+        var catalog = new RewriteActionCatalog(settings);
+
+        var custom = CliOptions.Parse(["rewrite", "--stdin", "--action", "custom-1a2b"], out _)!.ResolveAction(catalog, out _);
+        var clearer = CliOptions.Parse(["rewrite", "--stdin"], out _)!.ResolveAction(catalog, out _);
+
+        Assert.Equal("Talk like a pirate.", custom?.Instruction);
+        Assert.Equal("Be clear.", clearer?.Instruction);
+    }
+
+    [Fact]
+    public void Options_ListTheConfiguredActionsForAnUnknownOne()
+    {
+        var settings = new AppSettings { CustomRewriteActions = [new CustomRewriteAction("custom-1a2b", "Pirate", "Arr.")] };
+        var options = CliOptions.Parse(["rewrite", "--stdin", "--action", "nope"], out _)!;
+
+        Assert.Null(options.ResolveAction(new RewriteActionCatalog(settings), out var error));
+        Assert.Contains("'nope'", error);
+        Assert.Contains("custom-1a2b", error);
     }
 
     [Fact]

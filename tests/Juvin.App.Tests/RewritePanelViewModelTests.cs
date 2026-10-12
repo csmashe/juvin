@@ -66,6 +66,49 @@ public sealed class RewritePanelViewModelTests
     }
 
     [Fact]
+    public async Task ACustomActionAddedInSettings_ShowsUpAsAChipAndRuns()
+    {
+        var vm = Create();
+        await vm.LoadAsync(_target, Capture());
+
+        _settings.Update(s => s with { CustomRewriteActions = [new CustomRewriteAction("custom-a", "Pirate", "Talk like a pirate.")] });
+        await vm.SelectActionCommand.ExecuteAsync(vm.Actions.Single(chip => chip.Title == "Pirate"));
+
+        Assert.Equal(
+            ["Soften", "Make clearer", "Make shorter", "Fix grammar", "Pirate", "What am I missing?"],
+            vm.Actions.Select(chip => chip.Title)
+        );
+        Assert.EndsWith("Instruction: Talk like a pirate.", _local.Requests[1].Messages[0].Content);
+        Assert.Equal("custom-a", vm.Actions.Single(chip => chip.IsSelected).Action.Id);
+        Assert.True(vm.CanApply);
+    }
+
+    [Fact]
+    public async Task AnEditedPrompt_IsUsedByTheDefaultActionOnTheNextCapture()
+    {
+        var vm = Create();
+        _settings.Update(s => s with { RewriteActionPrompts = new Dictionary<string, string> { ["clearer"] = "Lead with the ask." } });
+
+        await vm.LoadAsync(_target, Capture());
+
+        Assert.EndsWith("Instruction: Lead with the ask.", _local.Requests[0].Messages[0].Content);
+        Assert.Equal("clearer", vm.Actions.Single(chip => chip.IsSelected).Action.Id);
+    }
+
+    [Fact]
+    public async Task AnEditedMissingPrompt_StillCannotBeApplied()
+    {
+        _settings.Update(s => s with { RewriteActionPrompts = new Dictionary<string, string> { ["missing"] = "List gaps." } });
+        var vm = Create();
+        await vm.LoadAsync(_target, Capture());
+
+        await vm.SelectActionCommand.ExecuteAsync(vm.Actions.Single(chip => chip.Action.Id == "missing"));
+
+        Assert.Equal(RewritePanelState.Done, vm.State);
+        Assert.False(vm.CanApply);
+    }
+
+    [Fact]
     public async Task PickingAChip_StartsANewSession()
     {
         var vm = Create();

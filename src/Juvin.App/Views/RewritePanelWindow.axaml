@@ -48,22 +48,24 @@
                         <TextBlock Classes="badge-text" Text="{Binding ProviderLabel}" />
                     </Border>
                 </WrapPanel>
-                <ItemsControl ItemsSource="{Binding Actions}" IsEnabled="{Binding HasCapture}">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <WrapPanel ItemSpacing="6" LineSpacing="6" />
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="vm:PanelActionChip">
-                            <Button Classes="chip"
-                                    Classes.selected="{Binding IsSelected}"
-                                    Content="{Binding Title}"
-                                    Command="{Binding $parent[Window].((vm:RewritePanelViewModel)DataContext).SelectActionCommand, FallbackValue={x:Null}}"
-                                    CommandParameter="{Binding}" />
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
+                <ScrollViewer MaxHeight="112" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <ItemsControl ItemsSource="{Binding Actions}" IsEnabled="{Binding HasCapture}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel ItemSpacing="6" LineSpacing="6" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:PanelActionChip">
+                                <Button Classes="chip"
+                                        Classes.selected="{Binding IsSelected}"
+                                        Content="{Binding Title}"
+                                        Command="{Binding $parent[Window].((vm:RewritePanelViewModel)DataContext).SelectActionCommand, FallbackValue={x:Null}}"
+                                        CommandParameter="{Binding}" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
             </StackPanel>
 
             <Border Grid.Row="2" Classes="panel-body">

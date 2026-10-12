@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
+using Juvin.Core.Models;
 
 namespace Juvin.Core.Rewrite;
 
@@ -44,7 +45,7 @@ public sealed partial class RewritePromptBuilder
     ///     The first turn: thread, draft, and instruction. When the thread exceeds the character
     ///     budget the oldest messages are dropped; the draft is always kept whole.
     /// </summary>
-    public PromptBuildResult Build(RewriteContext context, string instruction)
+    public PromptBuildResult Build(RewriteContext context, string instruction, LengthGuidance guidance = LengthGuidance.None)
     {
         var blocks = context.Thread.Select(RenderMessage).ToList();
         var first = 0;
@@ -93,8 +94,18 @@ public sealed partial class RewritePromptBuilder
         prompt.Append(">\n").Append(Defang(context.Draft)).Append("\n</draft>\n\n");
         prompt.Append(FollowUp(instruction));
 
-        return new PromptBuildResult(SystemPrompt, prompt.ToString(), first > 0, blocks.Count - first);
+        return new PromptBuildResult(SystemPromptWith(guidance), prompt.ToString(), first > 0, blocks.Count - first);
     }
+
+    private static string SystemPromptWith(LengthGuidance guidance) =>
+        guidance switch
+        {
+            LengthGuidance.SimilarLength =>
+                SystemPrompt + "\nKeep the rewrite about the same length as the draft unless the instruction says otherwise.",
+            LengthGuidance.Shorter =>
+                SystemPrompt + "\nPrefer a result shorter than the draft unless the instruction says otherwise.",
+            _ => SystemPrompt,
+        };
 
     /// <summary>A later turn: the thread and draft are already in the conversation.</summary>
     public static string FollowUp(string instruction) => "Instruction: " + Defang(instruction.Trim());

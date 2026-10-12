@@ -132,15 +132,11 @@ public sealed partial class RewritePanelViewModel : ObservableObject
         _settings = settings;
         _localizer = localizer;
         _post = post;
-        Actions =
-        [
-            .. RewriteAction.BuiltIn
-                .Where(action => action != RewriteAction.Custom)
-                .Select(action => new PanelActionChip(action, localizer[action.TitleKey])),
-        ];
+        RebuildChips(settings.Current);
+        settings.SettingsChanged += changed => _post(() => RebuildChips(changed));
     }
 
-    public IReadOnlyList<PanelActionChip> Actions { get; }
+    public ObservableCollection<PanelActionChip> Actions { get; } = [];
 
     public ObservableCollection<ContextMessageItem> ContextMessages { get; } = [];
 
@@ -174,7 +170,7 @@ public sealed partial class RewritePanelViewModel : ObservableObject
     public bool CanCopy => HasResult;
 
     /// <summary>"What am I missing?" returns advice, never a draft, so neither it nor its follow-ups can replace the selection.</summary>
-    private bool IsSessionApplicable => _sessionAction is not null && _sessionAction != RewriteAction.Missing;
+    private bool IsSessionApplicable => _sessionAction is { IsMissing: false };
     public bool CanRecapture => _target is not null && !IsBusy;
     public bool CanSendFollowUp => _session is not null && !IsRunning && !string.IsNullOrWhiteSpace(FollowUpText);
 
@@ -189,9 +185,7 @@ public sealed partial class RewritePanelViewModel : ObservableObject
     {
         _target = target;
         _recaptureEditorId = null;
-        var configured = RewriteAction.Find(_settings.Current.DefaultRewriteAction);
-        var action = configured is null || configured == RewriteAction.Custom ? RewriteAction.Clearer : configured;
-        return LoadCaptureAsync(result, action);
+        return LoadCaptureAsync(result, new RewriteActionCatalog(_settings.Current).Default);
     }
 
     partial void OnStateChanged(RewritePanelState value) => Refresh();
@@ -371,7 +365,8 @@ public sealed partial class RewritePanelViewModel : ObservableObject
         }
 
         // Not awaited, so Recapture is available again while the model runs; LoadCaptureAsync handles its own failures.
-        _ = LoadCaptureAsync(result, _selectedAction);
+        var catalog = new RewriteActionCatalog(_settings.Current);
+        _ = LoadCaptureAsync(result, catalog.Find(_selectedAction.Id) ?? catalog.Default);
     }
 
     private Task LoadCaptureAsync(ContextResult result, RewriteAction action)
@@ -409,7 +404,7 @@ public sealed partial class RewritePanelViewModel : ObservableObject
     private Task StartActionAsync(RewriteAction action, string? instruction = null)
     {
         Supersede();
-        if (action != RewriteAction.Custom)
+        if (!action.IsFreeText)
         {
             SelectChip(action);
             _sessionAction = action;
@@ -535,7 +530,22 @@ public sealed partial class RewritePanelViewModel : ObservableObject
         _selectedAction = action;
         foreach (var chip in Actions)
         {
-            chip.IsSelected = chip.Action == action;
+            chip.IsSelected = chip.Action.Id == action.Id;
+        }
+    }
+
+    /// <summary>A running session keeps the action it started with.</summary>
+    private void RebuildChips(AppSettings settings)
+    {
+        Actions.Clear();
+        foreach (var action in new RewriteActionCatalog(settings).Pickable)
+        {
+            Actions.Add(
+                new PanelActionChip(action, action.Title ?? _localizer[action.TitleKey])
+                {
+                    IsSelected = action.Id == _selectedAction.Id,
+                }
+            );
         }
     }
 

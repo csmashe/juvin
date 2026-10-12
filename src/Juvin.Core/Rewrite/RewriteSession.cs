@@ -48,7 +48,7 @@ public sealed class RewriteSession
         CancellationToken ct
     )
     {
-        var instruction = action == RewriteAction.Custom ? customInstruction : action.Instruction;
+        var instruction = action.IsFreeText ? customInstruction : action.Instruction;
         if (string.IsNullOrWhiteSpace(instruction))
         {
             throw new ArgumentException("A custom action needs an instruction.", nameof(customInstruction));
@@ -57,7 +57,7 @@ public sealed class RewriteSession
         string userPrompt;
         if (_history.Count == 0)
         {
-            var built = _builder.Build(_context, instruction);
+            var built = _builder.Build(_context, instruction, _settings.RewriteLengthGuidance);
             _systemPrompt = built.SystemPrompt;
             userPrompt = built.UserPrompt;
             _completeness = built.Truncated ? ThreadCompleteness.TruncatedForModelLimit : _context.Completeness;

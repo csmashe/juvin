@@ -41,6 +41,23 @@ public sealed class RewriteSessionTests
     }
 
     [Fact]
+    public async Task Run_UsesTheEditedPromptAndTheLengthGuidance()
+    {
+        var settings = new AppSettings
+        {
+            RewriteActionPrompts = new Dictionary<string, string> { ["soften"] = "Be kind." },
+            RewriteLengthGuidance = LengthGuidance.Shorter,
+        };
+        var soften = new RewriteActionCatalog(settings).Find("soften")!;
+
+        await Session(settings).RunAsync(soften, null, null, CancellationToken.None);
+
+        var request = _local.Requests[0];
+        Assert.EndsWith("\nInstruction: Be kind.", request.Messages[0].Content);
+        Assert.EndsWith("Prefer a result shorter than the draft unless the instruction says otherwise.", request.SystemPrompt);
+    }
+
+    [Fact]
     public async Task Run_ForwardsThePreview()
     {
         var session = Session(new AppSettings());

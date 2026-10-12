@@ -1,9 +1,16 @@
 namespace Juvin.Core.Rewrite;
 
-/// <param name="TitleKey">String table key for the action's name.</param>
+/// <param name="TitleKey">String table key for a built-in action's name; empty for a user-defined action.</param>
 /// <param name="Instruction">Sent as the last line of the prompt; empty for <see cref="Custom" />.</param>
+/// <remarks>
+///     <see cref="BuiltIn" /> holds the pristine prompts. Use <see cref="RewriteActionCatalog" /> for the
+///     actions as the user configured them, and compare actions by <see cref="Id" />.
+/// </remarks>
 public sealed record RewriteAction(string Id, string TitleKey, string Instruction)
 {
+    /// <summary>The user's name for a user-defined action; null for built-ins, which use <see cref="TitleKey" />.</summary>
+    public string? Title { get; init; }
+
     public static RewriteAction Soften { get; } = new(
         "soften",
         "Action.Soften",
@@ -40,6 +47,7 @@ public sealed record RewriteAction(string Id, string TitleKey, string Instructio
     public static IReadOnlyList<RewriteAction> BuiltIn { get; } =
         [Soften, Clearer, Shorter, Grammar, Custom, Missing];
 
-    public static RewriteAction? Find(string id) =>
-        BuiltIn.FirstOrDefault(action => string.Equals(action.Id, id, StringComparison.OrdinalIgnoreCase));
+    public bool IsFreeText => Id == Custom.Id;
+
+    public bool IsMissing => Id == Missing.Id;
 }

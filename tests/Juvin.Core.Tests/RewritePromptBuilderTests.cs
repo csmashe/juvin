@@ -1,3 +1,4 @@
+using Juvin.Core.Models;
 using Juvin.Core.Rewrite;
 
 namespace Juvin.Core.Tests;
@@ -118,8 +119,27 @@ public sealed class RewritePromptBuilderTests
 
         Assert.Equal(6, RewriteAction.BuiltIn.Select(a => a.Id).Distinct().Count());
         Assert.All(RewriteAction.BuiltIn, a => Assert.NotEqual(a.TitleKey, localizer[a.TitleKey]));
-        Assert.Same(RewriteAction.Missing, RewriteAction.Find("MISSING"));
-        Assert.Null(RewriteAction.Find("nope"));
+    }
+
+    [Theory]
+    [InlineData(LengthGuidance.SimilarLength, "Keep the rewrite about the same length as the draft unless the instruction says otherwise.")]
+    [InlineData(LengthGuidance.Shorter, "Prefer a result shorter than the draft unless the instruction says otherwise.")]
+    public void Build_AppendsTheLengthGuidanceToTheSystemPrompt(LengthGuidance guidance, string sentence)
+    {
+        var context = new RewriteContext("hi dana", [], null, ThreadCompleteness.DraftOnly, 0);
+
+        var result = new RewritePromptBuilder().Build(context, "x", guidance);
+
+        Assert.Equal(RewritePromptBuilder.SystemPrompt + "\n" + sentence, result.SystemPrompt);
+        Assert.DoesNotContain(sentence, result.UserPrompt);
+    }
+
+    [Fact]
+    public void Build_AddsNoLengthGuidanceByDefault()
+    {
+        var context = new RewriteContext("hi dana", [], null, ThreadCompleteness.DraftOnly, 0);
+
+        Assert.Equal(RewritePromptBuilder.SystemPrompt, new RewritePromptBuilder().Build(context, "x").SystemPrompt);
     }
 
     private static int Count(string text, string value) =>
