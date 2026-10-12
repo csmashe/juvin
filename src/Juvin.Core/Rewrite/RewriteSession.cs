@@ -48,7 +48,7 @@ public sealed class RewriteSession
         CancellationToken ct
     )
     {
-        var instruction = action == RewriteAction.Custom ? customInstruction : action.Instruction;
+        var instruction = action.IsCustom ? customInstruction : action.Instruction;
         if (string.IsNullOrWhiteSpace(instruction))
         {
             throw new ArgumentException("A custom action needs an instruction.", nameof(customInstruction));

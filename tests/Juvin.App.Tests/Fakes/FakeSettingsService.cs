@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Juvin.Core.Interfaces;
 using Juvin.Core.Models;
 
@@ -25,7 +26,8 @@ public sealed class FakeSettingsService : ISettingsService
         }
 
         var next = update(Current);
-        if (next == Current)
+        // Like the real store: record equality would compare the collection properties by reference.
+        if (JsonSerializer.Serialize(next) == JsonSerializer.Serialize(Current))
         {
             return;
         }
