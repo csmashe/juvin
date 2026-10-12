@@ -21,7 +21,8 @@ public static class Program
         or plain text, taken as the draft alone.
 
         Options:
-          --action <id>          soften, clearer, shorter, grammar, custom, missing (default clearer)
+          --action <id>          soften, clearer, shorter, grammar, custom, missing, or the id
+                                 of an action added in Settings (default clearer)
           --instruction <text>   the instruction for the custom action
           --mode <local|codex>   processing mode for this run
           --model <id>           model for this run
@@ -59,6 +60,27 @@ public static class Program
             return 0;
         }
 
+        AppSettings settings;
+        try
+        {
+            settings = options.ApplyTo(
+                new SettingsService(options.SettingsPath ?? JuvinEnvironment.SettingsFilePath).Current
+            );
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            Console.Error.WriteLine($"The settings file could not be read: {ex.Message}");
+            return 2;
+        }
+
+        var action = options.ResolveAction(settings, out error);
+        if (action is null)
+        {
+            Console.Error.WriteLine(error);
+            Console.Error.WriteLine("Run juvin-cli --help for usage.");
+            return 2;
+        }
+
         RewriteContext context;
         try
         {
@@ -73,19 +95,6 @@ public static class Program
         if (context.Draft.Length == 0)
         {
             Console.Error.WriteLine("The draft is empty.");
-            return 2;
-        }
-
-        AppSettings settings;
-        try
-        {
-            settings = options.ApplyTo(
-                new SettingsService(options.SettingsPath ?? JuvinEnvironment.SettingsFilePath).Current
-            );
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
-        {
-            Console.Error.WriteLine($"The settings file could not be read: {ex.Message}");
             return 2;
         }
 
@@ -117,7 +126,7 @@ public static class Program
         try
         {
             session = new RewriteSession(selector, settings, context);
-            var result = await session.RunAsync(options.Action, options.Instruction, preview, cancellation.Token);
+            var result = await session.RunAsync(action, options.Instruction, preview, cancellation.Token);
             preview.Report(result.Text);
             Console.Out.WriteLine();
             WriteProvenance(options, session);

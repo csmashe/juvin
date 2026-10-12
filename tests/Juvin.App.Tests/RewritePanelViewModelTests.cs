@@ -99,6 +99,94 @@ public sealed class RewritePanelViewModelTests
     }
 
     [Fact]
+    public async Task AnEditedWhatAmIMissing_StillCannotBeApplied()
+    {
+        _settings.Update(s => s with { RewriteInstructionOverrides = new Dictionary<string, string> { ["missing"] = "List what is unanswered." } });
+        var vm = Create();
+        await vm.LoadAsync(_target, Capture());
+
+        await vm.SelectActionCommand.ExecuteAsync(vm.Actions.Single(chip => chip.Action.Id == "missing"));
+
+        Assert.Contains("List what is unanswered.", _local.Requests[^1].Messages[^1].Content);
+        Assert.False(vm.CanApply);
+    }
+
+    [Fact]
+    public async Task AnEditedInstruction_ReachesTheModel()
+    {
+        _settings.Update(s => s with
+        {
+            DefaultRewriteAction = "soften",
+            RewriteInstructionOverrides = new Dictionary<string, string> { ["soften"] = "Be extra gentle." },
+        });
+        var vm = Create();
+
+        await vm.LoadAsync(_target, Capture());
+
+        var prompt = _local.Requests[0].Messages[^1].Content;
+        Assert.Contains("Be extra gentle.", prompt);
+        Assert.DoesNotContain(RewriteAction.Soften.Instruction, prompt);
+        Assert.Equal("soften", vm.Actions.Single(chip => chip.IsSelected).Action.Id);
+    }
+
+    [Fact]
+    public async Task AUserAction_IsAChipAndCanBeTheDefault()
+    {
+        _settings.Update(s => s with
+        {
+            CustomRewriteActions = [new CustomRewriteAction("custom-1", "Formal", "Make it formal.")],
+            DefaultRewriteAction = "custom-1",
+        });
+        var vm = Create();
+
+        await vm.LoadAsync(_target, Capture());
+
+        Assert.Equal("Formal", vm.Actions[^1].Title);
+        Assert.True(vm.Actions[^1].IsSelected);
+        Assert.Contains("Make it formal.", _local.Requests[0].Messages[^1].Content);
+        Assert.True(vm.CanApply);
+    }
+
+    [Fact]
+    public async Task TheChips_FollowSettingsChangesAndKeepTheSelection()
+    {
+        _settings.Update(s => s with { CustomRewriteActions = [new CustomRewriteAction("custom-1", "Formal", "Make it formal.")] });
+        var vm = Create();
+        await vm.LoadAsync(_target, Capture());
+        await vm.SelectActionCommand.ExecuteAsync(vm.Actions.Single(chip => chip.Action.Id == "custom-1"));
+
+        _settings.Update(s => s with { CustomRewriteActions = [new CustomRewriteAction("custom-1", "Very formal", "Make it very formal.")] });
+
+        var selected = vm.Actions.Single(chip => chip.IsSelected);
+        Assert.Equal("Very formal", selected.Title);
+
+        await vm.SelectActionCommand.ExecuteAsync(selected);
+        Assert.Contains("Make it very formal.", _local.Requests[^1].Messages[^1].Content);
+
+        _settings.Update(s => s with { CustomRewriteActions = [] });
+
+        Assert.DoesNotContain(vm.Actions, chip => chip.Action.Id == "custom-1");
+        Assert.DoesNotContain(vm.Actions, chip => chip.IsSelected);
+        Assert.Equal(RewritePanelState.Done, vm.State);
+    }
+
+    [Fact]
+    public async Task ASettingsChange_DoesNotInterruptARunningRewrite()
+    {
+        _local.CompletionGate = new TaskCompletionSource();
+        var vm = Create();
+        var run = vm.LoadAsync(_target, Capture());
+
+        _settings.Update(s => s with { RewriteInstructionOverrides = new Dictionary<string, string> { ["clearer"] = "Changed." } });
+        _local.CompletionGate.SetResult();
+        await run;
+
+        Assert.Equal(RewritePanelState.Done, vm.State);
+        Assert.Equal("reply 1", vm.ResultText);
+        Assert.Equal("clearer", vm.Actions.Single(chip => chip.IsSelected).Action.Id);
+    }
+
+    [Fact]
     public async Task WhatAmIMissing_CannotBeApplied()
     {
         var vm = Create();
