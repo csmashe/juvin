@@ -20,6 +20,7 @@ export type ContextErrorCode =
   | "no-selection"
   | "page-not-ready"
   | "editor-gone"
+  | "browser-not-focused"
   | "internal";
 
 export type ApplyErrorCode = "draft-changed" | "editor-gone" | "internal";
@@ -89,6 +90,8 @@ export interface ContextRequestMessage {
   id: string;
   /** Recapture from the tab that owns this editor instead of the shortcut's tab. */
   editorId?: string;
+  /** Sent for the desktop hotkey: with no pending shortcut, answer browser-not-focused unless a browser window has focus. */
+  requireFocus?: true;
 }
 
 export interface ApplyRequestMessage {
@@ -261,11 +264,20 @@ export function parseIncoming(raw: unknown): ParseResult {
 
       return { ok: true, message: { v: 1, type: raw.type, id } };
     case "context.request":
-      if (id === undefined || (raw.editorId != null && !isString(raw.editorId))) {
+      if (id === undefined || (raw.editorId != null && !isString(raw.editorId)) || (raw.requireFocus != null && typeof raw.requireFocus !== "boolean")) {
         return bad("context.request");
       }
 
-      return { ok: true, message: isString(raw.editorId) ? { v: 1, type: "context.request", id, editorId: raw.editorId } : { v: 1, type: "context.request", id } };
+      return {
+        ok: true,
+        message: {
+          v: 1,
+          type: "context.request",
+          id,
+          ...(isString(raw.editorId) ? { editorId: raw.editorId } : {}),
+          ...(raw.requireFocus === true ? { requireFocus: true } : {}),
+        },
+      };
     case "apply.request":
       if (id === undefined || !isString(raw.editorId) || !isString(raw.expectedHash) || !isOffsets(raw.start, raw.end) || !isString(raw.text)) {
         return bad("apply.request");

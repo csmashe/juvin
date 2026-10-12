@@ -17,6 +17,7 @@ namespace Juvin.App;
 
 public class App : Application
 {
+    private static readonly TimeSpan s_hotkeyStopTimeout = TimeSpan.FromSeconds(2);
     private readonly CancellationTokenSource _socketLifetime = new();
     private bool _exiting;
 
@@ -87,10 +88,21 @@ public class App : Application
         var connector = services.GetRequiredService<ConnectorService>();
         _ = StartConnectorAsync(connector);
 
+        // A desktop environment's own shortcut runs `juvin --trigger`, which arrives as a press here.
+        var hotkeys = services.GetRequiredService<HotkeyService>();
+        commands.TriggerRequested += hotkeys.HandleTrigger;
+        _ = StartHotkeysAsync(hotkeys);
+
         desktop.Exit += (_, _) =>
         {
             _exiting = true;
             panel.Stop();
+            // Bounded: a backend may be mid-way through a desktop command, and shutdown must not hang on it.
+            if (!hotkeys.StopAsync().Wait(s_hotkeyStopTimeout))
+            {
+                Trace.WriteLine("[App] Hotkey backend did not stop in time.");
+            }
+
             _socketLifetime.Cancel();
             services.GetRequiredService<ILocalSocketServer>().StopAsync().GetAwaiter().GetResult();
             connector.StopAsync().GetAwaiter().GetResult();
@@ -134,6 +146,19 @@ public class App : Application
         catch (Exception ex) when (ex is IOException or OperationCanceledException or UnauthorizedAccessException)
         {
             Trace.WriteLine($"[App] Browser connector did not start: {ex.Message}");
+        }
+    }
+
+    private async Task StartHotkeysAsync(HotkeyService hotkeys)
+    {
+        try
+        {
+            await hotkeys.StartAsync(_socketLifetime.Token);
+            Trace.WriteLine($"[App] Hotkey status {hotkeys.Status.Kind}.");
+        }
+        catch (OperationCanceledException)
+        {
+            Trace.WriteLine("[App] Hotkey start was cancelled.");
         }
     }
 

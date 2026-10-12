@@ -3,4 +3,16 @@
         <TargetFramework>net10.0</TargetFramework>
         <RootNamespace>Juvin.Platform</RootNamespace>
     </PropertyGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="Juvin.Platform.Tests"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="SharpHook"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Juvin.Core\Juvin.Core.csproj"/>
+    </ItemGroup>
 </Project>

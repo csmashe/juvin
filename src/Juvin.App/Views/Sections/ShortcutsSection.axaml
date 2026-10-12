@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Juvin.App.ViewModels.Sections"
+             xmlns:controls="using:Juvin.App.Views.Controls"
              xmlns:loc="using:Juvin.App.Localization"
              x:Class="Juvin.App.Views.Sections.ShortcutsSection"
              x:DataType="vm:ShortcutsSectionViewModel">
@@ -11,44 +12,17 @@
                 <TextBlock Classes="page-subtitle" Text="{loc:Str Shortcuts.Subtitle}" />
             </StackPanel>
 
+            <controls:ShortcutPanel DataContext="{Binding Panel}" />
+
             <StackPanel Spacing="8">
-                <TextBlock Classes="section-label" Text="{loc:Str Shortcuts.RewriteLabel}" />
+                <TextBlock Classes="section-label" Text="{loc:Str Shortcuts.BrowserLabel}" />
                 <Border Classes="panel">
-                    <StackPanel>
-                        <Border Classes="section-row">
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-                                <StackPanel VerticalAlignment="Center">
-                                    <TextBlock Classes="row-title" Text="{loc:Str Shortcuts.Rewrite}" />
-                                    <TextBlock Classes="row-hint" Text="{loc:Str Shortcuts.RewriteHint}" />
-                                </StackPanel>
-                                <Border Grid.Column="1" Classes="badge">
-                                    <TextBlock Classes="badge-text" Text="{Binding RewriteShortcut}" />
-                                </Border>
-                            </Grid>
-                        </Border>
-                        <Border Classes="section-row divided">
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-                                <StackPanel VerticalAlignment="Center">
-                                    <TextBlock Classes="row-title" Text="{loc:Str Shortcuts.ExtensionMirror}" />
-                                    <TextBlock Classes="row-hint" Text="{loc:Str Shortcuts.ExtensionMirrorHint}" />
-                                </StackPanel>
-                                <Border Grid.Column="1" Classes="badge">
-                                    <TextBlock Classes="badge-text" Text="{loc:Str Common.ComingSoon}" />
-                                </Border>
-                            </Grid>
-                        </Border>
-                        <Border Classes="section-row divided">
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-                                <StackPanel VerticalAlignment="Center">
-                                    <TextBlock Classes="row-title" Text="{loc:Str Shortcuts.Backend}" />
-                                    <TextBlock Classes="row-hint" Text="{loc:Str Shortcuts.BackendHint}" />
-                                </StackPanel>
-                                <Border Grid.Column="1" Classes="badge">
-                                    <TextBlock Classes="badge-text" Text="{loc:Str Common.ComingSoon}" />
-                                </Border>
-                            </Grid>
-                        </Border>
-                    </StackPanel>
+                    <Border Classes="section-row">
+                        <StackPanel>
+                            <TextBlock Classes="row-title" Text="{loc:Str Shortcuts.ExtensionMirror}" />
+                            <TextBlock Classes="row-hint" Text="{loc:Str Shortcuts.ExtensionMirrorHint}" />
+                        </StackPanel>
+                    </Border>
                 </Border>
             </StackPanel>
         </StackPanel>

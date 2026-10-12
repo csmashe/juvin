@@ -1,3 +1,4 @@
+using Juvin.Platform.Hotkeys;
 using Juvin.Platform.Windows.Ipc;
 using Juvin.Platform.Windows.NativeMessaging;
 using Juvin.Platform.Windows.Panel;
@@ -21,6 +22,7 @@ public static class PlatformServices
         services.AddSingleton<ITrayHostProbe, NotificationAreaTrayHostProbe>();
         services.AddSingleton<IPanelWindowSupport, WindowsPanelWindowSupport>();
         services.AddSingleton<INativeHostRegistrar>(_ => new WindowsNativeHostRegistrar(NativeHost.Locate));
+        services.AddSingleton<IHotkeyBackend, SharpHookHotkeyBackend>();
         return services;
     }
 }

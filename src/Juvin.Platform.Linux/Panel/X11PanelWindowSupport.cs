@@ -29,7 +29,7 @@ public sealed partial class X11PanelWindowSupport : IPanelWindowSupport
     private const int OffFormat = 48;
     private const int OffData = 56;
 
-    public void ShowOnAllWorkspaces(nint windowHandle)
+    public void ShowOnAllWorkspaces(nint windowHandle, string title)
     {
         if (windowHandle == 0)
         {

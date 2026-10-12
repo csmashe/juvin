@@ -12,7 +12,7 @@ namespace Juvin.App.Services;
 /// <summary>
 ///     Serves the browser connector endpoint: one <see cref="ConnectorSession" /> per connected
 ///     extension, config pushed on hello and on every settings change, and a capture requested
-///     whenever the extension reports its shortcut.
+///     whenever the extension reports its shortcut or the desktop hotkey fires.
 /// </summary>
 /// <remarks>
 ///     Members are safe to call from any thread. Events are raised on thread-pool threads, so UI
@@ -20,9 +20,20 @@ namespace Juvin.App.Services;
 /// </remarks>
 public sealed class ConnectorService
 {
+    /// <summary>Not on the wire: the desktop hotkey fired with no browser connected.</summary>
+    public const string NoBrowserCode = "no-browser";
+
+    public const string BrowserNotFocusedCode = "browser-not-focused";
+
     private static readonly IReadOnlyList<string> s_adapters = ["gmail", "generic", "test-page"];
 
     private static readonly TimeSpan s_captureTimeout = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    ///     On Windows and X11 one press fires both the global hook and the extension's command;
+    ///     a capture starting this soon after the previous one is that same press.
+    /// </summary>
+    internal static TimeSpan CoalesceWindow { get; } = TimeSpan.FromMilliseconds(300);
 
     private readonly Lock _gate = new();
     private readonly Localizer _localizer;
@@ -30,15 +41,19 @@ public sealed class ConnectorService
     private readonly IConnectorSocketServer _server;
     private readonly List<ConnectorSession> _sessions = [];
     private readonly ISettingsService _settings;
+    private readonly TimeProvider _time;
+    private long? _lastCaptureStart;
     private long _latestCapture;
 
     public ConnectorService(
         IConnectorSocketServer server,
         INativeHostRegistrar registrar,
         ISettingsService settings,
-        Localizer localizer
+        Localizer localizer,
+        TimeProvider? time = null
     )
     {
+        _time = time ?? TimeProvider.System;
         _server = server;
         _registrar = registrar;
         _settings = settings;
@@ -70,6 +85,12 @@ public sealed class ConnectorService
     ///     with its sequence number; a higher number is a later shortcut press.
     /// </summary>
     public event Action<ConnectorSession, long, ContextResult>? CaptureCompleted;
+
+    /// <summary>
+    ///     Raised instead of <see cref="CaptureCompleted" /> when the desktop hotkey fires with no browser
+    ///     connected, so there is no session to recapture from; numbered like captures.
+    /// </summary>
+    public event Action<long, ContextResult>? TriggerFailed;
 
     public async Task StartAsync(CancellationToken ct)
     {
@@ -140,6 +161,77 @@ public sealed class ConnectorService
         }
     }
 
+    /// <summary>
+    ///     Captures for the desktop hotkey, which has no originating browser: asks every connected
+    ///     extension at once and reports the first capture, else an error other than
+    ///     <c>browser-not-focused</c> when one exists. Never throws.
+    /// </summary>
+    public async Task TriggerCaptureAsync()
+    {
+        if (!TryStartCapture(out var number))
+        {
+            return;
+        }
+
+        var clients = Clients;
+        if (clients.Count == 0)
+        {
+            Trace.WriteLine("[ConnectorService] Hotkey capture with no browser connected.");
+            ReleaseCapture();
+            var error = new ContextResult(null, new ConnectorError(NoBrowserCode, _localizer["Panel.Error.NoBrowser"]));
+            if (IsLatest(number))
+            {
+                Raise(() => TriggerFailed?.Invoke(number, error));
+            }
+
+            return;
+        }
+
+        var pending = clients.ToDictionary(RequestFocusedAsync, session => session);
+        (ConnectorSession Session, ContextResult Result)? chosen = null;
+        while (pending.Count > 0)
+        {
+            var finished = await Task.WhenAny(pending.Keys);
+            var session = pending[finished];
+            pending.Remove(finished);
+            var result = await finished;
+            if (result.Ok)
+            {
+                chosen = (session, result);
+                break;
+            }
+
+            if (chosen is null || Rank(result) > Rank(chosen.Value.Result))
+            {
+                chosen = (session, result);
+            }
+        }
+
+        Trace.WriteLine($"[ConnectorService] Hotkey capture asked {clients.Count} browsers.");
+        Report(chosen!.Value.Session, number, chosen.Value.Result);
+    }
+
+    /// <summary>
+    ///     True when a browser answered itself; a timeout or broken frame is the app's own verdict and
+    ///     says nothing about which browser has focus.
+    /// </summary>
+    internal static bool AnsweredByBrowser(ContextResult result) =>
+        result.Ok
+        || result.Error?.Code
+            is not (
+                ConnectorRewriteTarget.TimeoutCode
+                or ConnectorRewriteTarget.TooLargeCode
+                or ConnectorRewriteTarget.FailedCode
+                or NoBrowserCode
+            );
+
+    /// <summary>A capture, then a browser's own refusal, then "not focused", then the app's local failures.</summary>
+    private static int Rank(ContextResult result) =>
+        result.Ok ? 3
+        : !AnsweredByBrowser(result) ? 0
+        : result.Error!.Code == BrowserNotFocusedCode ? 1
+        : 2;
+
     private async Task HandleConnectionAsync(Stream stream, CancellationToken ct)
     {
         var session = new ConnectorSession(new StreamConnectorChannel(stream), () => BuildConfig(_settings.Current));
@@ -178,7 +270,11 @@ public sealed class ConnectorService
 
     private async Task CaptureAsync(ConnectorSession session)
     {
-        var number = Interlocked.Increment(ref _latestCapture);
+        if (!TryStartCapture(out var number))
+        {
+            return;
+        }
+
         ContextResult result;
         try
         {
@@ -190,11 +286,70 @@ public sealed class ConnectorService
             return;
         }
 
+        Report(session, number, result);
+    }
+
+    private static async Task<ContextResult> RequestFocusedAsync(ConnectorSession session)
+    {
+        try
+        {
+            return await session.RequestFocusedContextAsync(s_captureTimeout, CancellationToken.None);
+        }
+        catch (Exception ex) when (ex is TimeoutException or ConnectorException)
+        {
+            Trace.WriteLine($"[ConnectorService] Hotkey capture failed in one browser ({ex.GetType().Name}).");
+            // A closed or broken session is the app's own verdict; it must not rank as a browser's answer.
+            var error = ConnectorRewriteTarget.ErrorOf(ex);
+            return new ContextResult(null, ex is TimeoutException ? error : error with { Code = ConnectorRewriteTarget.FailedCode });
+        }
+    }
+
+    /// <summary>Forgets the last start so a press the extension reports right after a no-browser trigger still captures.</summary>
+    private void ReleaseCapture()
+    {
+        lock (_gate)
+        {
+            _lastCaptureStart = null;
+        }
+    }
+
+    /// <summary>Numbers a new capture, or returns false when it repeats the press that started the previous one.</summary>
+    private bool TryStartCapture(out long number)
+    {
+        var now = _time.GetTimestamp();
+        lock (_gate)
+        {
+            if (_lastCaptureStart is { } last && _time.GetElapsedTime(last, now) < CoalesceWindow)
+            {
+                number = 0;
+                Trace.WriteLine("[ConnectorService] Coalesced duplicate press.");
+                return false;
+            }
+
+            _lastCaptureStart = now;
+        }
+
+        number = Interlocked.Increment(ref _latestCapture);
+        return true;
+    }
+
+    private bool IsLatest(long number)
+    {
         // A slow capture (Gmail expanding a thread) must not replace one from a later shortcut press.
         var latest = Interlocked.Read(ref _latestCapture);
-        if (number != latest)
+        if (number == latest)
         {
-            Trace.WriteLine($"[ConnectorService] Discarded capture {number}; capture {latest} is newer.");
+            return true;
+        }
+
+        Trace.WriteLine($"[ConnectorService] Discarded capture {number}; capture {latest} is newer.");
+        return false;
+    }
+
+    private void Report(ConnectorSession session, long number, ContextResult result)
+    {
+        if (!IsLatest(number))
+        {
             return;
         }
 
@@ -211,9 +366,14 @@ public sealed class ConnectorService
             Trace.WriteLine($"[ConnectorService] Capture declined ({result.Error?.Code}).");
         }
 
+        Raise(() => CaptureCompleted?.Invoke(session, number, result));
+    }
+
+    private static void Raise(Action raise)
+    {
         try
         {
-            CaptureCompleted?.Invoke(session, number, result);
+            raise();
         }
         catch (Exception ex)
         {

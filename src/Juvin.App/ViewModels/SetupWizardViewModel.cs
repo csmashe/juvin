@@ -12,8 +12,8 @@ using Juvin.Platform.Setup;
 namespace Juvin.App.ViewModels;
 
 /// <summary>
-///     Order of the wizard pages. The view has one tab per member, in the same order. Shortcut and
-///     try-it steps are added here as their phases land.
+///     Order of the wizard pages. The view has one tab per member, in the same order. The try-it
+///     step is added here when its phase lands.
 /// </summary>
 public enum SetupWizardStep
 {
@@ -21,6 +21,7 @@ public enum SetupWizardStep
     Welcome,
     ProcessingMode,
     BrowserConnector,
+    Shortcut,
     Checklist,
     Done,
 }
@@ -77,11 +78,13 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         Localizer localizer,
         ModelProbeService probes,
         BrowserConnectorPanelViewModel connector,
+        ShortcutPanelViewModel shortcut,
         IEnumerable<ISetupTask> setupTasks
     )
     {
         _settings = settings;
         Connector = connector;
+        Shortcut = shortcut;
         _localizer = localizer;
         _probes = probes;
         ModeOptions = ProcessingModeOption.All(localizer);
@@ -95,7 +98,6 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
                 .Select(task => new SetupTaskRow(task, localizer)),
         ];
         StepDots = [.. Enumerable.Range(0, StepCount).Select(index => new StepDot(index))];
-        DoneBody = localizer.Format("Wizard.Done.Body", settings.Current.RewriteShortcut);
         RefreshStepState();
     }
 
@@ -104,11 +106,12 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
     public static int StepCount { get; } = Enum.GetValues<SetupWizardStep>().Length;
 
     public BrowserConnectorPanelViewModel Connector { get; }
+    public ShortcutPanelViewModel Shortcut { get; }
     public ObservableCollection<SetupTaskRow> SetupItems { get; }
     public IReadOnlyList<ProcessingModeOption> ModeOptions { get; }
     public ObservableCollection<DetectionRow> Detections { get; } = [];
     public ObservableCollection<StepDot> StepDots { get; }
-    public string DoneBody { get; }
+    public string DoneBody => _localizer.Format("Wizard.Done.Body", Shortcut.ShortcutText);
 
     public SetupWizardStep Step => (SetupWizardStep)StepIndex;
     public bool IsFirstStep => StepIndex == 0;
@@ -138,6 +141,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
 
         _lifetime.Dispose();
         Connector.Dispose();
+        Shortcut.Dispose();
     }
 
     // ReSharper disable once UnusedParameterInPartialMethod -- signature fixed by the source generator
@@ -460,6 +464,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(NextLabel));
         OnPropertyChanged(nameof(StepText));
         OnPropertyChanged(nameof(CanAdvance));
+        OnPropertyChanged(nameof(DoneBody));
     }
 
     private void RefreshGating()

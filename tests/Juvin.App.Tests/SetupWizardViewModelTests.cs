@@ -1,6 +1,7 @@
 using Juvin.App.Services;
 using Juvin.App.Tests.Fakes;
 using Juvin.App.ViewModels;
+using Juvin.Core.Hotkeys;
 using Juvin.Core.Localization;
 using Juvin.Core.Models;
 using Juvin.Platform;
@@ -120,17 +121,22 @@ public sealed class SetupWizardViewModelTests
         Assert.True(vm.CanAdvance);
         vm.NextCommand.Execute(null);
 
+        Assert.Equal(SetupWizardStep.Shortcut, vm.Step);
+        Assert.True(vm.CanAdvance);
+        vm.NextCommand.Execute(null);
+
         Assert.Equal(SetupWizardStep.Checklist, vm.Step);
         Assert.False(_settings.Current.HasCompletedOnboarding);
     }
 
     [Fact]
-    public void Steps_RunWelcomeModeBrowserChecklistDone()
+    public void Steps_RunWelcomeModeBrowserShortcutChecklistDone()
     {
-        Assert.Equal(5, SetupWizardViewModel.StepCount);
+        Assert.Equal(6, SetupWizardViewModel.StepCount);
         Assert.Equal(1, (int)SetupWizardStep.ProcessingMode);
         Assert.Equal(SetupWizardStep.BrowserConnector, SetupWizardStep.ProcessingMode + 1);
-        Assert.Equal(SetupWizardStep.Checklist, SetupWizardStep.BrowserConnector + 1);
+        Assert.Equal(SetupWizardStep.Shortcut, SetupWizardStep.BrowserConnector + 1);
+        Assert.Equal(SetupWizardStep.Checklist, SetupWizardStep.Shortcut + 1);
     }
 
     [Fact]
@@ -228,12 +234,27 @@ public sealed class SetupWizardViewModelTests
         return new FakeSetupTask(id, severity, kind);
     }
 
+    [Fact]
+    public void DoneBody_NamesTheShortcutRecordedInTheWizard()
+    {
+        var vm = Create();
+        _settings.Update(s => s with { RewriteShortcut = "Ctrl+Alt+J" });
+
+        vm.StepIndex = (int)SetupWizardStep.Done;
+
+        // Shown in the OS's own form: Cmd on macOS, Ctrl elsewhere.
+        Assert.True(KeyChord.TryParse("Ctrl+Alt+J", out var chord));
+        Assert.Contains(chord.ToDisplayString(OperatingSystem.IsMacOS()), vm.DoneBody);
+    }
+
     private SetupWizardViewModel Create(params FakeSetupTask[] tasks)
     {
         var localizer = new Localizer();
         var connector = new ConnectorService(new FakeConnectorSocket(), _registrar, _settings, localizer);
         var panel = new BrowserConnectorPanelViewModel(_registrar, connector, localizer);
-        return new SetupWizardViewModel(_settings, localizer, _providers.CreateService(localizer), panel, tasks);
+        var hotkeys = new HotkeyService([], _settings, connector);
+        var shortcut = new ShortcutPanelViewModel(hotkeys, _settings, localizer, action => action());
+        return new SetupWizardViewModel(_settings, localizer, _providers.CreateService(localizer), panel, shortcut, tasks);
     }
 
     private async Task<SetupWizardViewModel> CreateOnModeStepAsync()

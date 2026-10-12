@@ -20,6 +20,7 @@ import {
 } from "../shared/runtime-messages";
 import { Connection, type Reply } from "./connection";
 import { EditorTabs } from "./editor-tabs";
+import { ShortcutTabs } from "./shortcut-tabs";
 import { buildTrimmedContextResponse } from "./trim";
 
 const CONTENT_SCRIPT = "content.js";
@@ -28,34 +29,17 @@ const connection = new Connection(onAppRequest);
 
 const editorTabs = new EditorTabs((tabId) => browser.tabs.get(tabId));
 
-// The tab active at each shortcut press, oldest first; entries from an earlier connection are dropped.
-const shortcutTabs: { generation: number; tabId: number | undefined }[] = [];
-
 async function activeTab(): Promise<Tabs.Tab | undefined> {
   const [tab] = await browser.tabs.query({ active: true, lastFocusedWindow: true });
   return tab;
 }
 
-async function requestedTab(): Promise<Tabs.Tab | undefined> {
-  while (shortcutTabs.length > 0 && shortcutTabs[0]!.generation !== connection.generation) {
-    shortcutTabs.shift();
-  }
-
-  if (shortcutTabs.length === 0) {
-    return activeTab();
-  }
-
-  const tabId = shortcutTabs.shift()!.tabId;
-  if (tabId === undefined) {
-    return undefined;
-  }
-
-  try {
-    return await browser.tabs.get(tabId);
-  } catch {
-    return undefined;
-  }
-}
+const shortcutTabs = new ShortcutTabs({
+  get: (tabId) => browser.tabs.get(tabId),
+  active: activeTab,
+  // Chrome can stay connected with no window at all; getLastFocused then rejects, which is "not focused".
+  isFocused: () => browser.windows.getLastFocused().then((w) => w.focused === true, () => false),
+});
 
 function connectQuietly(trigger: string): void {
   connection.ensureConnected().catch(() => log("connect.failed", { trigger }));
@@ -108,22 +92,29 @@ async function capture(tab: Tabs.Tab & { id: number }, editorId: string | undefi
   return undefined;
 }
 
-async function handleContextRequest({ id, editorId }: ContextRequestMessage, reply: Reply): Promise<void> {
+async function handleContextRequest({ id, editorId, requireFocus }: ContextRequestMessage, reply: Reply): Promise<void> {
   // A recapture names its editor and never falls back to the active tab.
-  const tab = editorId === undefined ? await requestedTab() : await editorTabs.find(editorId);
-  if (tab?.id === undefined) {
-    reply(
-      contextError(
-        id,
-        editorId === undefined
-          ? { code: "no-active-tab", message: "No browser tab is active." }
-          : { code: "editor-gone", message: "The editor is no longer open." },
-      ),
-    );
-    return;
+  let tab: Tabs.Tab & { id: number };
+  if (editorId === undefined) {
+    const requested = await shortcutTabs.take(connection.generation, requireFocus === true);
+    if (!requested.ok) {
+      log("context.failed", { id, code: requested.error.code });
+      reply(contextError(id, requested.error));
+      return;
+    }
+
+    tab = requested.tab;
+  } else {
+    const owner = await editorTabs.find(editorId);
+    if (!owner) {
+      reply(contextError(id, { code: "editor-gone", message: "The editor is no longer open." }));
+      return;
+    }
+
+    tab = owner;
   }
 
-  const result = await capture({ ...tab, id: tab.id }, editorId);
+  const result = await capture(tab, editorId);
   if (!result) {
     reply(contextError(id, { code: "page-not-ready", message: "The page cannot be read yet. Reload it, or allow Juvin on all sites from its popup." }));
     return;
@@ -220,7 +211,7 @@ browser.commands.onCommand.addListener((command: string, commandTab: Tabs.Tab | 
   (commandTab ? Promise.resolve(commandTab) : activeTab())
     .then(async (tab) => {
       await connection.ensureConnected();
-      shortcutTabs.push({ generation: connection.generation, tabId: tab?.id });
+      shortcutTabs.push(connection.generation, tab?.id);
       connection.send(shortcutPressed());
     })
     .catch(() => log("shortcut.not-connected"));

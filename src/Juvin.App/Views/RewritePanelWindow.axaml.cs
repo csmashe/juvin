@@ -64,7 +64,7 @@ public partial class RewritePanelWindow : Window
             Topmost = true;
             ShowInTaskbar = true;
             ShowInTaskbar = false;
-            _support?.ShowOnAllWorkspaces(TryGetPlatformHandle()?.Handle ?? 0);
+            _support?.ShowOnAllWorkspaces(TryGetPlatformHandle()?.Handle ?? 0, Title ?? "");
         });
     }
 
