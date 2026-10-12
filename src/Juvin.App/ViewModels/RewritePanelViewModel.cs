@@ -181,8 +181,11 @@ public sealed partial class RewritePanelViewModel : ObservableObject
     /// <summary>Raised when the panel should hide: Close, Escape, or a successful Apply.</summary>
     public event Action? HideRequested;
 
-    /// <summary>Shows a new capture, or the extension's error, replacing whatever the panel held, and runs the default action.</summary>
-    public Task LoadAsync(IRewriteTarget target, ContextResult result)
+    /// <summary>
+    ///     Shows a new capture, or the extension's error, replacing whatever the panel held, and runs the
+    ///     default action. A null <paramref name="target" /> (no browser connected) disables Recapture.
+    /// </summary>
+    public Task LoadAsync(IRewriteTarget? target, ContextResult result)
     {
         _target = target;
         _recaptureEditorId = null;
@@ -623,6 +626,8 @@ public sealed partial class RewritePanelViewModel : ObservableObject
                 "no-selection" => "Panel.Error.NoSelection",
                 "page-not-ready" => "Panel.Error.PageNotReady",
                 "editor-gone" => "Panel.Error.EditorGone",
+                ConnectorService.BrowserNotFocusedCode => "Panel.Error.BrowserNotFocused",
+                ConnectorService.NoBrowserCode => "Panel.Error.NoBrowser",
                 ConnectorErrorCodes.Disconnected => "Panel.Error.Disconnected",
                 ConnectorRewriteTarget.TimeoutCode => "Panel.Error.Timeout",
                 ConnectorRewriteTarget.TooLargeCode => "Panel.Error.TooLarge",

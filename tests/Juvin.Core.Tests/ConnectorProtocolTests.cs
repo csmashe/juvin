@@ -44,6 +44,7 @@ public sealed class ConnectorProtocolTests
         { """{"v":1,"type":"shortcut.pressed"}""", typeof(ShortcutPressedMessage) },
         { """{"v":1,"type":"context.request","id":"c1"}""", typeof(ContextRequestMessage) },
         { """{"v":1,"type":"context.request","id":"c2","editorId":"e-7f3a"}""", typeof(ContextRequestMessage) },
+        { """{"v":1,"type":"context.request","id":"c3","requireFocus":true}""", typeof(ContextRequestMessage) },
         { CaptureResponse, typeof(ContextResponseMessage) },
         {
             """{"v":1,"type":"context.response","id":"c1","ok":false,"error":{"code":"no-selection","message":"Nothing is selected in the editor."}}""",

@@ -81,6 +81,12 @@ public sealed record ContextRequestMessage() : ConnectorMessage(ConnectorMessage
     /// <summary>Recapture from the tab that owns this editor; null captures the shortcut's tab.</summary>
     public string? EditorId { get; init; }
 
+    /// <summary>
+    ///     True for the desktop hotkey, which asks every connected browser: one with no focused window
+    ///     answers <c>browser-not-focused</c> instead of reading its last active tab. Omitted otherwise.
+    /// </summary>
+    public bool? RequireFocus { get; init; }
+
     internal override bool IsWellFormed => Id is not null;
 }
 

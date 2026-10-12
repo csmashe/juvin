@@ -62,6 +62,6 @@ Windows, overlay above a maximized Firefox:
 
 - macOS: Avalonia's `Topmost` on macOS maps to a floating window level; needs the Mac check with the rest of macOS testing.
 - X11 sessions, Sway, River, Niri. X11 is the backend already exercised through XWayland, so a native X11 session is expected to behave the same or better. KDE and Hyprland were added on October 8, 2026 on a second Ubuntu VM.
-- Hyprland with a pin rule and workspace switching; multi-monitor on KDE and Hyprland.
+- Multi-monitor on KDE and Hyprland. (Hyprland pinning and workspace switching were covered in Phase 4: the app pins the panel through `hyprctl dispatch pin` instead of a window rule, verified October 12, 2026.)
 - Transparent backgrounds, DPI scaling above 1, a panel that follows the focused browser's monitor, and show/hide cycles.
 - A true Wayland backend, should Avalonia ship one; the layer-shell question would return then.

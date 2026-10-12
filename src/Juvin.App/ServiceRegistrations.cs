@@ -7,6 +7,7 @@ using Juvin.Core.Interfaces;
 using Juvin.Core.Localization;
 using Juvin.Core.Providers;
 using Juvin.Core.Services;
+using Juvin.Platform.Hotkeys;
 using Juvin.Platform.Linux;
 using Juvin.Platform.Mac;
 using Juvin.Platform.Windows;
@@ -37,6 +38,8 @@ public static class ServiceRegistrations
         services.AddSingleton<TrayIconService>();
         services.AddSingleton<ControlCommandHandler>();
         services.AddSingleton<ConnectorService>();
+        services.AddSingleton<HotkeyService>();
+        services.AddSingleton<IHotkeyRestart>(sp => sp.GetRequiredService<HotkeyService>());
 
         // Rewrites get a longer idle limit than probes: a local model can take minutes to load.
         services.AddSingleton(sp => new RewritePanelViewModel(
@@ -57,6 +60,12 @@ public static class ServiceRegistrations
         ));
 
         services.AddSingleton<HomeSectionViewModel>();
+        services.AddTransient(sp => new ShortcutPanelViewModel(
+            sp.GetRequiredService<HotkeyService>(),
+            sp.GetRequiredService<ISettingsService>(),
+            sp.GetRequiredService<Localizer>(),
+            action => Dispatcher.UIThread.Post(action)
+        ));
         services.AddSingleton<ShortcutsSectionViewModel>();
         services.AddSingleton<RewriteActionsSectionViewModel>();
         services.AddTransient<BrowserConnectorPanelViewModel>();
