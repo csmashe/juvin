@@ -44,6 +44,13 @@ public sealed class ConnectorServiceTests : IAsyncDisposable
         Assert.Equal(["gmail", "generic", "test-page"], config.Adapters);
         Assert.Equal("Ctrl+Alt+J", config.Shortcut);
         Assert.Equal(new ConnectorHealth("codex", null), config.Health);
+
+        var custom = _service.BuildConfig(
+            new AppSettings { CustomRewriteActions = [new CustomRewriteAction("custom-1", "Pirate voice", "Talk like a pirate.")] }
+        );
+
+        Assert.Equal([.. RewriteAction.BuiltIn.Select(action => action.Id), "custom-1"], custom.Actions.Select(action => action.Id));
+        Assert.Equal("Pirate voice", custom.Actions[^1].Title);
     }
 
     [Fact]

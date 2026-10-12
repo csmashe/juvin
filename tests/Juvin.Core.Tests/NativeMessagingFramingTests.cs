@@ -8,7 +8,7 @@ public sealed class NativeMessagingFramingTests
     [Fact]
     public async Task Frames_RoundTripInOrder()
     {
-        var stream = new MemoryStream();
+        using var stream = new MemoryStream();
         await NativeMessagingFraming.WriteFrameAsync(stream, """{"v":1,"type":"ping","id":"p1"}""", CancellationToken.None);
         await NativeMessagingFraming.WriteFrameAsync(stream, """{"text":"café 日本"}""", CancellationToken.None);
         stream.Position = 0;
@@ -21,7 +21,7 @@ public sealed class NativeMessagingFramingTests
     [Fact]
     public async Task Write_UsesALittleEndianByteLength()
     {
-        var stream = new MemoryStream();
+        using var stream = new MemoryStream();
 
         await NativeMessagingFraming.WriteFrameAsync(stream, "\"é\"", CancellationToken.None);
 
@@ -32,10 +32,11 @@ public sealed class NativeMessagingFramingTests
     public async Task Read_AssemblesAFrameDeliveredOneByteAtATime()
     {
         var json = "{\"body\":\"" + new string('x', 5000) + "\"}";
-        var buffer = new MemoryStream();
+        using var buffer = new MemoryStream();
         await NativeMessagingFraming.WriteFrameAsync(buffer, json, CancellationToken.None);
 
-        var frame = await NativeMessagingFraming.ReadFrameAsync(new TricklingStream(buffer.ToArray()), CancellationToken.None);
+        await using var trickling = new TricklingStream(buffer.ToArray());
+        var frame = await NativeMessagingFraming.ReadFrameAsync(trickling, CancellationToken.None);
 
         Assert.Equal(json, frame);
     }
@@ -46,8 +47,9 @@ public sealed class NativeMessagingFramingTests
         var header = new byte[4];
         BinaryPrimitives.WriteUInt32LittleEndian(header, (uint)NativeMessagingFraming.MaxFrameBytes + 1);
 
+        using var stream = new MemoryStream(header);
         var ex = await Assert.ThrowsAsync<ConnectorFrameException>(() =>
-            NativeMessagingFraming.ReadFrameAsync(new MemoryStream(header), CancellationToken.None)
+            NativeMessagingFraming.ReadFrameAsync(stream, CancellationToken.None)
         );
 
         Assert.Equal(ConnectorFrameFailure.TooLarge, ex.Failure);
@@ -57,7 +59,7 @@ public sealed class NativeMessagingFramingTests
     public async Task Read_AcceptsAFrameExactlyAtTheCap()
     {
         var json = "\"" + new string('a', NativeMessagingFraming.MaxFrameBytes - 2) + "\"";
-        var stream = new MemoryStream();
+        using var stream = new MemoryStream();
         await NativeMessagingFraming.WriteFrameAsync(stream, json, CancellationToken.None);
         stream.Position = 0;
 
@@ -69,8 +71,9 @@ public sealed class NativeMessagingFramingTests
     [InlineData(new byte[] { 5, 0, 0, 0, (byte)'{', (byte)'}' })]
     public async Task Read_RejectsATruncatedFrame(byte[] bytes)
     {
+        using var stream = new MemoryStream(bytes);
         var ex = await Assert.ThrowsAsync<ConnectorFrameException>(() =>
-            NativeMessagingFraming.ReadFrameAsync(new MemoryStream(bytes), CancellationToken.None)
+            NativeMessagingFraming.ReadFrameAsync(stream, CancellationToken.None)
         );
 
         Assert.Equal(ConnectorFrameFailure.Truncated, ex.Failure);
@@ -79,7 +82,7 @@ public sealed class NativeMessagingFramingTests
     [Fact]
     public async Task Write_RejectsJsonOverTheCap()
     {
-        var stream = new MemoryStream();
+        using var stream = new MemoryStream();
 
         var ex = await Assert.ThrowsAsync<ConnectorFrameException>(() =>
             NativeMessagingFraming.WriteFrameAsync(stream, new string('a', NativeMessagingFraming.MaxFrameBytes + 1), CancellationToken.None)
@@ -92,7 +95,7 @@ public sealed class NativeMessagingFramingTests
     [Fact]
     public async Task StreamChannel_SendsAndReceivesFrames()
     {
-        var stream = new MemoryStream();
+        using var stream = new MemoryStream();
         await using var channel = new StreamConnectorChannel(stream);
 
         await channel.SendAsync("{}", CancellationToken.None);

@@ -10,11 +10,12 @@ public sealed class ConnectorRelayTests
     [Fact]
     public async Task BrowserInput_IsCopiedToTheAppUntilTheBrowserCloses()
     {
-        var app = new DuplexStream(new BlockingStream());
-        var browserOutput = new FlushCountingStream();
+        await using var app = new DuplexStream(new BlockingStream());
+        await using var browserOutput = new FlushCountingStream();
+        await using var browserInput = new MemoryStream([.. "frame-bytes"u8]);
 
         await ConnectorRelay
-            .RunAsync(new MemoryStream([.. "frame-bytes"u8]), browserOutput, app, CancellationToken.None)
+            .RunAsync(browserInput, browserOutput, app, CancellationToken.None)
             .WaitAsync(s_timeout);
 
         Assert.Equal("frame-bytes", Encoding.UTF8.GetString(app.Written.ToArray()));
@@ -24,12 +25,14 @@ public sealed class ConnectorRelayTests
     [Fact]
     public async Task AppOutput_IsCopiedAndFlushedToTheBrowserUntilTheAppCloses()
     {
-        var app = new DuplexStream(new MemoryStream([.. "reply-bytes"u8]));
-        var browserOutput = new FlushCountingStream();
+        await using var appOutput = new MemoryStream([.. "reply-bytes"u8]);
+        await using var app = new DuplexStream(appOutput);
+        await using var browserOutput = new FlushCountingStream();
+        await using var browserInput = new BlockingStream(ignoreCancellation: true);
 
         // The browser input never ends and ignores cancellation, like a console read.
         await ConnectorRelay
-            .RunAsync(new BlockingStream(ignoreCancellation: true), browserOutput, app, CancellationToken.None)
+            .RunAsync(browserInput, browserOutput, app, CancellationToken.None)
             .WaitAsync(s_timeout);
 
         Assert.Equal("reply-bytes", Encoding.UTF8.GetString(browserOutput.ToArray()));

@@ -69,6 +69,35 @@ public sealed class KeyChordTests
     }
 
     [Fact]
+    public void WithPhysicalKey_SetsAKnownKeyPositionOutsideTheTextForm()
+    {
+        Assert.True(KeyChord.TryParse("Ctrl+Shift+A", out var chord));
+        Assert.Equal("A", chord.PhysicalKey);
+
+        var moved = chord.WithPhysicalKey("q");
+
+        Assert.Equal("Q", moved.PhysicalKey);
+        Assert.Equal("A", moved.Key);
+        Assert.Equal("Ctrl+Shift+A", moved.ToString());
+        Assert.NotEqual(chord, moved);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("  ")]
+    [InlineData("Hyper")]
+    public void WithPhysicalKey_IgnoresMissingOrUnknownNames(string? name)
+    {
+        Assert.True(KeyChord.TryParse("Ctrl+Shift+A", out var chord));
+
+        var same = chord.WithPhysicalKey(name);
+
+        Assert.Equal("A", same.PhysicalKey);
+        Assert.Equal(chord, same);
+    }
+
+    [Fact]
     public void TryCreate_NeedsAModifierAndAKnownKey()
     {
         Assert.True(KeyChord.TryCreate(ChordModifiers.Ctrl | ChordModifiers.Shift, "f", out var chord));

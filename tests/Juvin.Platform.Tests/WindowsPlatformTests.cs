@@ -98,6 +98,7 @@ public sealed class WindowsPlatformTests : IDisposable
             {
                 while (await NativeMessagingFraming.ReadFrameAsync(stream, ct) is not null)
                 {
+                    // Consume frames until the client closes.
                 }
             },
             CancellationToken.None

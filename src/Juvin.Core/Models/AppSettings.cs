@@ -26,6 +26,12 @@ public sealed record AppSettings
 
     public string RewriteShortcut { get; init; } = "Ctrl+Shift+F";
 
+    /// <summary>
+    ///     The key position the user pressed when recording the shortcut, as a canonical key name, when it differs
+    ///     from the logical key in <see cref="RewriteShortcut" />; null means the same key.
+    /// </summary>
+    public string? RewriteShortcutPhysicalKey { get; init; }
+
     /// <summary>The id of the hotkey backend the user picked; null chooses the first available one.</summary>
     public string? HotkeyBackend { get; init; }
 

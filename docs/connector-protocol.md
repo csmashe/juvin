@@ -56,7 +56,7 @@ Sent in reply to `hello` and again whenever settings change.
  "health":{"mode":"local","modelReachable":null}}
 ```
 
-`health.mode` is `local` or `codex`; `modelReachable` is `true`, `false`, or `null` when the app has not probed yet. The extension stores nothing from `config` beyond the lifetime of the connection.
+`actions` is the user's configured catalog: the built-ins, then their custom actions, in the order the panel lists them. `health.mode` is `local` or `codex`; `modelReachable` is `true`, `false`, or `null` when the app has not probed yet. The extension stores nothing from `config` beyond the lifetime of the connection.
 
 ### `ping` and `pong` (either direction)
 
