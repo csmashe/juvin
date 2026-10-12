@@ -268,6 +268,22 @@ public sealed class RewriteActionsSectionViewModelTests
     }
 
     [Fact]
+    public void AFailedDefaultChange_DoesNotBlockRowRefreshes()
+    {
+        var vm = Create();
+        _settings.UpdateFailure = new IOException("disk full");
+        vm.SelectedDefault = vm.DefaultOptions[0];
+        _settings.UpdateFailure = null;
+
+        _settings.Update(s => s with { RewriteInstructionOverrides = new Dictionary<string, string> { ["soften"] = "Be gentle." } });
+        Assert.Equal("Be gentle.", Row(vm, "soften").Instruction);
+
+        vm.SelectedDefault = vm.DefaultOptions[0];
+        Assert.False(vm.HasSaveError);
+        Assert.Equal("soften", _settings.Current.DefaultRewriteAction);
+    }
+
+    [Fact]
     public void AFailedDefaultChange_ShowsTheSavedDefault()
     {
         var vm = Create();
