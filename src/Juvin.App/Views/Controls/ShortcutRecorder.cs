@@ -52,7 +52,7 @@ public sealed class ShortcutRecorder : Border
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
-        if (ViewModel?.HandleKey(e.Key, e.KeyModifiers) == true)
+        if (ViewModel?.HandleKey(e.Key, e.KeyModifiers, e.PhysicalKey) == true)
         {
             e.Handled = true;
             return;

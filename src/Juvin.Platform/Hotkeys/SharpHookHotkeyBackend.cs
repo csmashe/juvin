@@ -38,7 +38,7 @@ public sealed class SharpHookHotkeyBackend : IHotkeyBackend
     {
         ArgumentNullException.ThrowIfNull(chord);
         await StopAsync().ConfigureAwait(false);
-        if (!KeyCodes.TryGetValue(chord.Key, out var key))
+        if (!KeyCodes.TryGetValue(KeyToMatch(chord, OperatingSystem.IsMacOS()), out var key))
         {
             throw new HotkeyBackendException("The keyboard hook cannot listen for that key.");
         }
@@ -119,6 +119,9 @@ public sealed class SharpHookHotkeyBackend : IHotkeyBackend
             Trace.WriteLine($"[SharpHookHotkeyBackend] Stopping the hook failed ({ex.GetType().Name}).");
         }
     }
+
+    /// <summary>libuiohook reports layout keys (Windows virtual keys, X11 keysyms); only macOS gives the hardware key code.</summary>
+    internal static string KeyToMatch(KeyChord chord, bool isMac) => isMac ? chord.PhysicalKey : chord.Key;
 
     internal static bool IsX11Session(Func<string, string?> getEnvironment) =>
         !string.Equals(getEnvironment("XDG_SESSION_TYPE"), "wayland", StringComparison.OrdinalIgnoreCase)

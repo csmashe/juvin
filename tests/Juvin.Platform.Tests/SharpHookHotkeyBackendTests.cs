@@ -41,6 +41,16 @@ public sealed class SharpHookHotkeyBackendTests
     }
 
     [Theory]
+    [InlineData(false, "A")]
+    [InlineData(true, "Q")]
+    public void KeyToMatch_UsesThePhysicalKeyOnlyOnMac(bool isMac, string expected)
+    {
+        Assert.True(KeyChord.TryParse("Ctrl+Shift+A", out var chord));
+
+        Assert.Equal(expected, SharpHookHotkeyBackend.KeyToMatch(chord.WithPhysicalKey("Q"), isMac));
+    }
+
+    [Theory]
     [InlineData("x11", null, true)]
     [InlineData(null, null, true)]
     [InlineData("wayland", null, false)]

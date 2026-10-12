@@ -57,12 +57,19 @@ public sealed record KeyChord
     {
         Modifiers = modifiers;
         Key = key;
+        PhysicalKey = key;
     }
 
     public ChordModifiers Modifiers { get; }
 
     /// <summary>The key's canonical name, one of <see cref="KeyNames" />.</summary>
     public string Key { get; }
+
+    /// <summary>
+    ///     The canonical name of the US key position to match; differs from <see cref="Key" /> on layouts that
+    ///     move letters. Not part of the text form.
+    /// </summary>
+    public string PhysicalKey { get; private init; }
 
     /// <summary>Every key a chord can use, by canonical name.</summary>
     public static IReadOnlyCollection<string> KeyNames => s_keys.Values;
@@ -114,6 +121,10 @@ public sealed record KeyChord
         chord = new KeyChord(modifiers, name);
         return true;
     }
+
+    /// <summary>A copy matching the key position <paramref name="name" />; null, blank, or unknown names leave the chord unchanged.</summary>
+    public KeyChord WithPhysicalKey(string? name) =>
+        !string.IsNullOrWhiteSpace(name) && TryNormalizeKey(name, out var key) ? this with { PhysicalKey = key } : this;
 
     /// <summary>The canonical form stored in settings, for example <c>Ctrl+Shift+F</c>.</summary>
     public override string ToString() => Format("Ctrl", "Alt", "Shift", "Super");

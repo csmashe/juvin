@@ -18,7 +18,11 @@ public interface IHotkeyBackend
     /// <summary>Raised once per press of the chord, on any thread; holding the keys does not repeat it.</summary>
     event Action? Pressed;
 
-    /// <summary>Starts listening for <paramref name="chord" />. Called again only after <see cref="StopAsync" />.</summary>
+    /// <summary>
+    ///     Starts listening for <paramref name="chord" />. Called again only after <see cref="StopAsync" />.
+    ///     Backends that match key positions use <see cref="KeyChord.PhysicalKey" />; backends that write a
+    ///     desktop binding use <see cref="KeyChord.Key" />.
+    /// </summary>
     /// <exception cref="HotkeyBackendException">The backend cannot listen here; the message is shown to the user.</exception>
     Task StartAsync(KeyChord chord, CancellationToken ct);
 

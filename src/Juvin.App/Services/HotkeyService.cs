@@ -41,7 +41,7 @@ public sealed class HotkeyService : IHotkeyRestart
 
     // Guarded by _gate.
     private IHotkeyBackend? _active;
-    private (string Shortcut, string? Backend)? _applied;
+    private (string Shortcut, string? PhysicalKey, string? Backend)? _applied;
     private bool _started;
 
     private volatile HotkeyStatus _status = HotkeyStatus.Stopped;
@@ -180,7 +180,7 @@ public sealed class HotkeyService : IHotkeyRestart
         await _gate.WaitAsync().ConfigureAwait(false);
         try
         {
-            if (_started && _applied != (settings.RewriteShortcut, settings.HotkeyBackend))
+            if (_started && _applied != (settings.RewriteShortcut, settings.RewriteShortcutPhysicalKey, settings.HotkeyBackend))
             {
                 await ApplyAsync(settings, CancellationToken.None).ConfigureAwait(false);
             }
@@ -194,14 +194,15 @@ public sealed class HotkeyService : IHotkeyRestart
     private async Task ApplyAsync(AppSettings settings, CancellationToken ct)
     {
         await StopActiveAsync().ConfigureAwait(false);
-        _applied = (settings.RewriteShortcut, settings.HotkeyBackend);
-        if (!KeyChord.TryParse(settings.RewriteShortcut, out var chord))
+        _applied = (settings.RewriteShortcut, settings.RewriteShortcutPhysicalKey, settings.HotkeyBackend);
+        if (!KeyChord.TryParse(settings.RewriteShortcut, out var parsed))
         {
             Trace.WriteLine($"[HotkeyService] The shortcut setting is not a valid chord ({settings.RewriteShortcut.Length} chars).");
             SetStatus(new HotkeyStatus(HotkeyStatusKind.InvalidShortcut));
             return;
         }
 
+        var chord = parsed.WithPhysicalKey(settings.RewriteShortcutPhysicalKey);
         var available = AvailableBackends;
         var preferred = available.FirstOrDefault(backend => backend.Id == settings.HotkeyBackend);
         var candidates = preferred is null ? available : [preferred];
