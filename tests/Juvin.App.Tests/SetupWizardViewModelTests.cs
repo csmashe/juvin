@@ -1,6 +1,7 @@
 using Juvin.App.Services;
 using Juvin.App.Tests.Fakes;
 using Juvin.App.ViewModels;
+using Juvin.Core.Hotkeys;
 using Juvin.Core.Localization;
 using Juvin.Core.Models;
 using Juvin.Platform;
@@ -241,7 +242,9 @@ public sealed class SetupWizardViewModelTests
 
         vm.StepIndex = (int)SetupWizardStep.Done;
 
-        Assert.Contains("Ctrl+Alt+J", vm.DoneBody);
+        // Shown in the OS's own form: Cmd on macOS, Ctrl elsewhere.
+        Assert.True(KeyChord.TryParse("Ctrl+Alt+J", out var chord));
+        Assert.Contains(chord.ToDisplayString(OperatingSystem.IsMacOS()), vm.DoneBody);
     }
 
     private SetupWizardViewModel Create(params FakeSetupTask[] tasks)
