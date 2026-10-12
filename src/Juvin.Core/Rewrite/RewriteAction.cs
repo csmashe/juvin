@@ -1,9 +1,21 @@
+using Juvin.Core.Localization;
+
 namespace Juvin.Core.Rewrite;
 
-/// <param name="TitleKey">String table key for the action's name.</param>
+/// <param name="TitleKey">String table key for a built-in action's name; empty for a user-defined one.</param>
 /// <param name="Instruction">Sent as the last line of the prompt; empty for <see cref="Custom" />.</param>
+/// <remarks>Resolve actions through <see cref="RewriteActionCatalog" /> so edited instructions and user-defined actions apply.</remarks>
 public sealed record RewriteAction(string Id, string TitleKey, string Instruction)
 {
+    /// <summary>The name of a user-defined action, which is not in the string table; null for built-ins.</summary>
+    public string? Title { get; init; }
+
+    /// <summary>The free-text follow-up action, whose instruction comes from the user each time.</summary>
+    public bool IsCustom => Id == Custom.Id;
+
+    /// <summary>"What am I missing?" returns advice rather than a draft.</summary>
+    public bool IsMissing => Id == Missing.Id;
+
     public static RewriteAction Soften { get; } = new(
         "soften",
         "Action.Soften",
@@ -40,6 +52,5 @@ public sealed record RewriteAction(string Id, string TitleKey, string Instructio
     public static IReadOnlyList<RewriteAction> BuiltIn { get; } =
         [Soften, Clearer, Shorter, Grammar, Custom, Missing];
 
-    public static RewriteAction? Find(string id) =>
-        BuiltIn.FirstOrDefault(action => string.Equals(action.Id, id, StringComparison.OrdinalIgnoreCase));
+    public string DisplayName(Localizer localizer) => Title ?? localizer[TitleKey];
 }

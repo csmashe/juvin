@@ -69,7 +69,7 @@ public sealed class CliInputTests
 
         Assert.Null(error);
         Assert.NotNull(options);
-        Assert.Same(RewriteAction.Missing, options.Action);
+        Assert.Equal("missing", options.ActionId);
         Assert.Equal(ProcessingMode.Codex, options.Mode);
         Assert.True(options.Provenance);
         Assert.Equal("/s.json", options.SettingsPath);
@@ -94,17 +94,63 @@ public sealed class CliInputTests
     {
         var options = CliOptions.Parse(["rewrite", "--stdin", "--instruction", "Be brief"], out _);
 
-        Assert.Same(RewriteAction.Custom, options?.Action);
-        Assert.Equal("Be brief", options?.Instruction);
+        Assert.NotNull(options);
+        Assert.Same(RewriteAction.Custom, options.ResolveAction(new AppSettings(), out _));
+        Assert.Equal("Be brief", options.Instruction);
+    }
+
+    [Fact]
+    public void Options_ResolveClearerByDefault()
+    {
+        var options = CliOptions.Parse(["rewrite", "--stdin"], out _);
+
+        Assert.Same(RewriteAction.Clearer, options?.ResolveAction(new AppSettings(), out _));
+    }
+
+    [Fact]
+    public void Options_ResolveEditedAndUserDefinedActionsFromTheSettings()
+    {
+        var settings = new AppSettings
+        {
+            RewriteInstructionOverrides = new Dictionary<string, string> { ["soften"] = "Be gentle." },
+            CustomRewriteActions = [new CustomRewriteAction("custom-1", "Formal", "Make it formal.")],
+        };
+
+        var soften = CliOptions.Parse(["rewrite", "--stdin", "--action", "soften"], out _)?.ResolveAction(settings, out _);
+        var formal = CliOptions.Parse(["rewrite", "--stdin", "--action", "CUSTOM-1"], out _)?.ResolveAction(settings, out _);
+
+        Assert.Equal("Be gentle.", soften?.Instruction);
+        Assert.Equal("Make it formal.", formal?.Instruction);
+    }
+
+    [Theory]
+    [InlineData("rewrite --stdin --action nope")]
+    [InlineData("rewrite --stdin --action custom")]
+    [InlineData("rewrite --stdin --action soften --instruction x")]
+    public void Options_ReportActionErrorsAgainstTheSettings(string commandLine)
+    {
+        var settings = new AppSettings { CustomRewriteActions = [new CustomRewriteAction("custom-1", "Formal", "Make it formal.")] };
+        var options = CliOptions.Parse(commandLine.Split(' '), out var parseError);
+        Assert.Null(parseError);
+
+        Assert.Null(options!.ResolveAction(settings, out var error));
+        Assert.False(string.IsNullOrEmpty(error));
+    }
+
+    [Fact]
+    public void Options_ListEveryActionIdForAnUnknownAction()
+    {
+        var settings = new AppSettings { CustomRewriteActions = [new CustomRewriteAction("custom-1", "Formal", "Make it formal.")] };
+
+        CliOptions.Parse(["rewrite", "--stdin", "--action", "nope"], out _)!.ResolveAction(settings, out var error);
+
+        Assert.Contains("soften, clearer, shorter, grammar, custom, missing, custom-1", error);
     }
 
     [Theory]
     [InlineData("")]
     [InlineData("rewrite")]
-    [InlineData("rewrite --stdin --action nope")]
-    [InlineData("rewrite --stdin --action custom")]
     [InlineData("rewrite --stdin --mode 99")]
-    [InlineData("rewrite --stdin --action soften --instruction x")]
     [InlineData("rewrite --stdin --mode cloud")]
     [InlineData("rewrite --stdin --model")]
     [InlineData("rewrite --stdin --bogus x")]

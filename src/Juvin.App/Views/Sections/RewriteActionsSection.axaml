@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Juvin.App.ViewModels.Sections"
              xmlns:loc="using:Juvin.App.Localization"
+             xmlns:rewrite="using:Juvin.Core.Rewrite"
              x:Class="Juvin.App.Views.Sections.RewriteActionsSection"
              x:DataType="vm:RewriteActionsSectionViewModel">
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -11,42 +12,124 @@
                 <TextBlock Classes="page-subtitle" Text="{loc:Str RewriteActions.Subtitle}" />
             </StackPanel>
 
+            <Border Classes="panel" IsVisible="{Binding HasSaveError}">
+                <Border Classes="section-row">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                        <TextBlock Classes="row-hint" Margin="0" VerticalAlignment="Center" Text="{Binding SaveError}" />
+                        <Button Grid.Column="1" Content="{loc:Str RewriteActions.Retry}" Command="{Binding RetrySaveCommand}" />
+                    </Grid>
+                </Border>
+            </Border>
+
             <StackPanel Spacing="8">
-                <TextBlock Classes="section-label" Text="{loc:Str RewriteActions.ActionsLabel}" />
+                <TextBlock Classes="section-label" Text="{loc:Str RewriteActions.DefaultLabel}" />
+                <Border Classes="panel">
+                    <Border Classes="section-row">
+                        <Grid ColumnDefinitions="*,220" ColumnSpacing="16">
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Classes="row-title" Text="{loc:Str RewriteActions.Default}" />
+                                <TextBlock Classes="row-hint" Text="{loc:Str RewriteActions.DefaultHint}" />
+                            </StackPanel>
+                            <ComboBox Grid.Column="1"
+                                      HorizontalAlignment="Stretch"
+                                      VerticalAlignment="Center"
+                                      ItemsSource="{Binding DefaultOptions}"
+                                      SelectedItem="{Binding SelectedDefault}">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:DefaultActionOption">
+                                        <TextBlock Text="{Binding Title}" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </Grid>
+                    </Border>
+                </Border>
+            </StackPanel>
+
+            <StackPanel Spacing="8">
+                <TextBlock Classes="section-label" Text="{loc:Str RewriteActions.BuiltInLabel}" />
+                <TextBlock Classes="row-hint" Margin="2,0,0,0" Text="{loc:Str RewriteActions.BuiltInHint}" />
+                <Border Classes="panel">
+                    <!-- ReSharper disable once Xaml.StyleClassNotFound (the class is matched by a compound selector in JuvinStyles) -->
+<ItemsControl Classes="divided-rows" ItemsSource="{Binding BuiltInActions}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:BuiltInActionRow">
+                                <Border Classes="section-row">
+                                    <StackPanel Spacing="8">
+                                        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+                                            <StackPanel VerticalAlignment="Center">
+                                                <TextBlock Classes="row-title" Text="{Binding Title}" />
+                                                <TextBlock Classes="row-hint" Text="{Binding Hint}" IsVisible="{Binding HasHint}" />
+                                            </StackPanel>
+                                            <Border Grid.Column="1" Classes="badge" IsVisible="{Binding IsEdited}">
+                                                <TextBlock Classes="badge-text" Text="{loc:Str RewriteActions.Edited}" />
+                                            </Border>
+                                            <Button Grid.Column="2"
+                                                    VerticalAlignment="Center"
+                                                    Content="{loc:Str RewriteActions.Reset}"
+                                                    Command="{Binding ResetCommand}"
+                                                    IsVisible="{Binding IsEdited}" />
+                                        </Grid>
+                                        <TextBox Classes="instruction"
+                                                 AutomationProperties.Name="{Binding Title}"
+                                                 Text="{Binding Instruction, UpdateSourceTrigger=LostFocus}" />
+                                        <TextBlock Classes="row-hint"
+                                                   Margin="0"
+                                                   Text="{loc:Str RewriteActions.InstructionInvalid}"
+                                                   IsVisible="{Binding IsInvalid}" />
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Border>
+            </StackPanel>
+
+            <StackPanel Spacing="8">
+                <TextBlock Classes="section-label" Text="{loc:Str RewriteActions.CustomLabel}" />
+                <TextBlock Classes="row-hint" Margin="2,0,0,0" Text="{loc:Str RewriteActions.CustomHint}" />
                 <Border Classes="panel">
                     <StackPanel>
-                        <Border Classes="section-row">
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-                                <StackPanel VerticalAlignment="Center">
-                                    <TextBlock Classes="row-title" Text="{loc:Str RewriteActions.BuiltIn}" />
-                                    <TextBlock Classes="row-hint" Text="{loc:Str RewriteActions.BuiltInHint}" />
-                                </StackPanel>
-                                <Border Grid.Column="1" Classes="badge">
-                                    <TextBlock Classes="badge-text" Text="{loc:Str Common.ComingSoon}" />
-                                </Border>
-                            </Grid>
-                        </Border>
-                        <Border Classes="section-row divided">
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-                                <StackPanel VerticalAlignment="Center">
-                                    <TextBlock Classes="row-title" Text="{loc:Str RewriteActions.Custom}" />
-                                    <TextBlock Classes="row-hint" Text="{loc:Str RewriteActions.CustomHint}" />
-                                </StackPanel>
-                                <Border Grid.Column="1" Classes="badge">
-                                    <TextBlock Classes="badge-text" Text="{loc:Str Common.ComingSoon}" />
-                                </Border>
-                            </Grid>
-                        </Border>
-                        <Border Classes="section-row divided">
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-                                <StackPanel VerticalAlignment="Center">
-                                    <TextBlock Classes="row-title" Text="{loc:Str RewriteActions.Default}" />
-                                    <TextBlock Classes="row-hint" Text="{loc:Str RewriteActions.DefaultHint}" />
-                                </StackPanel>
-                                <Border Grid.Column="1" Classes="badge">
-                                    <TextBlock Classes="badge-text" Text="{loc:Str Common.ComingSoon}" />
-                                </Border>
-                            </Grid>
+                        <!-- ReSharper disable once Xaml.StyleClassNotFound (the class is matched by a compound selector in JuvinStyles) -->
+<ItemsControl Classes="divided-rows" ItemsSource="{Binding CustomActions}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:CustomActionRow">
+                                    <Border Classes="section-row">
+                                        <StackPanel Spacing="8">
+                                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                                                <TextBox x:Name="TitleBox"
+                                                         MaxLength="{x:Static rewrite:RewriteActionCatalog.MaxTitleLength}"
+                                                         PlaceholderText="{loc:Str RewriteActions.TitlePlaceholder}"
+                                                         Text="{Binding Title, UpdateSourceTrigger=LostFocus}">
+                                                    <TextBox.KeyBindings>
+                                                        <KeyBinding Gesture="Enter"
+                                                                    Command="{Binding CommitTitleCommand}"
+                                                                    CommandParameter="{Binding #TitleBox.Text}" />
+                                                    </TextBox.KeyBindings>
+                                                </TextBox>
+                                                <Button Grid.Column="1"
+                                                        VerticalAlignment="Center"
+                                                        Content="{loc:Str RewriteActions.Remove}"
+                                                        Command="{Binding RemoveCommand}" />
+                                            </Grid>
+                                            <TextBlock Classes="row-hint"
+                                                       Margin="0"
+                                                       Text="{loc:Str RewriteActions.TitleInvalid}"
+                                                       IsVisible="{Binding IsTitleInvalid}" />
+                                            <TextBox Classes="instruction"
+                                                     PlaceholderText="{loc:Str RewriteActions.InstructionPlaceholder}"
+                                                     Text="{Binding Instruction, UpdateSourceTrigger=LostFocus}" />
+                                            <TextBlock Classes="row-hint"
+                                                       Margin="0"
+                                                       Text="{loc:Str RewriteActions.InstructionInvalid}"
+                                                       IsVisible="{Binding IsInstructionInvalid}" />
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <Border Classes="section-row" Classes.divided="{Binding HasCustomActions}">
+                            <Button Content="{loc:Str RewriteActions.Add}" Command="{Binding AddCustomActionCommand}" />
                         </Border>
                     </StackPanel>
                 </Border>

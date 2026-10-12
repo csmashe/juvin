@@ -89,4 +89,55 @@ public sealed class SettingsServiceTests : IDisposable
 
         Assert.Equal(7, service.Current.HistoryRetentionDays);
     }
+
+    [Fact]
+    public void RewriteActions_RoundTripThroughTheFile()
+    {
+        var path = _temp.File("settings.json");
+        new SettingsService(path).Update(s => s with
+        {
+            RewriteInstructionOverrides = new Dictionary<string, string> { ["soften"] = "Be gentle." },
+            CustomRewriteActions = [new CustomRewriteAction("custom-1", "Formal", "Make it formal.")],
+            DefaultRewriteAction = "custom-1",
+        });
+
+        var loaded = new SettingsService(path).Current;
+
+        Assert.Equal("Be gentle.", Assert.Single(loaded.RewriteInstructionOverrides, pair => pair.Key == "soften").Value);
+        Assert.Equal(new CustomRewriteAction("custom-1", "Formal", "Make it formal."), Assert.Single(loaded.CustomRewriteActions));
+        Assert.Equal("custom-1", loaded.DefaultRewriteAction);
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("""{ "rewriteInstructionOverrides": null, "customRewriteActions": null }""")]
+    [InlineData("""{ "rewriteInstructionOverrides": {}, "customRewriteActions": [] }""")]
+    public void RewriteActions_LoadAsEmptyWhenMissingOrNull(string json)
+    {
+        var path = _temp.File("settings.json");
+        File.WriteAllText(path, json);
+
+        var loaded = new SettingsService(path).Current;
+
+        Assert.Empty(loaded.RewriteInstructionOverrides);
+        Assert.Empty(loaded.CustomRewriteActions);
+        Assert.Equal("clearer", loaded.DefaultRewriteAction);
+    }
+
+    [Fact]
+    public void Update_RaisesSettingsChangedWhenOnlyARewriteActionChanges()
+    {
+        var service = new SettingsService(_temp.File("settings.json"));
+        var raised = 0;
+        service.SettingsChanged += _ => raised++;
+
+        service.Update(s => s with { RewriteInstructionOverrides = new Dictionary<string, string> { ["soften"] = "A" } });
+        service.Update(s => s with { RewriteInstructionOverrides = new Dictionary<string, string> { ["soften"] = "A" } });
+        service.Update(s => s with { RewriteInstructionOverrides = new Dictionary<string, string> { ["soften"] = "B" } });
+        service.Update(s => s with { CustomRewriteActions = [new CustomRewriteAction("custom-1", "T", "I")] });
+        service.Update(s => s with { CustomRewriteActions = [new CustomRewriteAction("custom-1", "T", "I")] });
+        service.Update(s => s with { CustomRewriteActions = [new CustomRewriteAction("custom-1", "T", "Changed")] });
+
+        Assert.Equal(4, raised);
+    }
 }
