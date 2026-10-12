@@ -19,11 +19,36 @@ public sealed class ShortcutPanelViewModelTests
         var vm = Create();
         vm.BeginRecording();
 
-        Assert.True(vm.HandleKey(Key.J, KeyModifiers.Control | KeyModifiers.Alt));
+        Assert.True(vm.HandleKey(Key.J, KeyModifiers.Control | KeyModifiers.Alt, PhysicalKey.None));
 
         Assert.Equal("Ctrl+Alt+J", _settings.Current.RewriteShortcut);
         Assert.False(vm.IsRecording);
         Assert.Equal("Ctrl+Alt+J", vm.RecorderText);
+    }
+
+    [Fact]
+    public void Recording_SavesThePhysicalKeyWhenItDiffersFromTheLogicalOne()
+    {
+        var vm = Create();
+        vm.BeginRecording();
+
+        vm.HandleKey(Key.A, KeyModifiers.Control | KeyModifiers.Shift, PhysicalKey.Q);
+
+        Assert.Equal("Ctrl+Shift+A", _settings.Current.RewriteShortcut);
+        Assert.Equal("Q", _settings.Current.RewriteShortcutPhysicalKey);
+    }
+
+    [Fact]
+    public void Recording_ClearsThePhysicalKeyWhenItMatchesTheLogicalOne()
+    {
+        _settings.Update(s => s with { RewriteShortcutPhysicalKey = "Q" });
+        var vm = Create();
+        vm.BeginRecording();
+
+        vm.HandleKey(Key.J, KeyModifiers.Control, PhysicalKey.J);
+
+        Assert.Equal("Ctrl+J", _settings.Current.RewriteShortcut);
+        Assert.Null(_settings.Current.RewriteShortcutPhysicalKey);
     }
 
     [Fact]
@@ -42,12 +67,12 @@ public sealed class ShortcutPanelViewModelTests
         var vm = Create(isMac: true);
 
         vm.BeginRecording();
-        vm.HandleKey(Key.J, KeyModifiers.Meta | KeyModifiers.Shift);
+        vm.HandleKey(Key.J, KeyModifiers.Meta | KeyModifiers.Shift, PhysicalKey.None);
         Assert.Equal("Ctrl+Shift+J", _settings.Current.RewriteShortcut);
         Assert.Equal("Cmd+Shift+J", vm.ShortcutText);
 
         vm.BeginRecording();
-        vm.HandleKey(Key.K, KeyModifiers.Control);
+        vm.HandleKey(Key.K, KeyModifiers.Control, PhysicalKey.None);
         Assert.Equal("Super+K", _settings.Current.RewriteShortcut);
         Assert.Equal("Ctrl+K", vm.ShortcutText);
     }
@@ -58,7 +83,7 @@ public sealed class ShortcutPanelViewModelTests
         var vm = Create();
         vm.BeginRecording();
 
-        vm.HandleKey(Key.F5, KeyModifiers.Meta);
+        vm.HandleKey(Key.F5, KeyModifiers.Meta, PhysicalKey.None);
 
         Assert.Equal("Super+F5", _settings.Current.RewriteShortcut);
     }
@@ -73,7 +98,7 @@ public sealed class ShortcutPanelViewModelTests
         var vm = Create();
         vm.BeginRecording();
 
-        Assert.True(vm.HandleKey(key, modifiers));
+        Assert.True(vm.HandleKey(key, modifiers, PhysicalKey.None));
 
         Assert.Equal(0, _settings.SaveCount);
         Assert.True(vm.IsRecording);
@@ -86,7 +111,7 @@ public sealed class ShortcutPanelViewModelTests
         var vm = Create();
         vm.BeginRecording();
 
-        Assert.True(vm.HandleKey(Key.Escape, KeyModifiers.Control));
+        Assert.True(vm.HandleKey(Key.Escape, KeyModifiers.Control, PhysicalKey.None));
 
         Assert.False(vm.IsRecording);
         Assert.Equal(0, _settings.SaveCount);
@@ -98,7 +123,7 @@ public sealed class ShortcutPanelViewModelTests
     {
         var vm = Create();
 
-        Assert.False(vm.HandleKey(Key.J, KeyModifiers.Control));
+        Assert.False(vm.HandleKey(Key.J, KeyModifiers.Control, PhysicalKey.None));
         Assert.Equal(0, _settings.SaveCount);
     }
 
@@ -108,7 +133,7 @@ public sealed class ShortcutPanelViewModelTests
         var vm = Create();
         vm.BeginRecording();
 
-        Assert.False(vm.HandleKey(Key.Tab, KeyModifiers.None));
+        Assert.False(vm.HandleKey(Key.Tab, KeyModifiers.None, PhysicalKey.None));
     }
 
     [Theory]
@@ -129,12 +154,35 @@ public sealed class ShortcutPanelViewModelTests
         Assert.True(KeyChord.TryCreate(ChordModifiers.Ctrl, name, out _));
     }
 
+    [Theory]
+    [InlineData(PhysicalKey.Q, "Q")]
+    [InlineData(PhysicalKey.Digit0, "0")]
+    [InlineData(PhysicalKey.Digit7, "7")]
+    [InlineData(PhysicalKey.ArrowLeft, "Left")]
+    [InlineData(PhysicalKey.Semicolon, "Semicolon")]
+    [InlineData(PhysicalKey.F12, "F12")]
+    [InlineData(PhysicalKey.None, null)]
+    [InlineData(PhysicalKey.NumPad1, null)]
+    [InlineData(PhysicalKey.IntlBackslash, null)]
+    public void KeyMap_NamesPhysicalKeysAsTheChordDoes(PhysicalKey key, string? name)
+    {
+        Assert.Equal(name, ShortcutKeyMap.PhysicalKeyName(key));
+    }
+
     [Fact]
     public void KeyMap_EveryMappedKeyIsAValidChordKey()
     {
         foreach (var key in Enum.GetValues<Key>())
         {
             if (ShortcutKeyMap.KeyName(key) is { } name)
+            {
+                Assert.Contains(name, KeyChord.KeyNames);
+            }
+        }
+
+        foreach (var key in Enum.GetValues<PhysicalKey>())
+        {
+            if (ShortcutKeyMap.PhysicalKeyName(key) is { } name)
             {
                 Assert.Contains(name, KeyChord.KeyNames);
             }
@@ -261,11 +309,11 @@ public sealed class ShortcutPanelViewModelTests
         Assert.False(hotkeys.Suspended);
 
         vm.BeginRecording();
-        vm.HandleKey(Key.Escape, KeyModifiers.None);
+        vm.HandleKey(Key.Escape, KeyModifiers.None, PhysicalKey.None);
         Assert.False(hotkeys.Suspended);
 
         vm.BeginRecording();
-        vm.HandleKey(Key.J, KeyModifiers.Control);
+        vm.HandleKey(Key.J, KeyModifiers.Control, PhysicalKey.None);
         Assert.True(hotkeys.Suspended);
         await Task.Delay(ShortcutPanelViewModel.ResumeGrace * 3);
         Assert.True(hotkeys.Suspended);
@@ -283,7 +331,7 @@ public sealed class ShortcutPanelViewModelTests
         var settings = Create(hotkeys: hotkeys);
 
         wizard.BeginRecording();
-        wizard.HandleKey(Key.J, KeyModifiers.Control);
+        wizard.HandleKey(Key.J, KeyModifiers.Control, PhysicalKey.None);
         wizard.Dispose();
         Assert.False(hotkeys.Suspended);
         settings.BeginRecording();
@@ -298,7 +346,7 @@ public sealed class ShortcutPanelViewModelTests
         var hotkeys = Hotkeys();
         var vm = Create(hotkeys: hotkeys);
         vm.BeginRecording();
-        vm.HandleKey(Key.J, KeyModifiers.Control);
+        vm.HandleKey(Key.J, KeyModifiers.Control, PhysicalKey.None);
         vm.HandleKeyUp(Key.J);
         Assert.True(hotkeys.Suspended);
 
@@ -313,13 +361,13 @@ public sealed class ShortcutPanelViewModelTests
         var hotkeys = Hotkeys();
         var vm = Create(hotkeys: hotkeys);
         vm.BeginRecording();
-        vm.HandleKey(Key.J, KeyModifiers.Control);
+        vm.HandleKey(Key.J, KeyModifiers.Control, PhysicalKey.None);
         vm.HandleKeyUp(Key.J);
         await Task.Delay(ShortcutPanelViewModel.ResumeGrace * 3);
         Assert.False(hotkeys.Suspended);
 
         vm.BeginRecording();
-        vm.HandleKey(Key.K, KeyModifiers.Control);
+        vm.HandleKey(Key.K, KeyModifiers.Control, PhysicalKey.None);
         await Task.Delay(ShortcutPanelViewModel.ReleaseCap - ShortcutPanelViewModel.ResumeGrace);
 
         // The first save's cap has passed, but the second chord is still held.
@@ -333,7 +381,7 @@ public sealed class ShortcutPanelViewModelTests
         var vm = Create(hotkeys: hotkeys);
 
         vm.BeginRecording();
-        vm.HandleKey(Key.J, KeyModifiers.Control);
+        vm.HandleKey(Key.J, KeyModifiers.Control, PhysicalKey.None);
         await Task.Delay(ShortcutPanelViewModel.ReleaseCap + ShortcutPanelViewModel.ResumeGrace);
 
         Assert.False(hotkeys.Suspended);

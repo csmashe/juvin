@@ -144,7 +144,7 @@ public sealed partial class ShortcutPanelViewModel : ObservableObject, IDisposab
     }
 
     /// <summary>Records a key press while recording; returns whether the press was consumed.</summary>
-    public bool HandleKey(Key key, KeyModifiers modifiers)
+    public bool HandleKey(Key key, KeyModifiers modifiers, PhysicalKey physicalKey)
     {
         if (!IsRecording)
         {
@@ -184,7 +184,12 @@ public sealed partial class ShortcutPanelViewModel : ObservableObject, IDisposab
 
         try
         {
-            _settings.Update(s => s with { RewriteShortcut = chord.ToString() });
+            var physicalName = ShortcutKeyMap.PhysicalKeyName(physicalKey);
+            _settings.Update(s => s with
+            {
+                RewriteShortcut = chord.ToString(),
+                RewriteShortcutPhysicalKey = physicalName is not null && physicalName != name ? physicalName : null,
+            });
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

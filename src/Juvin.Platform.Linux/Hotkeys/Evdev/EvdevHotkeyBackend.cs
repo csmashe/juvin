@@ -50,7 +50,7 @@ public sealed class EvdevHotkeyBackend : IHotkeyBackend
         ArgumentNullException.ThrowIfNull(chord);
         await StopAsync().ConfigureAwait(false);
         ct.ThrowIfCancellationRequested();
-        if (!LinuxKeyMap.KeyCodes.TryGetValue(chord.Key, out var keyCode))
+        if (!LinuxKeyMap.KeyCodes.TryGetValue(chord.PhysicalKey, out var keyCode))
         {
             throw new HotkeyBackendException(_localizer["Hotkey.Linux.UnsupportedKey"]);
         }

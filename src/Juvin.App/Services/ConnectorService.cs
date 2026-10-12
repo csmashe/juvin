@@ -134,7 +134,7 @@ public sealed class ConnectorService
     public ConnectorConfig BuildConfig(AppSettings settings) =>
         new()
         {
-            Actions = [.. RewriteAction.BuiltIn.Select(action => new ConnectorAction(action.Id, _localizer[action.TitleKey]))],
+            Actions = [.. RewriteActionCatalog.Resolve(settings).Select(action => new ConnectorAction(action.Id, action.DisplayName(_localizer)))],
             Adapters = s_adapters,
             Shortcut = settings.RewriteShortcut,
             Health = new ConnectorHealth(settings.ProcessingMode == ProcessingMode.Codex ? "codex" : "local", null),
