@@ -3,3 +3,9 @@ paths-ignore:
   - spikes
   - extension/dist
   - extension/node_modules
+
+# CodeQL runs without a build, so it never sees the setters that CommunityToolkit.Mvvm
+# generates for [ObservableProperty] fields and reports every one of them as "can be readonly".
+query-filters:
+  - exclude:
+      id: cs/missed-readonly-modifier
