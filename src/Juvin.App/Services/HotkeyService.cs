@@ -124,20 +124,16 @@ public sealed class HotkeyService : IHotkeyRestart
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            var wasActive = _active is IDesktopShortcutInfo;
-            if (wasActive)
+            if (_active is IDesktopShortcutInfo)
             {
                 await StopActiveAsync().ConfigureAwait(false);
+                // Before the removal, which can throw: the backend is already stopped either way.
+                SetStatus(HotkeyStatus.Stopped);
             }
 
             foreach (var desktop in _backends.OfType<IDesktopShortcutInfo>())
             {
                 await desktop.RemoveAsync(ct).ConfigureAwait(false);
-            }
-
-            if (wasActive)
-            {
-                SetStatus(HotkeyStatus.Stopped);
             }
         }
         finally
