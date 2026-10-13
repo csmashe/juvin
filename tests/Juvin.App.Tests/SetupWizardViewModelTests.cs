@@ -349,7 +349,6 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
     [Fact]
     public async Task OnlyReachableServer_IsPreselectedAndItsBestModelSuggested()
     {
-        _settings.Update(s => s with { LocalServerUrl = "http://10.0.3.20:11434" });
         _providers.Servers[ModelProbeService.LmStudioUrl] = FakeProviders.Reachable(
             null,
             FakeProviders.Model("small", "4B", lowQuality: true),
@@ -397,6 +396,173 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
         Assert.Equal(ModelProbeService.LmStudioUrl, _settings.Current.LocalServerUrl);
         Assert.True(lmStudio.IsInUse);
         Assert.False(vm.Detections[0].IsSelected);
+    }
+
+    [Fact]
+    public void ServerAddress_StartsWithTheConfiguredUrl()
+    {
+        _settings.Update(s => s with { LocalServerUrl = "http://10.0.3.20:11434" });
+
+        var vm = Create();
+
+        Assert.Equal("http://10.0.3.20:11434", vm.ServerUrl);
+    }
+
+    [Fact]
+    public async Task EnteringAReachableLanAddress_SavesItAndSuggestsItsModel()
+    {
+        const string lan = "http://10.0.3.20:11434";
+        _providers.Servers[lan] = FakeProviders.Reachable("0.12.3", FakeProviders.Model("large", "27B"));
+        var vm = await CreateOnModeStepAsync();
+
+        vm.CommitServerUrlCommand.Execute($" {lan} ");
+        await WaitUntilAsync(() => vm.Detections.All(row => !row.IsBusy) && vm.Detections.Any(row => row.Url == lan));
+
+        Assert.Equal(lan, _settings.Current.LocalServerUrl);
+        Assert.Equal(lan, vm.ServerUrl);
+        Assert.Null(vm.ServerUrlError);
+        var row = vm.Detections.Single(row => row.Url == lan);
+        Assert.Equal(_localizer["Wizard.Mode.YourServer"], row.Title);
+        Assert.True(row.IsInUse);
+        Assert.Equal("large", vm.RecommendedModel?.Id);
+    }
+
+    [Fact]
+    public async Task EnteringAnUnreachableLanAddress_KeepsItOverTheOnlyReachableServer()
+    {
+        const string lan = "http://10.0.3.20:11434";
+        _providers.Servers[ModelProbeService.OllamaUrl] = FakeProviders.Reachable("0.12.3");
+        var vm = await CreateOnModeStepAsync();
+        Assert.Equal(ModelProbeService.OllamaUrl, _settings.Current.LocalServerUrl);
+
+        vm.ServerUrl = lan;
+        await WaitUntilAsync(() => vm.Detections.All(row => !row.IsBusy) && vm.Detections.Any(row => row.Url == lan));
+
+        Assert.Equal(lan, _settings.Current.LocalServerUrl);
+        var row = vm.Detections.Single(row => row.Url == lan);
+        Assert.True(row.IsSelected);
+        Assert.True(row.NeedsAttention);
+        Assert.False(vm.Detections[0].IsSelected);
+
+        // Check again and revisiting the step must not swap it either.
+        await vm.DetectModelsCommand.ExecuteAsync(null);
+        Assert.Equal(lan, _settings.Current.LocalServerUrl);
+        vm.StepIndex = (int)SetupWizardStep.BrowserConnector;
+        vm.StepIndex = (int)SetupWizardStep.ProcessingMode;
+        await WaitUntilAsync(() => vm.Detections.All(detection => !detection.IsBusy));
+        Assert.Equal(lan, _settings.Current.LocalServerUrl);
+    }
+
+    [Fact]
+    public async Task ReenteringTheConfiguredServer_CountsAsChoosingIt()
+    {
+        _providers.Servers[ModelProbeService.OllamaUrl] = FakeProviders.Reachable("0.12.3");
+        var vm = await CreateOnModeStepAsync();
+
+        vm.ServerUrl = "http://localhost:11434/";
+        _providers.Servers.Remove(ModelProbeService.OllamaUrl);
+        _providers.Servers[ModelProbeService.LmStudioUrl] = FakeProviders.Reachable(null);
+        await vm.DetectModelsCommand.ExecuteAsync(null);
+
+        Assert.Equal(ModelProbeService.OllamaUrl, _settings.Current.LocalServerUrl);
+    }
+
+    [Fact]
+    public async Task EnterOnTheUnchangedAddress_RechecksItAndCountsAsChoosingIt()
+    {
+        _providers.Servers[ModelProbeService.OllamaUrl] = FakeProviders.Reachable("0.12.3");
+        var vm = await CreateOnModeStepAsync();
+        _providers.Servers.Remove(ModelProbeService.OllamaUrl);
+        _providers.Servers[ModelProbeService.LmStudioUrl] = FakeProviders.Reachable(null);
+
+        vm.CommitServerUrlCommand.Execute(vm.ServerUrl);
+        await WaitUntilAsync(() => vm.Detections.All(row => !row.IsBusy));
+
+        Assert.True(vm.Detections[0].NeedsAttention);
+        Assert.Equal(ModelProbeService.OllamaUrl, _settings.Current.LocalServerUrl);
+    }
+
+    [Fact]
+    public async Task UsingADetectedServer_ClearsAnEarlierAddressError()
+    {
+        _providers.Servers[ModelProbeService.OllamaUrl] = FakeProviders.Reachable("0.12.3");
+        var vm = await CreateOnModeStepAsync();
+        vm.ServerUrl = "not a url";
+        Assert.True(vm.HasServerUrlError);
+
+        vm.UseServerCommand.Execute(vm.Detections[0]);
+
+        Assert.False(vm.HasServerUrlError);
+        Assert.Equal(ModelProbeService.OllamaUrl, vm.ServerUrl);
+    }
+
+    [Fact]
+    public async Task AConfiguredLanAddress_IsKeptByANewWizard()
+    {
+        const string lan = "http://10.0.3.20:11434";
+        _settings.Update(s => s with { LocalServerUrl = lan });
+        _providers.Servers[ModelProbeService.OllamaUrl] = FakeProviders.Reachable("0.12.3");
+
+        var vm = await CreateOnModeStepAsync();
+
+        Assert.Equal(lan, _settings.Current.LocalServerUrl);
+        Assert.True(vm.Detections.Single(row => row.Url == lan).IsSelected);
+    }
+
+    [Fact]
+    public async Task SavingAModel_KeepsAnAddressDraftAndItsError()
+    {
+        _providers.Servers[ModelProbeService.OllamaUrl] = FakeProviders.Reachable("0.12.3", FakeProviders.Model("large", "27B"));
+        var vm = await CreateOnModeStepAsync();
+        vm.ServerUrl = "not a url";
+
+        vm.UseRecommendedModelCommand.Execute(null);
+
+        Assert.Equal("large", _settings.Current.LocalModel);
+        Assert.Equal("not a url", vm.ServerUrl);
+        Assert.True(vm.HasServerUrlError);
+    }
+
+    [Fact]
+    public async Task AServerChosenWithUse_IsKeptWhenItGoesDown()
+    {
+        _providers.Servers[ModelProbeService.OllamaUrl] = FakeProviders.Reachable("0.12.3");
+        _providers.Servers[ModelProbeService.LmStudioUrl] = FakeProviders.Reachable(null);
+        var vm = await CreateOnModeStepAsync();
+        vm.UseServerCommand.Execute(vm.Detections.Single(row => row.Url == ModelProbeService.LmStudioUrl));
+
+        _providers.Servers.Remove(ModelProbeService.LmStudioUrl);
+        await vm.DetectModelsCommand.ExecuteAsync(null);
+
+        Assert.Equal(ModelProbeService.LmStudioUrl, _settings.Current.LocalServerUrl);
+    }
+
+    [Fact]
+    public async Task EnteringAnInvalidAddress_ShowsTheErrorAndSavesNothing()
+    {
+        var vm = await CreateOnModeStepAsync();
+        var before = _settings.Current.LocalServerUrl;
+        var rows = vm.Detections.ToList();
+
+        vm.CommitServerUrlCommand.Execute("not a url");
+
+        Assert.Equal(_localizer["Models.Status.InvalidUrl"], vm.ServerUrlError);
+        Assert.True(vm.HasServerUrlError);
+        Assert.Equal(before, _settings.Current.LocalServerUrl);
+        Assert.Equal(rows, vm.Detections);
+        Assert.False(vm.IsDetecting);
+    }
+
+    [Fact]
+    public async Task UsingADetectedServer_UpdatesTheAddressField()
+    {
+        _providers.Servers[ModelProbeService.OllamaUrl] = FakeProviders.Reachable("0.12.3");
+        _providers.Servers[ModelProbeService.LmStudioUrl] = FakeProviders.Reachable(null);
+        var vm = await CreateOnModeStepAsync();
+
+        vm.UseServerCommand.Execute(vm.Detections.Single(row => row.Url == ModelProbeService.LmStudioUrl));
+
+        Assert.Equal(ModelProbeService.LmStudioUrl, vm.ServerUrl);
     }
 
     private static FakeSetupTask NewTask(string id, SetupTaskSeverity severity, SetupTaskStatusKind kind)

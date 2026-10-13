@@ -54,6 +54,8 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
     private readonly ModelProbeService _probes;
     private readonly ISettingsService _settings;
     private bool _applyingMode;
+    private bool _applyingServerUrl;
+    private bool _serverChosenByUser;
 
     // Read and written on the UI thread only; captures post in either order, so an older one is dropped.
     private long _shownCapture;
@@ -87,6 +89,13 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowModelPanel))]
     private bool _noServerFound;
+
+    [ObservableProperty]
+    private string _serverUrl;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasServerUrlError))]
+    private string? _serverUrlError;
 
     [ObservableProperty]
     private int _stepIndex;
@@ -138,6 +147,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         _applyingMode = true;
         SelectedMode = ModeOptions.First(option => option.Mode == settings.Current.ProcessingMode);
         _applyingMode = false;
+        _serverUrl = settings.Current.LocalServerUrl;
         SetupItems =
         [
             .. setupTasks
@@ -185,6 +195,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
     public bool HasRecommendation => RecommendedModel is not null;
     public bool HasModelAdvice => !string.IsNullOrWhiteSpace(ModelAdvice);
     public bool HasPullCommand => !string.IsNullOrWhiteSpace(PullCommand);
+    public bool HasServerUrlError => !string.IsNullOrWhiteSpace(ServerUrlError);
     public bool ShowModelPanel => !IsDetecting && (HasRecommendation || HasModelAdvice || NoServerFound);
     public string NextLabel => _localizer[IsLastStep ? "Common.Finish" : "Common.Next"];
     public string StepText => _localizer.Format("Wizard.StepText", StepIndex + 1, StepCount);
@@ -240,6 +251,48 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         {
             SaveSetting(s => s with { ProcessingMode = value.Mode });
         }
+    }
+
+    partial void OnServerUrlChanged(string value)
+    {
+        if (!_applyingServerUrl)
+        {
+            ApplyServerUrl(value);
+        }
+    }
+
+    // The setter skips an unchanged value, but Enter must still confirm and recheck it.
+    [RelayCommand]
+    private void CommitServerUrl(string? text)
+    {
+        var value = text ?? "";
+        if (value == ServerUrl)
+        {
+            ApplyServerUrl(value);
+        }
+        else
+        {
+            ServerUrl = value;
+        }
+    }
+
+    private void ApplyServerUrl(string value)
+    {
+        var url = value.Trim();
+        if (_probes.IsThisDevice(url) is null)
+        {
+            ServerUrlError = _localizer["Models.Status.InvalidUrl"];
+            return;
+        }
+
+        ServerUrlError = null;
+        _serverChosenByUser = true;
+        if (!ModelProbeService.IsSameServer(url, _settings.Current.LocalServerUrl))
+        {
+            SaveSetting(s => s with { LocalServerUrl = url });
+        }
+
+        _ = DetectModelsAsync();
     }
 
     [RelayCommand]
@@ -384,7 +437,9 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
             return;
         }
 
+        _serverChosenByUser = true;
         SaveSetting(s => s with { LocalServerUrl = row.Url });
+        ShowConfiguredServer();
         RefreshServerChoice();
     }
 
@@ -437,7 +492,14 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         }
 
         var reachable = rows.Where(row => row is { IsServer: true, IsReachable: true }).ToList();
-        if (reachable.Count == 1 && !ModelProbeService.IsSameServer(reachable[0].Url!, settings.LocalServerUrl))
+        // A server the user typed or chose is never swapped for the only running one, even while it is down.
+        // An address that is not a built-in default was set by the user, in this wizard or an earlier one or in Models.
+        if (
+            !_serverChosenByUser
+            && IsDefaultServer(settings.LocalServerUrl)
+            && reachable.Count == 1
+            && !ModelProbeService.IsSameServer(reachable[0].Url!, settings.LocalServerUrl)
+        )
         {
             SaveSetting(s => s with { LocalServerUrl = reachable[0].Url! });
         }
@@ -445,14 +507,14 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         RefreshServerChoice();
     }
 
+    private static bool IsDefaultServer(string url) =>
+        ModelProbeService.IsSameServer(url, ModelProbeService.OllamaUrl) || ModelProbeService.IsSameServer(url, ModelProbeService.LmStudioUrl);
+
     private IEnumerable<DetectionRow> DetectionCandidates(string configuredUrl)
     {
         yield return new DetectionRow(_localizer["Wizard.Mode.Ollama"], ModelProbeService.OllamaUrl, _localizer["Wizard.Checklist.Checking"]);
         yield return new DetectionRow(_localizer["Wizard.Mode.LmStudio"], ModelProbeService.LmStudioUrl, _localizer["Wizard.Checklist.Checking"]);
-        if (
-            !ModelProbeService.IsSameServer(configuredUrl, ModelProbeService.OllamaUrl)
-            && !ModelProbeService.IsSameServer(configuredUrl, ModelProbeService.LmStudioUrl)
-        )
+        if (!IsDefaultServer(configuredUrl))
         {
             yield return new DetectionRow(_localizer["Wizard.Mode.YourServer"], configuredUrl, _localizer["Wizard.Checklist.Checking"]);
         }
@@ -588,6 +650,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
 
     private void SaveSetting(Func<AppSettings, AppSettings> update)
     {
+        var previousUrl = _settings.Current.LocalServerUrl;
         try
         {
             _settings.Update(update);
@@ -600,6 +663,20 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
             SelectedMode = ModeOptions.First(option => option.Mode == _settings.Current.ProcessingMode);
             _applyingMode = false;
         }
+
+        // Only a server change touches the address field, so saving a model keeps a draft and its error.
+        if (_settings.Current.LocalServerUrl != previousUrl)
+        {
+            ShowConfiguredServer();
+        }
+    }
+
+    private void ShowConfiguredServer()
+    {
+        _applyingServerUrl = true;
+        ServerUrl = _settings.Current.LocalServerUrl;
+        _applyingServerUrl = false;
+        ServerUrlError = null;
     }
 
     private async Task RefreshSetupAsync()
