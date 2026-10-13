@@ -30,7 +30,7 @@ Every message is a JSON object with:
 
 Unknown properties are ignored. A message that is not an object, lacks `type`, has a missing or non-numeric `v`, or has a null in a required field gets `error` with code `bad-message`. A numeric `v` other than `1` gets `unsupported-version`, after which the app closes the connection (the extension does not close on its own). An `error` reply is never answered with another `error`. Requests sent in the wrong direction (for example `config` or `testpage.request` from the extension) get `unknown-type`. The app ignores an unmatched response and logs only its type and code; an `error` that echoes a pending request's id fails that request.
 
-Required fields: `id` on every request and response; `editorId`, `expectedHash`, `start`, `end`, and `text` on `apply.request`, with `0 <= start <= end`; on `context.response`, `capture` when `ok` is true and `error` when it is false; on `apply.response` and `testpage.response`, `ok`, plus `error` when it is false; in a capture, `adapter`, `editor`, `selection`, and `thread` with `completeness` and `messages`. Optional: `editorId` and `requireFocus` on `context.request`, `pageUrl`, `capturedAt`, `subject`, `collapsedCount` (default 0), and `to` and `sent` on a message. A `sent` value that does not parse becomes null; one with no offset is read as UTC.
+Required fields: `id` on every request and response; `editorId`, `expectedHash`, `start`, `end`, and `text` on `apply.request`, with `0 <= start <= end`; on `context.response`, `capture` when `ok` is true and `error` when it is false; on `apply.response` and `testpage.response`, `ok`, plus `error` when it is false; in a capture, `adapter`, `editor`, `selection`, and `thread` with `completeness` and `messages`. Optional: `editorId` and `requireFocus` on `context.request`, `format` and `expectedFormatHash` on `apply.request` (`expectedFormatHash` required when `format` is set), `pageUrl`, `capturedAt`, `subject`, `selection.markdown` and `selection.formatHash` (sent together), `collapsedCount` (default 0), and `to` and `sent` on a message. A `sent` value that does not parse becomes null; one with no offset is read as UTC.
 
 Error payload used everywhere: `"error": {"code": "<kebab-case>", "message": "<English text for logs, never email content>"}`.
 
@@ -99,7 +99,7 @@ Success:
    "capturedAt":"2026-10-09T14:03:21.512Z",
    "subject":"Invoice for September",
    "editor":{"id":"e-7f3a","hash":"sha256:9f86d0..."},
-   "selection":{"text":"Hi team, ...","start":0,"end":118},
+   "selection":{"text":"Hi team, ...","start":0,"end":118,"markdown":"Hi **team**, ...","formatHash":"sha256:5d41a1..."},
    "thread":{
      "completeness":"entire-thread",
      "collapsedCount":0,
@@ -110,6 +110,8 @@ Success:
 - `editor.id` is a token the content script assigns to the editor element for the life of the page; the app passes it back in `apply.request`.
 - `editor.hash` is `sha256:` plus the lowercase hex SHA-256 of the editor's full plain text at capture time.
 - `selection.text` is the text to rewrite; `start` and `end` are its character offsets within the editor's plain text.
+- `selection.markdown` is the same range written in the Markdown subset below, sent only for a rich (contenteditable) editor, never for a textarea or a `contenteditable="plaintext-only"` host, which keep no formatting and are applied as plain text. Bold comes from `b`, `strong`, or a computed `font-weight` of 600 or more; italic from `i`, `em`, or a computed italic `font-style`; lists from `ul`, `ol`, and `li`; links from `a[href]` with an allowed scheme. Its lines follow the same block and `<br>` rules as the plain text. Other formatting (underline, colours, fonts, headings, tables) is dropped to its text. `text`, `start`, `end`, and `editor.hash` keep their plain-text meaning either way.
+- `selection.formatHash` is sent with `selection.markdown` and is opaque to the app: `sha256:` plus the hex SHA-256 of the extension's lossless fingerprint of the range's formatting (runs of characters sharing bold, italic, link target, and list nesting with each numbered item's effective number, plus where each list item starts). It exists because the Markdown drops formatting it cannot write unambiguously, so two drafts can share Markdown and still differ.
 - The generic adapter sends one message whose `from` is the page's hostname and whose body is the page's main readable text with the draft removed; `subject` is the document title.
 - The Gmail adapter clicks "Expand all" when messages are collapsed (waiting up to about 3 seconds), then sends one message per expanded row with `from` as `Name <address>`, `sent` when the date parses, and the body without hidden quoted text; `subject` is the conversation heading. Rows left collapsed and any "N older messages" bundle count toward `collapsedCount` and make it `loaded-messages-only`. A new message outside a conversation is `draft-only`; a conversation it cannot parse gets the generic adapter's capture.
 - `thread.completeness` is one of `entire-thread`, `loaded-messages-only`, `visible-text-only`, `draft-only`, `truncated`. `truncated` means the extension dropped messages to stay under the frame cap or cut a message body at its per-message limit. `loaded-messages-only` also covers a Gmail page in a language the adapter has no labels for, since it cannot tell whether messages are hidden. `messages` are oldest first; `to` and `sent` may be empty or absent.
@@ -128,7 +130,24 @@ Codes: `no-active-tab`, `editor-gone` (a `context.request` with `editorId` whose
 {"v":1,"type":"apply.request","id":"a1","editorId":"e-7f3a","expectedHash":"sha256:9f86d0...","start":0,"end":118,"text":"Hi team, thank you for the update..."}
 ```
 
+```json
+{"v":1,"type":"apply.request","id":"a2","editorId":"e-7f3a","expectedHash":"sha256:9f86d0...","start":0,"end":118,"text":"Hi **team**, thank you for the update...","format":"markdown","expectedFormatHash":"sha256:5d41a1..."}
+```
+
+`format` is `"markdown"` exactly when the capture being applied had `selection.markdown`; absent means plain text. Any other value is `bad-message`. With `"markdown"`, `expectedFormatHash` is required (`bad-message` without it) and carries that capture's `selection.formatHash`: because the hash covers plain text only, the content script also recomputes the formatting fingerprint of `start` to `end` in a rich editor and answers `draft-changed` when it differs, so a link or bold changed since the capture is never overwritten. With `"markdown"`, a rich editor gets HTML the extension builds itself from the subset, as DOM nodes with the text in text nodes, inserted with the editor's `insertHTML` command; model text is never inserted as HTML. A textarea or plaintext-only host gets the Markdown stripped to plain text: list markers kept as `- ` and `1. `, emphasis markers and link syntax removed, link targets dropped. After a Markdown edit in a rich editor, the extension compares the editor's text with the expected text with every whitespace run (newlines and no-break spaces included) collapsed to one space, because the editor may restructure the inserted blocks. It also compares the formatting of every non-space character (bold, italic, link target, list nesting, item starts, and item numbers) in the edited editor's own terms: text before the range must keep its formatting; the inserted text must match the HTML, taken either as built or inside whatever encloses the insertion point (a list item, a bold run, a link), since the editor may carry that over; and text after the range must keep its formatting and list structure, with item numbers left free because adding or removing items renumbers them. So an edit that changed only formatting, or lost it, is not reported as a success. Either mismatch is undone when the editor changed and answered with `internal`.
+
 `start` and `end` are the `selection` offsets from the capture being applied, so an older rewrite can never land on a later selection of the same editor. The content script finds the editor by id, recomputes the hash of its full text, and only when it equals `expectedHash` selects `start` to `end` and replaces it through the editor's own editing command so Undo keeps working. It never writes `innerHTML` or `textContent`.
+
+### Markdown subset
+
+The only formats in either direction:
+
+- Bold `**text**`, italic `*text*` (`_text_` is also accepted on apply, but not inside a word), and both `***text***`.
+- Links `[text](url)` whose URL is `http:`, `https:`, or `mailto:`; any other link stays literal text. On capture, `(`, `)`, and whitespace in a URL are percent-encoded.
+- Bulleted list lines starting `- ` or `* `, numbered list lines starting with a number (which may be zero or negative) and `. `. Consecutive lines of one kind form one list. Numbers are the ones a browser shows, following `start`, `reversed`, and `li[value]` on capture; on apply the list's `start` is the first number and an item whose number does not follow the one before gets `value`, so a list keeps its numbering both ways.
+- Every newline is a line break; an empty line is an empty line.
+
+Emphasis markers count only when they hug non-space text, so `5 * 3 * 2` stays literal. On capture, literal `*`, `_`, `[`, and `]`, a `\` that would otherwise read as an escape, and a plain line that starts like a list item (`- ` or `1. `), are escaped with a backslash; apply honours a backslash before `\ * _ [ ] - .`. Headings, tables, code, images, raw HTML, and any other Markdown syntax are literal text on apply.
 
 ### `apply.response` (extension to app)
 
@@ -166,4 +185,4 @@ Codes: `bad-message`, `unsupported-version`, `unknown-type`, `hello-required`.
 
 ## Privacy
 
-Neither side logs `selection.text`, `thread.messages[].body`, `subject`, `apply.request.text`, or any part of them. Logs carry message types, ids, byte lengths, message counts, and completeness only.
+Neither side logs `selection.text`, `selection.markdown`, `thread.messages[].body`, `subject`, `apply.request.text`, or any part of them. Logs carry message types, ids, byte lengths, message counts, and completeness only.

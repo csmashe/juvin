@@ -32,11 +32,18 @@ export interface PlainText {
 
 /** A <br> that is the only content of its parent. */
 function isFillerBreak(br: Element): boolean {
-  return Array.from(br.parentNode?.childNodes ?? []).every((c) => c === br || (c.nodeType === Node.TEXT_NODE && (c as Text).data === ""));
-}
+  const blank = (node: Node | null): boolean => node !== null && node.nodeType === Node.TEXT_NODE && (node as Text).data === "";
+  let previous = br.previousSibling;
+  while (blank(previous)) {
+    previous = previous!.previousSibling;
+  }
 
-function indexInParent(node: Node): number {
-  return Array.prototype.indexOf.call(node.parentNode?.childNodes ?? [], node);
+  let next = br.nextSibling;
+  while (blank(next)) {
+    next = next!.nextSibling;
+  }
+
+  return previous === null && next === null;
 }
 
 /** False when the element or an ancestor is display:none, which innerText leaves out. */
@@ -92,7 +99,7 @@ export function readPlainText(root: Node, exclude?: Node): PlainText {
   };
 
   const walk = (node: Node, visible: boolean): void => {
-    for (const child of Array.from(node.childNodes)) {
+    for (const [index, child] of Array.from(node.childNodes).entries()) {
       if (child === exclude) {
         continue;
       }
@@ -118,7 +125,6 @@ export function readPlainText(root: Node, exclude?: Node): PlainText {
         continue;
       }
 
-      const index = indexInParent(element);
       if (element.tagName === "BR") {
         flushBreak();
         const points = [{ node, offset: index }, { node, offset: index + 1 }] as const;

@@ -55,6 +55,7 @@ public sealed class ConnectorRewriteTarget : IRewriteTarget
                 capture.SelectionStart,
                 capture.SelectionEnd,
                 text,
+                capture.FormatHash,
                 s_timeout,
                 ct
             );

@@ -206,7 +206,7 @@ public sealed class ConnectorSessionTests : IAsyncDisposable
     {
         await SayHelloAsync();
 
-        var apply = _session.ApplyAsync("e-1", "sha256:ab", 2, 5, "New text", s_timeout, CancellationToken.None);
+        var apply = _session.ApplyAsync("e-1", "sha256:ab", 2, 5, "New text", null, s_timeout, CancellationToken.None);
         var applyRequest = await _channel.NextSentAsync();
         var ping = _session.PingAsync(s_timeout, CancellationToken.None);
         var pingRequest = await _channel.NextSentAsync();
@@ -217,6 +217,7 @@ public sealed class ConnectorSessionTests : IAsyncDisposable
         Assert.Equal(2, applyRequest.GetProperty("start").GetInt32());
         Assert.Equal(5, applyRequest.GetProperty("end").GetInt32());
         Assert.Equal("New text", applyRequest.GetProperty("text").GetString());
+        Assert.False(applyRequest.TryGetProperty("format", out _));
         var applyId = applyRequest.GetProperty("id").GetString();
         var pingId = pingRequest.GetProperty("id").GetString();
         Assert.NotEqual(applyId, pingId);
@@ -244,10 +245,25 @@ public sealed class ConnectorSessionTests : IAsyncDisposable
     {
         await SayHelloAsync();
 
-        var apply = _session.ApplyAsync("e-1", "sha256:ab", 2, 5, "New text", s_timeout, CancellationToken.None);
+        var apply = _session.ApplyAsync("e-1", "sha256:ab", 2, 5, "New text", null, s_timeout, CancellationToken.None);
         var id = (await _channel.NextSentAsync()).GetProperty("id").GetString();
         _channel.Deliver($$"""{"v":1,"type":"apply.response","id":"{{id}}","ok":true}""");
 
+        Assert.Null(await apply);
+    }
+
+    [Fact]
+    public async Task Apply_WithMarkdown_SendsTheMarkdownFormat()
+    {
+        await SayHelloAsync();
+
+        var apply = _session.ApplyAsync("e-1", "sha256:ab", 2, 5, "**New** text", "sha256:ab12", s_timeout, CancellationToken.None);
+        var request = await _channel.NextSentAsync();
+        _channel.Deliver($$"""{"v":1,"type":"apply.response","id":"{{request.GetProperty("id").GetString()}}","ok":true}""");
+
+        Assert.Equal("markdown", request.GetProperty("format").GetString());
+        Assert.Equal("sha256:ab12", request.GetProperty("expectedFormatHash").GetString());
+        Assert.Equal("**New** text", request.GetProperty("text").GetString());
         Assert.Null(await apply);
     }
 

@@ -113,7 +113,9 @@ public sealed class RewritePromptBuilderTests
         var prompt = new RewritePromptBuilder().Build(context, "Shorter", " Chris \"<draft>\"\nSmith ").UserPrompt;
 
         Assert.EndsWith(
-            "</draft>\n\nThe sender's name is \"Chris '‹draft>' Smith\". If the draft has a sign-off, sign with this name; if it has none, do not add one.\nInstruction: Shorter",
+            "</draft>\n\nThe sender's name is \"Chris '‹draft>' Smith\". If the draft has a sign-off, sign with this name; if it has none, do not add one.\n"
+            + RewritePromptBuilder.PlainTextNotice
+            + "\nInstruction: Shorter",
             prompt
         );
     }
@@ -128,6 +130,32 @@ public sealed class RewritePromptBuilderTests
         var prompt = new RewritePromptBuilder().Build(context, "Shorter", name).UserPrompt;
 
         Assert.DoesNotContain("sender's name", prompt);
+    }
+
+    [Fact]
+    public void Build_WithAMarkdownDraft_AllowsTheSubsetBeforeTheInstruction()
+    {
+        var context = new RewriteContext("hi **dana**", [], null, ThreadCompleteness.DraftOnly, 0, IsMarkdown: true);
+
+        var prompt = new RewritePromptBuilder().Build(context, "Shorter").UserPrompt;
+
+        Assert.Contains("<draft>\nhi **dana**\n</draft>\n", prompt);
+        Assert.EndsWith(
+            "\nThe draft is written in Markdown. Keep its formatting where it still fits, and use only bold, italic, bulleted and numbered lists, and links; no headings, tables, or code.\nInstruction: Shorter",
+            prompt
+        );
+        Assert.DoesNotContain(RewritePromptBuilder.PlainTextNotice, prompt);
+    }
+
+    [Fact]
+    public void Build_WithAPlainDraft_AsksForPlainText()
+    {
+        var context = new RewriteContext("hi", [], null, ThreadCompleteness.DraftOnly, 0);
+
+        var prompt = new RewritePromptBuilder().Build(context, "Shorter").UserPrompt;
+
+        Assert.EndsWith("</draft>\n\nWrite plain text without Markdown.\nInstruction: Shorter", prompt);
+        Assert.DoesNotContain(RewritePromptBuilder.MarkdownNotice, prompt);
     }
 
     [Fact]
