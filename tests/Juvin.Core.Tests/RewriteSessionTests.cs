@@ -52,6 +52,23 @@ public sealed class RewriteSessionTests
     }
 
     [Fact]
+    public async Task SenderName_FillsPlaceholdersInTheResultAndHoldsThemBackFromPreviews()
+    {
+        var session = Session(new AppSettings { SenderName = "Chris", ProvenanceCaptureEnabled = true });
+        _local.Reply = _ => "Best,\n[Your Name]";
+        var preview = new List<string>();
+
+        var result = await session.RunAsync(RewriteAction.Clearer, null, new InlineProgress<string>(preview.Add), CancellationToken.None);
+
+        Assert.Equal("Best,\nChris", result.Text);
+        // Previews hold back the unfinished last line.
+        Assert.Equal("Best,\n", preview[^1]);
+        Assert.Equal("Best,\n[Your Name]", session.History[1].Content);
+        Assert.Equal("Best,\n[Your Name]", result.Provenance.ResponseReceived);
+        Assert.Contains("The sender's name is \"Chris\".", _local.Requests[0].Messages[0].Content);
+    }
+
+    [Fact]
     public async Task Custom_RequiresAnInstruction()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>

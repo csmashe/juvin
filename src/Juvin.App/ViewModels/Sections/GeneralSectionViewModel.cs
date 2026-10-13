@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Juvin.App.Services;
 using Juvin.Core.Interfaces;
 using Juvin.Core.Models;
@@ -14,6 +15,9 @@ public sealed partial class GeneralSectionViewModel : ObservableObject
     [ObservableProperty]
     private bool _closeToTray;
 
+    [ObservableProperty]
+    private string _senderName = "";
+
     public GeneralSectionViewModel(ISettingsService settings, TrayIconService tray)
     {
         _settings = settings;
@@ -26,14 +30,29 @@ public sealed partial class GeneralSectionViewModel : ObservableObject
 
     partial void OnCloseToTrayChanged(bool value)
     {
-        if (_applyingSettings)
+        if (!_applyingSettings)
         {
-            return;
+            Save(s => s with { CloseToTray = value });
         }
+    }
 
+    partial void OnSenderNameChanged(string value)
+    {
+        if (!_applyingSettings)
+        {
+            Save(s => s with { SenderName = string.IsNullOrWhiteSpace(value) ? null : value.Trim() });
+        }
+    }
+
+    // The text box saves on focus loss; Enter commits through this.
+    [RelayCommand]
+    private void CommitSenderName(string? text) => SenderName = text ?? "";
+
+    private void Save(Func<AppSettings, AppSettings> update)
+    {
         try
         {
-            _settings.Update(s => s with { CloseToTray = value });
+            _settings.Update(update);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -48,6 +67,7 @@ public sealed partial class GeneralSectionViewModel : ObservableObject
         try
         {
             CloseToTray = settings.CloseToTray;
+            SenderName = settings.SenderName ?? "";
         }
         finally
         {
