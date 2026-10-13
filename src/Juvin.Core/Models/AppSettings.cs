@@ -24,6 +24,9 @@ public sealed record AppSettings
     public string? CodexBinaryPath { get; init; }
     public string? CodexModel { get; init; }
 
+    /// <summary>The name rewrites sign with; null leaves sign-offs as the draft has them.</summary>
+    public string? SenderName { get; init; }
+
     public string RewriteShortcut { get; init; } = "Ctrl+Shift+F";
 
     /// <summary>
