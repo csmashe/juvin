@@ -10,6 +10,7 @@ using Juvin.Core.Services;
 using Juvin.Platform.Hotkeys;
 using Juvin.Platform.Linux;
 using Juvin.Platform.Mac;
+using Juvin.Platform.Setup;
 using Juvin.Platform.Windows;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -81,7 +82,17 @@ public static class ServiceRegistrations
 
         services.AddSingleton<MainWindowViewModel>();
         services.AddSingleton<MainWindow>();
-        services.AddTransient<SetupWizardViewModel>();
+        services.AddTransient(sp => new SetupWizardViewModel(
+            sp.GetRequiredService<ISettingsService>(),
+            sp.GetRequiredService<Localizer>(),
+            sp.GetRequiredService<ModelProbeService>(),
+            sp.GetRequiredService<BrowserConnectorPanelViewModel>(),
+            sp.GetRequiredService<ShortcutPanelViewModel>(),
+            sp.GetRequiredService<ConnectorService>(),
+            sp.GetRequiredService<RewritePanelViewModel>(),
+            sp.GetServices<ISetupTask>(),
+            action => Dispatcher.UIThread.Post(action)
+        ));
         services.AddTransient<SetupWizard>();
 
         return services.BuildServiceProvider();

@@ -59,6 +59,12 @@ public sealed class ConnectorProtocolTests
             """{"v":1,"type":"apply.response","id":"a1","ok":false,"error":{"code":"draft-changed","message":"The draft changed since it was captured."}}""",
             typeof(ApplyResponseMessage)
         },
+        { """{"v":1,"type":"testpage.request","id":"t1"}""", typeof(TestPageRequestMessage) },
+        { """{"v":1,"type":"testpage.response","id":"t1","ok":true}""", typeof(TestPageResponseMessage) },
+        {
+            """{"v":1,"type":"testpage.response","id":"t1","ok":false,"error":{"code":"internal","message":"The sample page could not be opened."}}""",
+            typeof(TestPageResponseMessage)
+        },
         {
             """{"v":1,"type":"error","id":"c1","error":{"code":"unknown-type","message":"Unknown message type."}}""",
             typeof(ErrorMessage)
@@ -107,6 +113,10 @@ public sealed class ConnectorProtocolTests
     [InlineData("""{"v":1,"type":"apply.request","id":"a1","editorId":"e","expectedHash":"h","start":0,"end":1,"text":null}""", ConnectorErrorCodes.BadMessage, "a1")]
     [InlineData("""{"v":1,"type":"apply.request","id":"a1","editorId":"e","expectedHash":"h","text":"t"}""", ConnectorErrorCodes.BadMessage, "a1")]
     [InlineData("""{"v":1,"type":"apply.request","id":"a1","editorId":"e","expectedHash":"h","start":3,"end":1,"text":"t"}""", ConnectorErrorCodes.BadMessage, "a1")]
+    [InlineData("""{"v":1,"type":"testpage.request"}""", ConnectorErrorCodes.BadMessage, null)]
+    [InlineData("""{"v":1,"type":"testpage.response","ok":true}""", ConnectorErrorCodes.BadMessage, null)]
+    [InlineData("""{"v":1,"type":"testpage.response","id":"t1","ok":false}""", ConnectorErrorCodes.BadMessage, "t1")]
+    [InlineData("""{"v":1,"type":"testpage.response","id":"t1"}""", ConnectorErrorCodes.BadMessage, "t1")]
     public void Parse_RejectsBadMessagesWithTheSpecCode(string json, string code, string? id)
     {
         var (message, error) = ConnectorProtocol.Parse(json);

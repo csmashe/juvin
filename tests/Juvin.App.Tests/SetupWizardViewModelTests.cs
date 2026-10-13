@@ -1,19 +1,44 @@
+using System.Text.Json;
 using Juvin.App.Services;
 using Juvin.App.Tests.Fakes;
 using Juvin.App.ViewModels;
+using Juvin.Core.Connector;
 using Juvin.Core.Hotkeys;
 using Juvin.Core.Localization;
 using Juvin.Core.Models;
+using Juvin.Core.Providers;
+using Juvin.Core.Rewrite;
 using Juvin.Platform;
 using Juvin.Platform.Setup;
 
 namespace Juvin.App.Tests;
 
-public sealed class SetupWizardViewModelTests
+public sealed class SetupWizardViewModelTests : IAsyncDisposable
 {
+    private const string Hello =
+        """{"v":1,"type":"hello","extension":{"id":"extension@juvin.app","version":"0.1.0"},"browser":{"name":"chrome","version":"140.0"}}""";
+
+    private static readonly TimeSpan s_timeout = TimeSpan.FromSeconds(5);
+
+    private readonly ConnectorService _connector;
+    private readonly Localizer _localizer = new();
+    private readonly RewritePanelViewModel _panel;
     private readonly FakeProviders _providers = new();
     private readonly FakeNativeHostRegistrar _registrar = new();
     private readonly FakeSettingsService _settings = new();
+    private readonly FakeConnectorSocket _socket = new();
+
+    public SetupWizardViewModelTests()
+    {
+        _connector = new ConnectorService(_socket, _registrar, _settings, _localizer);
+        var model = new FakeModelProvider(ProcessingMode.Local);
+        _panel = new RewritePanelViewModel(new ProviderSelector(_ => model, _ => model), _settings, new FakeHistoryService(), _localizer, action => action());
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await _connector.StopAsync();
+    }
 
     [Fact]
     public async Task UnsatisfiedRequiredTask_BlocksFinish()
@@ -130,13 +155,115 @@ public sealed class SetupWizardViewModelTests
     }
 
     [Fact]
-    public void Steps_RunWelcomeModeBrowserShortcutChecklistDone()
+    public void Steps_RunWelcomeModeBrowserShortcutChecklistTryItDone()
     {
-        Assert.Equal(6, SetupWizardViewModel.StepCount);
+        Assert.Equal(7, SetupWizardViewModel.StepCount);
         Assert.Equal(1, (int)SetupWizardStep.ProcessingMode);
         Assert.Equal(SetupWizardStep.BrowserConnector, SetupWizardStep.ProcessingMode + 1);
         Assert.Equal(SetupWizardStep.Shortcut, SetupWizardStep.BrowserConnector + 1);
         Assert.Equal(SetupWizardStep.Checklist, SetupWizardStep.Shortcut + 1);
+        Assert.Equal(SetupWizardStep.TryIt, SetupWizardStep.Checklist + 1);
+        Assert.Equal(SetupWizardStep.Done, SetupWizardStep.TryIt + 1);
+    }
+
+    [Fact]
+    public async Task OpenSample_WithNoBrowser_SaysSo()
+    {
+        var vm = Create();
+        vm.StepIndex = (int)SetupWizardStep.TryIt;
+
+        await vm.OpenSampleCommand.ExecuteAsync(null);
+
+        Assert.False(vm.IsBrowserConnected);
+        Assert.False(vm.CanOpenSample);
+        Assert.Equal(_localizer["Wizard.TryIt.NoBrowser"], vm.TryItStatus);
+        Assert.Equal(TryItPhase.NotStarted, vm.TryItPhase);
+        Assert.True(vm.CanAdvance);
+    }
+
+    [Fact]
+    public async Task TryIt_TicksTheRowsAsTheSampleOpensTheDraftIsCapturedAndTheRewriteShows()
+    {
+        var vm = Create();
+        await _connector.StartAsync(CancellationToken.None);
+        await using var stream = await ConnectAndSayHelloAsync();
+        await WaitUntilAsync(() => vm.IsBrowserConnected);
+
+        var open = vm.OpenSampleCommand.ExecuteAsync(null);
+        var request = await ReadAsync(stream);
+        Assert.Equal("testpage.request", request.GetProperty("type").GetString());
+        await WriteAsync(stream, $$"""{"v":1,"type":"testpage.response","id":"{{request.GetProperty("id").GetString()}}","ok":true}""");
+        await open;
+
+        Assert.True(vm.IsSampleOpened);
+        Assert.Equal(TryItPhase.SampleOpened, vm.TryItPhase);
+        Assert.Equal(_localizer["Wizard.TryIt.Waiting"], vm.TryItStatus);
+
+        await WriteAsync(stream, """{"v":1,"type":"shortcut.pressed"}""");
+        var id = (await ReadAsync(stream)).GetProperty("id").GetString()!;
+        await WriteAsync(stream, CaptureResponse(id));
+        await WaitUntilAsync(() => vm.IsCaptured);
+
+        Assert.False(vm.IsRewriteShown);
+        await _panel.LoadAsync(new FakeRewriteTarget(), Capture());
+
+        Assert.True(vm.IsRewriteShown);
+        Assert.Equal(TryItPhase.RewriteShown, vm.TryItPhase);
+    }
+
+    [Fact]
+    public async Task ADeclinedCapture_ShowsTheLocalizedReason()
+    {
+        var vm = Create();
+        await _connector.StartAsync(CancellationToken.None);
+        await using var stream = await ConnectAndSayHelloAsync();
+
+        await WriteAsync(stream, """{"v":1,"type":"shortcut.pressed"}""");
+        var id = (await ReadAsync(stream)).GetProperty("id").GetString();
+        await WriteAsync(
+            stream,
+            $$$"""{"v":1,"type":"context.response","id":"{{{id}}}","ok":false,"error":{"code":"no-selection","message":"Declined."}}"""
+        );
+        await WaitUntilAsync(() => vm.TryItPhase == TryItPhase.CaptureFailed);
+
+        Assert.Equal(_localizer.Format("Wizard.TryIt.CaptureFailed", _localizer["Panel.Error.NoSelection"]), vm.TryItStatus);
+        Assert.False(vm.IsCaptured);
+    }
+
+    [Fact]
+    public async Task ARecaptureFromThePanel_ClearsTheDeclinedCaptureAndTicksTheRows()
+    {
+        var vm = Create();
+        await _connector.StartAsync(CancellationToken.None);
+        await using var stream = await ConnectAndSayHelloAsync();
+
+        await WriteAsync(stream, """{"v":1,"type":"shortcut.pressed"}""");
+        var id = (await ReadAsync(stream)).GetProperty("id").GetString();
+        await WriteAsync(
+            stream,
+            $$$"""{"v":1,"type":"context.response","id":"{{{id}}}","ok":false,"error":{"code":"no-selection","message":"Declined."}}"""
+        );
+        await WaitUntilAsync(() => vm.TryItPhase == TryItPhase.CaptureFailed);
+
+        // The panel's Recapture talks to the session directly, so only the panel's state reports it.
+        await _panel.LoadAsync(new FakeRewriteTarget(), Capture());
+
+        Assert.True(vm.IsCaptured);
+        Assert.True(vm.IsRewriteShown);
+        Assert.Null(vm.TryItStatus);
+    }
+
+    [Fact]
+    public async Task AfterDispose_CapturesAndRewritesChangeNothing()
+    {
+        var vm = Create();
+        vm.Dispose();
+
+        await _connector.TriggerCaptureAsync();
+        await _panel.LoadAsync(new FakeRewriteTarget(), Capture());
+
+        Assert.Equal(TryItPhase.NotStarted, vm.TryItPhase);
+        Assert.Null(vm.TryItStatus);
     }
 
     [Fact]
@@ -249,12 +376,66 @@ public sealed class SetupWizardViewModelTests
 
     private SetupWizardViewModel Create(params FakeSetupTask[] tasks)
     {
-        var localizer = new Localizer();
-        var connector = new ConnectorService(new FakeConnectorSocket(), _registrar, _settings, localizer);
-        var panel = new BrowserConnectorPanelViewModel(_registrar, connector, localizer);
-        var hotkeys = new HotkeyService([], _settings, connector);
-        var shortcut = new ShortcutPanelViewModel(hotkeys, _settings, localizer, action => action());
-        return new SetupWizardViewModel(_settings, localizer, _providers.CreateService(localizer), panel, shortcut, tasks);
+        var connectorPanel = new BrowserConnectorPanelViewModel(_registrar, _connector, _localizer);
+        var hotkeys = new HotkeyService([], _settings, _connector);
+        var shortcut = new ShortcutPanelViewModel(hotkeys, _settings, _localizer, action => action());
+        return new SetupWizardViewModel(
+            _settings,
+            _localizer,
+            _providers.CreateService(_localizer),
+            connectorPanel,
+            shortcut,
+            _connector,
+            _panel,
+            tasks,
+            action => action()
+        );
+    }
+
+    private async Task<Stream> ConnectAndSayHelloAsync()
+    {
+        var stream = await _socket.ConnectAsync(s_timeout);
+        Assert.NotNull(stream);
+        await WriteAsync(stream, Hello);
+        Assert.Equal("config", (await ReadAsync(stream)).GetProperty("type").GetString());
+        await WaitUntilAsync(() => _connector.Clients.Count > 0);
+        return stream;
+    }
+
+    private static ContextResult Capture()
+    {
+        var context = new RewriteContext("hi dana", [], null, ThreadCompleteness.DraftOnly, 0);
+        return new ContextResult(new CapturedContext(context, "test-page", "e-1", "sha256:ab", null, 0, 7), null);
+    }
+
+    private static string CaptureResponse(string id) =>
+        $$$"""
+        {"v":1,"type":"context.response","id":"{{{id}}}","ok":true,"capture":{
+          "adapter":"test-page","editor":{"id":"e-1","hash":"sha256:ab"},
+          "selection":{"text":"hi dana","start":0,"end":7},
+          "thread":{"completeness":"draft-only","messages":[]}}
+        }
+        """;
+
+    private static Task WriteAsync(Stream stream, string json) =>
+        NativeMessagingFraming.WriteFrameAsync(stream, json, CancellationToken.None);
+
+    private static async Task<JsonElement> ReadAsync(Stream stream)
+    {
+        var json = await NativeMessagingFraming.ReadFrameAsync(stream, CancellationToken.None).WaitAsync(s_timeout);
+        Assert.NotNull(json);
+        using var document = JsonDocument.Parse(json);
+        return document.RootElement.Clone();
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow + s_timeout;
+        while (!condition())
+        {
+            Assert.True(DateTime.UtcNow < deadline, "Timed out waiting for the condition.");
+            await Task.Delay(10);
+        }
     }
 
     private async Task<SetupWizardViewModel> CreateOnModeStepAsync()

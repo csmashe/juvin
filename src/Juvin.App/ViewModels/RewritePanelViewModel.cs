@@ -692,24 +692,25 @@ public sealed partial class RewritePanelViewModel : ObservableObject
             : _localizer.Format("Panel.Provider.Local", model);
     }
 
-    private string ErrorText(string? code) =>
-        _localizer[
-            code switch
-            {
-                "no-active-tab" => "Panel.Error.NoActiveTab",
-                "no-adapter" => "Panel.Error.NoAdapter",
-                "no-editor" => "Panel.Error.NoEditor",
-                "no-selection" => "Panel.Error.NoSelection",
-                "page-not-ready" => "Panel.Error.PageNotReady",
-                "editor-gone" => "Panel.Error.EditorGone",
-                ConnectorService.BrowserNotFocusedCode => "Panel.Error.BrowserNotFocused",
-                ConnectorService.NoBrowserCode => "Panel.Error.NoBrowser",
-                ConnectorErrorCodes.Disconnected => "Panel.Error.Disconnected",
-                ConnectorRewriteTarget.TimeoutCode => "Panel.Error.Timeout",
-                ConnectorRewriteTarget.TooLargeCode => "Panel.Error.TooLarge",
-                _ => "Panel.Error.Unknown",
-            }
-        ];
+    private string ErrorText(string? code) => _localizer[ErrorKeyFor(code)];
+
+    /// <summary>The string table key for a connector error code; unknown codes get a generic message.</summary>
+    public static string ErrorKeyFor(string? code) =>
+        code switch
+        {
+            "no-active-tab" => "Panel.Error.NoActiveTab",
+            "no-adapter" => "Panel.Error.NoAdapter",
+            "no-editor" => "Panel.Error.NoEditor",
+            "no-selection" => "Panel.Error.NoSelection",
+            "page-not-ready" => "Panel.Error.PageNotReady",
+            "editor-gone" => "Panel.Error.EditorGone",
+            ConnectorService.BrowserNotFocusedCode => "Panel.Error.BrowserNotFocused",
+            ConnectorService.NoBrowserCode => "Panel.Error.NoBrowser",
+            ConnectorErrorCodes.Disconnected => "Panel.Error.Disconnected",
+            ConnectorRewriteTarget.TimeoutCode => "Panel.Error.Timeout",
+            ConnectorRewriteTarget.TooLargeCode => "Panel.Error.TooLarge",
+            _ => "Panel.Error.Unknown",
+        };
 
     private async Task ShowCopiedHintAsync()
     {

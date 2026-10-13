@@ -10,7 +10,8 @@ Run after any change to `juvin-host`, the connector socket, `ConnectorService`, 
 4. Load the extension: `npx web-ext run --source-dir dist/firefox` for Firefox; `dist/chrome` as an unpacked extension in Chrome or Edge. The app log must show `<browser> <version> connected`.
 5. Open the popup and press Test connection. It must report a round trip in milliseconds.
 6. Open the test page from the popup, select the draft, press the shortcut. The app log must show `Captured 161 draft chars, 3 messages, EntireThread, adapter test-page` and nothing from the draft or thread text.
-7. Quit the browser. The app log must show `<browser> disconnected` and no `juvin-host` process may remain.
+7. Open the setup wizard from Settings and go to step 6, Try it. Press Open sample email: the test page must open in a new tab of the browser and the window must come to the front, and "Sample email opened" must tick. Select the draft and press the shortcut: "Draft captured" must tick, then "Rewrite shown" once the panel has the rewrite.
+8. Quit the browser. The app log must show `<browser> disconnected` and no `juvin-host` process may remain.
 
 ## Gmail steps (any OS)
 
