@@ -19,6 +19,8 @@ public static class JuvinEnvironment
 
     public static string SettingsFilePath => SettingsFilePathIn(DataPath);
 
+    public static string HistoryFilePath => HistoryFilePathIn(DataPath);
+
     public static string SecretKeyFilePath => SecretKeyFilePathIn(DataPath);
 
     public static string SecretsPath => SecretsPathIn(DataPath);
@@ -33,6 +35,8 @@ public static class JuvinEnvironment
     }
 
     private static string SettingsFilePathIn(string dataPath) => Path.Join(dataPath, "settings.json");
+
+    private static string HistoryFilePathIn(string dataPath) => Path.Join(dataPath, "history.json");
 
     private static string SecretKeyFilePathIn(string dataPath) => Path.Join(dataPath, "secret.key");
 
@@ -55,6 +59,33 @@ public static class JuvinEnvironment
         )
         {
             CreatePrivateDirectory(directory);
+        }
+    }
+
+    /// <summary>
+    ///     Removes the stored secrets and the key that encrypts them. Only these files hold Juvin
+    ///     secrets: the macOS Keychain holds none in the MVP, because no provider needs a key.
+    /// </summary>
+    public static void DeleteSecretsIn(string dataPath)
+    {
+        var secrets = SecretsPathIn(dataPath);
+        if (Directory.Exists(secrets))
+        {
+            foreach (var directory in Directory.EnumerateDirectories(secrets))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+
+            foreach (var file in Directory.EnumerateFiles(secrets))
+            {
+                File.Delete(file);
+            }
+        }
+
+        var key = SecretKeyFilePathIn(dataPath);
+        if (File.Exists(key))
+        {
+            File.Delete(key);
         }
     }
 

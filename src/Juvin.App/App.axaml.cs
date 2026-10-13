@@ -40,6 +40,7 @@ public class App : Application
     {
         var settings = services.GetRequiredService<ISettingsService>();
         settings.Load();
+        PruneHistory(services.GetRequiredService<IHistoryService>(), settings.Current.HistoryRetentionDays);
 
         // The language must be set before any view loads, because views read strings once.
         var localizer = services.GetRequiredService<Localizer>();
@@ -120,6 +121,18 @@ public class App : Application
         {
             main.Opened -= OpenWizardOnFirstLaunch;
             (main.DataContext as MainWindowViewModel)?.OpenWizardCommand.Execute(null);
+        }
+    }
+
+    private static void PruneHistory(IHistoryService history, int retentionDays)
+    {
+        try
+        {
+            history.Prune(retentionDays, DateTimeOffset.UtcNow);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Trace.WriteLine($"[App] Could not prune history: {ex.GetType().Name}");
         }
     }
 

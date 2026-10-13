@@ -38,6 +38,9 @@ public static class AtomicFile
         Publish(tempPath, path, overwrite: false);
     }
 
+    /// <summary>Matches the staging files of <paramref name="fileName" />, which an interrupted write can leave behind.</summary>
+    public static string TempFilePattern(string fileName) => "." + fileName + ".*.tmp";
+
     private static string WriteTemp(string path, ReadOnlySpan<byte> bytes, UnixFileMode unixMode)
     {
         var fullPath = Path.GetFullPath(path);

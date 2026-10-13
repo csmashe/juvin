@@ -16,4 +16,7 @@ public interface ISettingsService
     ///     <see cref="SettingsChanged" /> is raised only when the saved value differs.
     /// </summary>
     void Update(Func<AppSettings, AppSettings> update);
+
+    /// <summary>Returns every setting to its default and removes the backup copies of the old values.</summary>
+    void Reset();
 }

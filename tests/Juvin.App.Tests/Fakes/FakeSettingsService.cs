@@ -36,4 +36,6 @@ public sealed class FakeSettingsService : ISettingsService
         SaveCount++;
         SettingsChanged?.Invoke(next);
     }
+
+    public void Reset() => Update(_ => new AppSettings());
 }
