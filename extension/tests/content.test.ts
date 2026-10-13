@@ -318,7 +318,7 @@ describe("applyReplacement", () => {
   });
 
   it("still reports internal when a rich editor's text differs by more than no-break spaces", async () => {
-    const { editor, registry, hash } = await captured();
+    const { registry, hash } = await captured();
     const exec: ExecCommand = (doc, command, value) => fakeExec(doc, command, value?.replace("Robin", "Rob\u00a0in"));
     const result = await applyReplacement(document, registry, { editorId: "e-1", expectedHash: hash, start: 4, end: 9, text: "*   Robin" }, exec);
     expect(!result.ok && result.error.code).toBe("internal");
