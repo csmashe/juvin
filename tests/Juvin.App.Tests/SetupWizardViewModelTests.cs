@@ -349,7 +349,6 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
     [Fact]
     public async Task OnlyReachableServer_IsPreselectedAndItsBestModelSuggested()
     {
-        _settings.Update(s => s with { LocalServerUrl = "http://10.0.3.20:11434" });
         _providers.Servers[ModelProbeService.LmStudioUrl] = FakeProviders.Reachable(
             null,
             FakeProviders.Model("small", "4B", lowQuality: true),
@@ -495,6 +494,33 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
 
         Assert.False(vm.HasServerUrlError);
         Assert.Equal(ModelProbeService.OllamaUrl, vm.ServerUrl);
+    }
+
+    [Fact]
+    public async Task AConfiguredLanAddress_IsKeptByANewWizard()
+    {
+        const string lan = "http://10.0.3.20:11434";
+        _settings.Update(s => s with { LocalServerUrl = lan });
+        _providers.Servers[ModelProbeService.OllamaUrl] = FakeProviders.Reachable("0.12.3");
+
+        var vm = await CreateOnModeStepAsync();
+
+        Assert.Equal(lan, _settings.Current.LocalServerUrl);
+        Assert.True(vm.Detections.Single(row => row.Url == lan).IsSelected);
+    }
+
+    [Fact]
+    public async Task SavingAModel_KeepsAnAddressDraftAndItsError()
+    {
+        _providers.Servers[ModelProbeService.OllamaUrl] = FakeProviders.Reachable("0.12.3", FakeProviders.Model("large", "27B"));
+        var vm = await CreateOnModeStepAsync();
+        vm.ServerUrl = "not a url";
+
+        vm.UseRecommendedModelCommand.Execute(null);
+
+        Assert.Equal("large", _settings.Current.LocalModel);
+        Assert.Equal("not a url", vm.ServerUrl);
+        Assert.True(vm.HasServerUrlError);
     }
 
     [Fact]
