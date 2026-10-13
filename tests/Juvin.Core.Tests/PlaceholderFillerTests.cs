@@ -66,8 +66,10 @@ public sealed class PlaceholderFillerTests
     [InlineData("Best,\n{{Sender}", "Best,\n")]
     [InlineData("Best,\n[Your Name]", "Best,\n")]
     [InlineData("Best,\n[Your Name]\n", "Best,\nChris\n")]
-    [InlineData("Hi there", "")]
-    public void FillStreaming_HoldsBackTheUnfinishedLine(string partial, string expected)
+    [InlineData("Best,\n  -- ", "Best,\n")]
+    [InlineData("Hi there, a long paragraph still being written", "Hi there, a long paragraph still being written")]
+    [InlineData("Best,\nChris [Your Name", "Best,\nChris [Your Name")]
+    public void FillStreaming_HoldsBackOnlyALineThatCouldBecomeAPlaceholder(string partial, string expected)
     {
         Assert.Equal(expected, PlaceholderFiller.FillStreaming(partial, "Chris"));
     }
@@ -75,6 +77,8 @@ public sealed class PlaceholderFillerTests
     [Theory]
     [InlineData("Hi,\n\nSee you Friday.\n\nBest,\n[Your Name]\n[Your Title]")]
     [InlineData("Enter [Your Name]!\n{{Sender}}\n[Your Name] (sender)\n{{Sender}")]
+    [InlineData("One long paragraph with [Your Name] inside it and no line break at all, signed -- [Your Name]")]
+    [InlineData("Thanks,\r\n-- [Your Name]\r\n")]
     public void FillStreaming_PreviewsArePrefixesOfTheFilledResult(string reply)
     {
         var final = PlaceholderFiller.Fill(reply, "Chris");

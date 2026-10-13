@@ -23,9 +23,9 @@ internal static partial class PlaceholderFiller
     }
 
     /// <summary>
-    ///     <see cref="Fill" /> for a partial reply: the unfinished last line is held back, since only a
-    ///     complete line can be judged, so each preview is a prefix of the filled final text and
-    ///     append-only consumers print it correctly.
+    ///     <see cref="Fill" /> for a partial reply: an unfinished last line that could still become a
+    ///     placeholder line is held back, so each preview is a prefix of the filled final text and
+    ///     append-only consumers print it correctly. Any other line streams as it arrives.
     /// </summary>
     public static string FillStreaming(string text, string? senderName)
     {
@@ -34,8 +34,9 @@ internal static partial class PlaceholderFiller
             return text;
         }
 
-        var lineEnd = text.LastIndexOf('\n');
-        return Fill(lineEnd < 0 ? "" : text[..(lineEnd + 1)], senderName);
+        var lineStart = text.LastIndexOf('\n') + 1;
+        var lead = text.AsSpan(lineStart).TrimStart(" \t-—");
+        return Fill(lead.IsEmpty || lead[0] is '[' or '{' ? text[..lineStart] : text, senderName);
     }
 
     [GeneratedRegex(
