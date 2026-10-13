@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using Juvin.Core;
 using Juvin.Core.Providers;
 using Juvin.Core.Services;
 using Juvin.Platform.Unix.Ipc;
@@ -10,7 +11,8 @@ namespace Juvin.Platform.Linux.NativeMessaging;
 ///     Registers the host per browser packaging: native and Snap Firefox share
 ///     <c>~/.mozilla</c> (Snap reaches it through the WebExtensions portal), each Flatpak browser
 ///     gets a manifest and a copy of the host inside its own sandbox home, and Chromium browsers
-///     use their user data directory.
+///     use their user data directory. Run from an AppImage, whose mount moves on every launch, the
+///     other browsers get a copy of the host in Juvin's data directory.
 /// </summary>
 public sealed class LinuxNativeHostRegistrar : INativeHostRegistrar
 {
@@ -20,21 +22,39 @@ public sealed class LinuxNativeHostRegistrar : INativeHostRegistrar
         UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
 
     private readonly Func<string?> _locateHost;
+    private readonly bool _runsFromAppImage;
+    private readonly string _stableHostPath;
     private readonly LinuxBrowserPaths _paths;
     private readonly IProcessRunner _processRunner;
     private readonly IReadOnlyList<LinuxBrowser> _browsers;
 
     public LinuxNativeHostRegistrar(Func<string?> locateHost)
-        : this(locateHost, LinuxBrowserPaths.FromEnvironment(), new ProcessRunner())
+        : this(
+            locateHost,
+            LinuxBrowserPaths.FromEnvironment(),
+            new ProcessRunner(),
+            LinuxProcessPath.RunsFromAppImage(Environment.GetEnvironmentVariable, Environment.ProcessPath),
+            JuvinEnvironment.DataPath
+        )
     {
     }
 
     /// <param name="locateHost">Resolved on every call, so a host that appears after startup is picked up without a restart.</param>
     /// <param name="paths">The directories detection and registration read and write.</param>
     /// <param name="processRunner">Runs <c>flatpak</c> for the sandbox setup some browsers need.</param>
-    internal LinuxNativeHostRegistrar(Func<string?> locateHost, LinuxBrowserPaths paths, IProcessRunner processRunner)
+    /// <param name="runsFromAppImage">Whether the host sits in an AppImage mount, so manifests need a copy of it.</param>
+    /// <param name="dataPath">Where the host copy for an AppImage goes.</param>
+    internal LinuxNativeHostRegistrar(
+        Func<string?> locateHost,
+        LinuxBrowserPaths paths,
+        IProcessRunner processRunner,
+        bool runsFromAppImage,
+        string dataPath
+    )
     {
         _locateHost = locateHost;
+        _runsFromAppImage = runsFromAppImage;
+        _stableHostPath = Path.Join(dataPath, "juvin-host");
         _paths = paths;
         _processRunner = processRunner;
 
@@ -97,14 +117,13 @@ public sealed class LinuxNativeHostRegistrar : INativeHostRegistrar
     {
         var definition = Find(browser);
         var hostPath = _locateHost();
-        if (definition.FlatpakId is null)
+        if (HostCopyPath(definition) is not { } copy)
         {
             return NativeHostManifest.Check(ManifestPath(definition), hostPath);
         }
 
-        var sandboxHost = SandboxHostPath(definition);
-        var state = NativeHostManifest.Check(ManifestPath(definition), hostPath is null ? null : sandboxHost);
-        return state == HostRegistration.Registered && !IsCurrentCopy(sandboxHost, hostPath!)
+        var state = NativeHostManifest.Check(ManifestPath(definition), hostPath is null ? null : copy);
+        return state == HostRegistration.Registered && !IsCurrentCopy(copy, hostPath!)
             ? HostRegistration.Stale
             : state;
     }
@@ -127,6 +146,11 @@ public sealed class LinuxNativeHostRegistrar : INativeHostRegistrar
             if (definition.FlatpakId is not null)
             {
                 manifestHost = await PrepareSandboxAsync(definition, hostPath, ct).ConfigureAwait(false);
+            }
+            else if (_runsFromAppImage)
+            {
+                CopyHost(hostPath, _stableHostPath);
+                manifestHost = _stableHostPath;
             }
 
             Directory.CreateDirectory(definition.ManifestDirectory);
@@ -154,6 +178,13 @@ public sealed class LinuxNativeHostRegistrar : INativeHostRegistrar
             if (definition.FlatpakId is not null)
             {
                 File.Delete(SandboxHostPath(definition));
+            }
+            else if (
+                File.Exists(_stableHostPath)
+                && !_browsers.Any(b => b.FlatpakId is null && NativeHostManifest.ReadHostPath(ManifestPath(b)) == _stableHostPath)
+            )
+            {
+                File.Delete(_stableHostPath);
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -186,6 +217,13 @@ public sealed class LinuxNativeHostRegistrar : INativeHostRegistrar
         }
 
         var target = SandboxHostPath(definition);
+        CopyHost(hostPath, target);
+        return target;
+    }
+
+    /// <summary>Copies the host with the source's timestamp, so <see cref="IsCurrentCopy" /> can tell when it goes stale.</summary>
+    private static void CopyHost(string hostPath, string target)
+    {
         var directory = Path.GetDirectoryName(target)!;
         Directory.CreateDirectory(directory, OwnerOnlyMode);
         // Copy beside the target and rename over it: a running host keeps its old inode instead of failing with "text file busy".
@@ -210,8 +248,6 @@ public sealed class LinuxNativeHostRegistrar : INativeHostRegistrar
 
             throw;
         }
-
-        return target;
     }
 
     /// <summary>
@@ -286,6 +322,10 @@ public sealed class LinuxNativeHostRegistrar : INativeHostRegistrar
             return false;
         }
     }
+
+    /// <summary>The copy of the host the browser's manifest points at, or null when it points at the host itself.</summary>
+    private string? HostCopyPath(LinuxBrowser browser) =>
+        browser.FlatpakId is not null ? SandboxHostPath(browser) : _runsFromAppImage ? _stableHostPath : null;
 
     private static string ManifestPath(LinuxBrowser browser) => Path.Join(browser.ManifestDirectory, NativeHostManifest.FileName);
 

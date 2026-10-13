@@ -4,6 +4,8 @@
 #   - a pull request carries the "ci" label (add the label from the PR sidebar when review
 #     is done; later pushes keep running while the label stays on, remove it to pause);
 #   - someone presses "Run workflow" on the Actions tab (workflow_dispatch).
+# Jobs: build and test on Linux, Windows, and macOS; CodeQL; and package-linux, which builds the
+# Linux packages and smoke-tests them in containers (release-linux.yml publishes them on a tag).
 # To reuse in another repository: copy this file, create a "ci" label there
 # (gh label create ci --color 0E8A16 --description "Run CI on this pull request"),
 # and adjust the solution name in the three dotnet steps.
@@ -55,6 +57,36 @@ jobs:
         with:
           name: test-results-${{ matrix.os }}
           path: artifacts/test-results
+
+  package-linux:
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci')
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Install packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends binutils dpkg-dev rpm wget desktop-file-utils file
+
+      - name: Build packages
+        run: scripts/build-linux-packages.sh "0.0.0-ci.${{ github.run_number }}" dist
+
+      - name: Smoke test packages
+        run: scripts/smoke-test-linux-packages.sh "0.0.0-ci.${{ github.run_number }}" dist
+
+      - name: Upload packages
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: juvin-linux-packages
+          path: dist/*
+          if-no-files-found: error
 
   # CodeQL runs under the same gate. The findings go to the Security tab and the SARIF is
   # kept as an artifact as well; any error-level finding fails the job.
