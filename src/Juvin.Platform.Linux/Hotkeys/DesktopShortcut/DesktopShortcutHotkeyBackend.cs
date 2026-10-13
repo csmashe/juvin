@@ -22,7 +22,7 @@ public sealed class DesktopShortcutHotkeyBackend : IHotkeyBackend, IDesktopShort
     private readonly Lazy<IDesktopShortcutWriter?> _writer;
 
     public DesktopShortcutHotkeyBackend(IEnumerable<IDesktopShortcutWriter> writers, Localizer localizer)
-        : this(writers, localizer, Environment.ProcessPath)
+        : this(writers, localizer, LinuxProcessPath.Resolve(Environment.GetEnvironmentVariable, Environment.ProcessPath))
     {
     }
 
