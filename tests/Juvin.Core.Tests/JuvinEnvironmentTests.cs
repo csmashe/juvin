@@ -29,6 +29,7 @@ public sealed class JuvinEnvironmentTests : IDisposable
         var data = JuvinEnvironment.DataPath;
 
         Assert.Equal(Path.Join(data, "settings.json"), JuvinEnvironment.SettingsFilePath);
+        Assert.Equal(Path.Join(data, "history.json"), JuvinEnvironment.HistoryFilePath);
         Assert.Equal(Path.Join(data, "secret.key"), JuvinEnvironment.SecretKeyFilePath);
         Assert.Equal(Path.Join(data, "Secrets"), JuvinEnvironment.SecretsPath);
         Assert.Equal(Path.Join(data, "Logs"), JuvinEnvironment.LogsPath);
@@ -53,5 +54,26 @@ public sealed class JuvinEnvironmentTests : IDisposable
                 );
             }
         }
+    }
+
+    [Fact]
+    public void DeleteSecretsIn_RemovesTheSecretsAndKeyOnly()
+    {
+        var data = Path.Join(_temp.Path, "Juvin");
+        JuvinEnvironment.EnsureDirectories(data);
+        var secrets = Path.Join(data, "Secrets");
+        File.WriteAllText(Path.Join(secrets, "codex"), "x");
+        Directory.CreateDirectory(Path.Join(secrets, "nested"));
+        File.WriteAllText(Path.Join(data, "secret.key"), "k");
+        File.WriteAllText(Path.Join(data, "settings.json"), "{}");
+
+        JuvinEnvironment.DeleteSecretsIn(data);
+
+        Assert.True(Directory.Exists(secrets));
+        Assert.Empty(Directory.EnumerateFileSystemEntries(secrets));
+        Assert.False(File.Exists(Path.Join(data, "secret.key")));
+        Assert.True(File.Exists(Path.Join(data, "settings.json")));
+
+        JuvinEnvironment.DeleteSecretsIn(Path.Join(_temp.Path, "missing"));
     }
 }

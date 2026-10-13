@@ -57,8 +57,40 @@
                 <TextBlock Classes="section-label" Text="{loc:Str Home.RecentLabel}" />
                 <Border Classes="panel">
                     <StackPanel>
-                        <Border Classes="section-row">
-                            <TextBlock Classes="row-hint" Margin="0" Text="{loc:Str Home.RecentHint}" />
+                        <Border Classes="section-row" IsVisible="{Binding !HasRecentRewrites}">
+                            <TextBlock Classes="row-hint" Margin="0" Text="{Binding RecentHint}" />
+                        </Border>
+                        <!-- ReSharper disable once Xaml.StyleClassNotFound (the class is matched by a compound selector in JuvinStyles) -->
+                        <ItemsControl Classes="divided-rows" ItemsSource="{Binding RecentRewrites}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:RecentRewriteRow">
+                                    <Border Classes="section-row">
+                                        <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="10">
+                                            <StackPanel VerticalAlignment="Center">
+                                                <TextBlock Classes="row-title" Text="{Binding Title}" />
+                                                <TextBlock Classes="row-hint" Text="{Binding Subject}" />
+                                                <TextBlock Classes="row-hint" Text="{Binding Detail}" />
+                                            </StackPanel>
+                                            <Border Grid.Column="1" Classes="badge" IsVisible="{Binding Applied}">
+                                                <TextBlock Classes="badge-text" Text="{loc:Str Home.Applied}" />
+                                            </Border>
+                                            <Button Grid.Column="2"
+                                                    VerticalAlignment="Center"
+                                                    Content="{loc:Str Home.Copy}"
+                                                    Command="{Binding $parent[ItemsControl].((vm:HomeSectionViewModel)DataContext).CopyCommand, FallbackValue={x:Null}}"
+                                                    CommandParameter="{Binding}" />
+                                            <Button Grid.Column="3"
+                                                    VerticalAlignment="Center"
+                                                    Content="{loc:Str Home.Delete}"
+                                                    Command="{Binding $parent[ItemsControl].((vm:HomeSectionViewModel)DataContext).DeleteCommand, FallbackValue={x:Null}}"
+                                                    CommandParameter="{Binding}" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <Border Classes="section-row divided" IsVisible="{Binding HasError}">
+                            <TextBlock Classes="row-hint" Margin="0" Text="{Binding ErrorMessage}" />
                         </Border>
                     </StackPanel>
                 </Border>
