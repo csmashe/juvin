@@ -64,7 +64,15 @@ public static class ServiceRegistrations
             action => Dispatcher.UIThread.Post(action)
         ));
 
-        services.AddSingleton<HomeSectionViewModel>();
+        services.AddSingleton(sp => new HomeSectionViewModel(
+            sp.GetRequiredService<IHistoryService>(),
+            sp.GetRequiredService<ISettingsService>(),
+            sp.GetRequiredService<ConnectorService>(),
+            sp.GetRequiredService<HotkeyService>(),
+            sp.GetRequiredService<ModelProbeService>(),
+            sp.GetRequiredService<Localizer>(),
+            action => Dispatcher.UIThread.Post(action)
+        ));
         services.AddTransient(sp => new ShortcutPanelViewModel(
             sp.GetRequiredService<HotkeyService>(),
             sp.GetRequiredService<ISettingsService>(),
