@@ -149,7 +149,7 @@ async function handleContextRequest({ id, editorId, requireFocus }: ContextReque
   reply(response);
 }
 
-async function handleApplyRequest({ id, editorId, expectedHash, start, end, text }: ApplyRequestMessage, reply: Reply): Promise<void> {
+async function handleApplyRequest({ id, editorId, expectedHash, start, end, text, format, expectedFormatHash }: ApplyRequestMessage, reply: Reply): Promise<void> {
   const tab = await editorTabs.find(editorId);
   const gone = applyError(id, { code: "editor-gone", message: "The editor is no longer open." });
   if (!tab) {
@@ -158,13 +158,13 @@ async function handleApplyRequest({ id, editorId, expectedHash, start, end, text
   }
 
   // No injection here: a freshly injected script would not know the editor id.
-  const result = (await sendToTab(tab.id, { kind: "juvin.apply", editorId, expectedHash, start, end, text })) as ApplyResult | undefined;
+  const result = (await sendToTab(tab.id, { kind: "juvin.apply", editorId, expectedHash, start, end, text, ...(format ? { format, expectedFormatHash } : {}) })) as ApplyResult | undefined;
   if (!result) {
     reply(gone);
     return;
   }
 
-  log("apply.done", { id, editorId, textLength: text.length, code: result.ok ? "ok" : result.error.code });
+  log("apply.done", { id, editorId, textLength: text.length, format: format ?? "plain", code: result.ok ? "ok" : result.error.code });
   reply(result.ok ? applyOk(id) : applyError(id, result.error));
 }
 

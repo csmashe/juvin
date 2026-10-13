@@ -44,6 +44,11 @@ export function isTextArea(editor: Editor): editor is HTMLTextAreaElement {
   return editor.tagName === "TEXTAREA";
 }
 
+/** A textarea or a plaintext-only host: it keeps no formatting, so it gets neither Markdown nor HTML. */
+export function isPlainEditor(editor: Editor): boolean {
+  return isTextArea(editor) || editor.getAttribute("contenteditable")?.toLowerCase() === "plaintext-only";
+}
+
 const EDITABLE_VALUES = new Set(["", "true", "plaintext-only"]);
 
 /** True when the editor still accepts input; isContentEditable is not available in every runtime. */

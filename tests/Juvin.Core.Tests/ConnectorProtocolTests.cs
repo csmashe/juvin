@@ -14,7 +14,7 @@ public sealed class ConnectorProtocolTests
            "capturedAt":"2026-10-09T14:03:21.512Z",
            "subject":"Invoice for September",
            "editor":{"id":"e-7f3a","hash":"sha256:9f86d0..."},
-           "selection":{"text":"Hi team, ...","start":0,"end":118},
+           "selection":{"text":"Hi team, ...","start":0,"end":118,"markdown":"Hi **team**, ...","formatHash":"sha256:5d41a1..."},
            "thread":{
              "completeness":"entire-thread",
              "collapsedCount":0,
@@ -52,6 +52,10 @@ public sealed class ConnectorProtocolTests
         },
         {
             """{"v":1,"type":"apply.request","id":"a1","editorId":"e-7f3a","expectedHash":"sha256:9f86d0...","start":0,"end":118,"text":"Hi team, thank you for the update..."}""",
+            typeof(ApplyRequestMessage)
+        },
+        {
+            """{"v":1,"type":"apply.request","id":"a2","editorId":"e-7f3a","expectedHash":"sha256:9f86d0...","start":0,"end":118,"text":"Hi **team**, thank you for the update...","format":"markdown","expectedFormatHash":"sha256:5d41a1..."}""",
             typeof(ApplyRequestMessage)
         },
         { """{"v":1,"type":"apply.response","id":"a1","ok":true}""", typeof(ApplyResponseMessage) },
@@ -113,6 +117,8 @@ public sealed class ConnectorProtocolTests
     [InlineData("""{"v":1,"type":"apply.request","id":"a1","editorId":"e","expectedHash":"h","start":0,"end":1,"text":null}""", ConnectorErrorCodes.BadMessage, "a1")]
     [InlineData("""{"v":1,"type":"apply.request","id":"a1","editorId":"e","expectedHash":"h","text":"t"}""", ConnectorErrorCodes.BadMessage, "a1")]
     [InlineData("""{"v":1,"type":"apply.request","id":"a1","editorId":"e","expectedHash":"h","start":3,"end":1,"text":"t"}""", ConnectorErrorCodes.BadMessage, "a1")]
+    [InlineData("""{"v":1,"type":"apply.request","id":"a1","editorId":"e","expectedHash":"h","start":0,"end":1,"text":"t","format":"html","expectedFormatHash":"t"}""", ConnectorErrorCodes.BadMessage, "a1")]
+    [InlineData("""{"v":1,"type":"apply.request","id":"a1","editorId":"e","expectedHash":"h","start":0,"end":1,"text":"t","format":"markdown"}""", ConnectorErrorCodes.BadMessage, "a1")]
     [InlineData("""{"v":1,"type":"testpage.request"}""", ConnectorErrorCodes.BadMessage, null)]
     [InlineData("""{"v":1,"type":"testpage.response","ok":true}""", ConnectorErrorCodes.BadMessage, null)]
     [InlineData("""{"v":1,"type":"testpage.response","id":"t1","ok":false}""", ConnectorErrorCodes.BadMessage, "t1")]
@@ -134,6 +140,14 @@ public sealed class ConnectorProtocolTests
 
         Assert.Null(error);
         Assert.Equal("p1", Assert.IsType<PingMessage>(message).Id);
+    }
+
+    [Fact]
+    public void Parse_RejectsMarkdownWithoutItsFormatHash()
+    {
+        var (_, error) = ConnectorProtocol.Parse(CaptureResponse.Replace(",\"formatHash\":\"sha256:5d41a1...\"", ""));
+
+        Assert.Equal(ConnectorErrorCodes.BadMessage, error?.Error.Code);
     }
 
     [Fact]
@@ -175,7 +189,9 @@ public sealed class ConnectorProtocolTests
 
         var captured = CapturedContext.From(response.Capture!);
 
-        Assert.Equal("Hi team, ...", captured.Context.Draft);
+        Assert.Equal("Hi **team**, ...", captured.Context.Draft);
+        Assert.True(captured.Context.IsMarkdown);
+        Assert.Equal("sha256:5d41a1...", captured.FormatHash);
         Assert.Equal("Invoice for September", captured.Context.Subject);
         Assert.Equal(ThreadCompleteness.TruncatedForModelLimit, captured.Context.Completeness);
         Assert.Equal(2, captured.Context.CollapsedCount);
@@ -190,5 +206,19 @@ public sealed class ConnectorProtocolTests
         Assert.Equal("sha256:9f86d0...", captured.EditorHash);
         Assert.Equal("https://mail.google.com/mail/u/0/", captured.PageUrl);
         Assert.Equal((0, 118), (captured.SelectionStart, captured.SelectionEnd));
+    }
+
+    [Fact]
+    public void CapturedContext_WithoutMarkdown_SendsThePlainSelection()
+    {
+        var json = CaptureResponse.Replace(",\"markdown\":\"Hi **team**, ...\",\"formatHash\":\"sha256:5d41a1...\"", "");
+        var response = Assert.IsType<ContextResponseMessage>(ConnectorProtocol.Parse(json).Message);
+
+        var captured = CapturedContext.From(response.Capture!);
+
+        Assert.Null(response.Capture!.Selection.Markdown);
+        Assert.Equal("Hi team, ...", captured.Context.Draft);
+        Assert.False(captured.Context.IsMarkdown);
+        Assert.Null(captured.FormatHash);
     }
 }

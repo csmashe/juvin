@@ -102,6 +102,7 @@ public sealed record ContextResponseMessage() : ConnectorMessage(ConnectorMessag
         Id is not null
         && (Ok
             ? Capture is not null
+                && Capture.Selection.Markdown is null == Capture.Selection.FormatHash is null
                 && ConnectorProtocol.TryParseCompleteness(Capture.Thread.Completeness, out _)
                 // ReSharper disable once ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract -- System.Text.Json does not enforce element nullability
                 && Capture.Thread.Messages.All(m => m is not null)
@@ -120,7 +121,17 @@ public sealed record ApplyRequestMessage() : ConnectorMessage(ConnectorMessageTy
 
     public required string Text { get; init; }
 
-    internal override bool IsWellFormed => Id is not null && Start >= 0 && End >= Start;
+    /// <summary><see cref="ApplyFormats.Markdown" />, or null for plain text.</summary>
+    public string? Format { get; init; }
+
+    /// <summary>The capture's <see cref="CapturedSelection.FormatHash" />; required with <see cref="ApplyFormats.Markdown" />.</summary>
+    public string? ExpectedFormatHash { get; init; }
+
+    internal override bool IsWellFormed =>
+        Id is not null
+        && Start >= 0
+        && End >= Start
+        && (Format is null || (Format == ApplyFormats.Markdown && ExpectedFormatHash is not null));
 }
 
 public sealed record ApplyResponseMessage() : ConnectorMessage(ConnectorMessageTypes.ApplyResponse)
@@ -174,7 +185,9 @@ public sealed record ConnectorCapture
 public sealed record CapturedEditor(string Id, string Hash);
 
 /// <param name="Start">Character offset of the selection within the editor's plain text.</param>
-public sealed record CapturedSelection(string Text, int Start, int End);
+/// <param name="Markdown">The selection in the protocol's Markdown subset; sent only for a rich editor.</param>
+/// <param name="FormatHash">The extension's opaque fingerprint of the selection's formatting; sent with <paramref name="Markdown" />.</param>
+public sealed record CapturedSelection(string Text, int Start, int End, string? Markdown = null, string? FormatHash = null);
 
 public sealed record CapturedThread
 {

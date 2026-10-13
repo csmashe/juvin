@@ -36,7 +36,7 @@ const spec = {
    "capturedAt":"2026-10-09T14:03:21.512Z",
    "subject":"Invoice for September",
    "editor":{"id":"e-7f3a","hash":"sha256:9f86d0..."},
-   "selection":{"text":"Hi team, ...","start":0,"end":118},
+   "selection":{"text":"Hi team, ...","start":0,"end":118,"markdown":"Hi **team**, ...","formatHash":"sha256:5d41a1..."},
    "thread":{
      "completeness":"entire-thread",
      "collapsedCount":0,
@@ -44,6 +44,7 @@ const spec = {
    }}}`,
   contextError: `{"v":1,"type":"context.response","id":"c1","ok":false,"error":{"code":"no-selection","message":"Nothing is selected in the editor."}}`,
   applyRequest: `{"v":1,"type":"apply.request","id":"a1","editorId":"e-7f3a","expectedHash":"sha256:9f86d0...","start":0,"end":118,"text":"Hi team, thank you for the update..."}`,
+  markdownApplyRequest: `{"v":1,"type":"apply.request","id":"a2","editorId":"e-7f3a","expectedHash":"sha256:9f86d0...","start":0,"end":118,"text":"Hi **team**, thank you for the update...","format":"markdown","expectedFormatHash":"sha256:5d41a1..."}`,
   applyOk: `{"v":1,"type":"apply.response","id":"a1","ok":true}`,
   applyError: `{"v":1,"type":"apply.response","id":"a1","ok":false,"error":{"code":"draft-changed","message":"The draft changed since it was captured."}}`,
   testPageRequest: `{"v":1,"type":"testpage.request","id":"t1"}`,
@@ -96,11 +97,17 @@ describe("parseIncoming", () => {
     ["context.request with an editor", spec.recaptureRequest],
     ["context.request from the desktop hotkey", spec.hotkeyRequest],
     ["apply.request", spec.applyRequest],
+    ["apply.request with Markdown", spec.markdownApplyRequest],
     ["testpage.request", spec.testPageRequest],
     ["error", spec.error],
   ])("accepts the spec example for %s", (_, text) => {
     const result = parseIncoming(json(text));
     expect(result).toEqual({ ok: true, message: json(text) });
+  });
+
+  it("reads a null format as plain text", () => {
+    const result = parseIncoming({ v: 1, type: "apply.request", id: "a1", editorId: "e-1", expectedHash: "sha256:00", start: 0, end: 1, text: "t", format: null });
+    expect(result.ok && result.message).not.toHaveProperty("format");
   });
 
   it("ignores unknown properties", () => {
@@ -145,6 +152,8 @@ describe("parseIncoming", () => {
     expect(parseIncoming({ v: 1, type: "context.request", id: "c1", requireFocus: "yes" }).ok).toBe(false);
     expect(parseIncoming({ v: 1, type: "apply.request", id: "a1", editorId: "e-1", expectedHash: "sha256:00", text: "t" }).ok).toBe(false);
     expect(parseIncoming({ v: 1, type: "apply.request", id: "a1", editorId: "e-1", expectedHash: "sha256:00", start: 3, end: 1, text: "t" }).ok).toBe(false);
+    expect(parseIncoming({ v: 1, type: "apply.request", id: "a1", editorId: "e-1", expectedHash: "sha256:00", start: 0, end: 1, text: "t", format: "html" }).ok).toBe(false);
+    expect(parseIncoming({ v: 1, type: "apply.request", id: "a1", editorId: "e-1", expectedHash: "sha256:00", start: 0, end: 1, text: "t", format: "markdown" }).ok).toBe(false);
     expect(parseIncoming({ v: 1, type: "config", actions: [], adapters: [], shortcut: "x", health: { mode: "cloud", modelReachable: null } }).ok).toBe(false);
   });
 });

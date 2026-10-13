@@ -5,6 +5,7 @@ namespace Juvin.Core.Connector;
 
 /// <summary>A capture turned into rewrite input, plus what Apply needs to find the same draft again.</summary>
 /// <param name="EditorHash">Must still match the editor's text when the rewrite is applied.</param>
+/// <param name="FormatHash">Set for a Markdown capture; the selection's formatting must still match it on apply.</param>
 public sealed record CapturedContext(
     RewriteContext Context,
     string Adapter,
@@ -12,7 +13,8 @@ public sealed record CapturedContext(
     string EditorHash,
     string? PageUrl,
     int SelectionStart,
-    int SelectionEnd
+    int SelectionEnd,
+    string? FormatHash = null
 )
 {
     /// <exception cref="ArgumentException">The capture's completeness is not one of the protocol's values.</exception>
@@ -28,12 +30,14 @@ public sealed record CapturedContext(
         var thread = capture.Thread.Messages
             .Select(message => new ThreadMessage(message.From, message.To ?? [], ParseSent(message.Sent), message.Body))
             .ToList();
+        var markdown = capture.Selection.Markdown;
         var context = new RewriteContext(
-            capture.Selection.Text,
+            markdown ?? capture.Selection.Text,
             thread,
             capture.Subject,
             completeness,
-            capture.Thread.CollapsedCount
+            capture.Thread.CollapsedCount,
+            markdown is not null
         );
 
         return new CapturedContext(
@@ -43,7 +47,8 @@ public sealed record CapturedContext(
             capture.Editor.Hash,
             capture.PageUrl,
             capture.Selection.Start,
-            capture.Selection.End
+            capture.Selection.End,
+            capture.Selection.FormatHash
         );
     }
 
