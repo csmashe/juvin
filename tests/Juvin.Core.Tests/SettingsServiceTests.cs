@@ -99,14 +99,12 @@ public sealed class SettingsServiceTests : IDisposable
         {
             RewriteInstructionOverrides = new Dictionary<string, string> { ["soften"] = "Be gentle." },
             CustomRewriteActions = [new CustomRewriteAction("custom-1", "Formal", "Make it formal.")],
-            DefaultRewriteAction = "custom-1",
         });
 
         var loaded = new SettingsService(path).Current;
 
         Assert.Equal("Be gentle.", Assert.Single(loaded.RewriteInstructionOverrides, pair => pair.Key == "soften").Value);
         Assert.Equal(new CustomRewriteAction("custom-1", "Formal", "Make it formal."), Assert.Single(loaded.CustomRewriteActions));
-        Assert.Equal("custom-1", loaded.DefaultRewriteAction);
     }
 
     [Fact]
@@ -134,7 +132,17 @@ public sealed class SettingsServiceTests : IDisposable
 
         Assert.Empty(loaded.RewriteInstructionOverrides);
         Assert.Empty(loaded.CustomRewriteActions);
-        Assert.Equal("clearer", loaded.DefaultRewriteAction);
+    }
+
+    [Fact]
+    public void Load_IgnoresASettingThatWasRemoved()
+    {
+        var path = _temp.File("settings.json");
+        File.WriteAllText(path, """{ "defaultRewriteAction": "soften", "historyRetentionDays": 7 }""");
+
+        var loaded = new SettingsService(path).Current;
+
+        Assert.Equal(7, loaded.HistoryRetentionDays);
     }
 
     [Fact]

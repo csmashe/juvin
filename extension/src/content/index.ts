@@ -1,8 +1,9 @@
 import browser from "webextension-polyfill";
-import { isContentRequest, type ApplyResult, type CaptureResult, type ContentRequest } from "../shared/runtime-messages";
+import { isContentRequest, type ApplyResult, type CaptureResult, type ContentRequest, type MenuShowResult } from "../shared/runtime-messages";
 import { applyReplacement } from "./apply";
 import { captureContext } from "./capture";
 import { EditorRegistry } from "./editor-registry";
+import { MenuRenderer } from "./menu";
 
 declare global {
   interface Window {
@@ -10,13 +11,22 @@ declare global {
   }
 }
 
-async function handle(registry: EditorRegistry, request: ContentRequest): Promise<CaptureResult | ApplyResult> {
+async function handle(registry: EditorRegistry, menu: MenuRenderer, request: ContentRequest): Promise<CaptureResult | ApplyResult | MenuShowResult | undefined> {
   try {
-    if (request.kind === "juvin.capture") {
-      return await captureContext(document, location, registry, undefined, request.editorId);
+    switch (request.kind) {
+      case "juvin.capture":
+        return await captureContext(document, location, registry, undefined, request.editorId);
+      case "juvin.apply":
+        return await applyReplacement(document, registry, request);
+      case "juvin.menu.show":
+        return menu.show(request);
+      case "juvin.menu.update":
+        menu.update(request.update);
+        return undefined;
+      case "juvin.menu.close":
+        menu.close(request.menuId);
+        return undefined;
     }
-
-    return await applyReplacement(document, registry, request);
   } catch (e) {
     return { ok: false, error: { code: "internal", message: `Content script failed: ${e instanceof Error ? e.name : "unknown"}.` } };
   }
@@ -24,6 +34,7 @@ async function handle(registry: EditorRegistry, request: ContentRequest): Promis
 
 function start(): void {
   const registry = new EditorRegistry();
+  const menu = new MenuRenderer();
 
   // On the bundled test page this runs as an extension page, which receives runtime messages addressed by tab id.
   let ownTabId: number | undefined;
@@ -36,7 +47,7 @@ function start(): void {
       return undefined;
     }
 
-    return handle(registry, message);
+    return handle(registry, menu, message);
   });
 }
 

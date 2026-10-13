@@ -17,12 +17,36 @@ public static class ConnectorMessageTypes
     public const string ApplyResponse = "apply.response";
     public const string TestPageRequest = "testpage.request";
     public const string TestPageResponse = "testpage.response";
+    public const string MenuShow = "menu.show";
+    public const string MenuResponse = "menu.response";
+    public const string MenuChoose = "menu.choose";
+    public const string MenuUpdate = "menu.update";
+    public const string MenuClose = "menu.close";
     public const string Error = "error";
 }
 
 public static class ApplyFormats
 {
     public const string Markdown = "markdown";
+}
+
+/// <summary>The <c>menu.choose</c> actions that are not entries of the menu.</summary>
+public static class MenuChoices
+{
+    /// <summary>Ask for a change, which carries the user's instruction; the same id as <see cref="RewriteAction.Custom" />.</summary>
+    public const string Custom = "custom";
+
+    public const string Review = "review";
+    public const string Recapture = "recapture";
+}
+
+public static class MenuStates
+{
+    public const string Running = "running";
+    public const string Applied = "applied";
+    public const string Answer = "answer";
+    public const string DraftChanged = "draft-changed";
+    public const string Error = "error";
 }
 
 public static class ConnectorErrorCodes
@@ -176,6 +200,11 @@ public static class ConnectorProtocol
             ConnectorMessageTypes.ApplyResponse => typeof(ApplyResponseMessage),
             ConnectorMessageTypes.TestPageRequest => typeof(TestPageRequestMessage),
             ConnectorMessageTypes.TestPageResponse => typeof(TestPageResponseMessage),
+            ConnectorMessageTypes.MenuShow => typeof(MenuShowMessage),
+            ConnectorMessageTypes.MenuResponse => typeof(MenuResponseMessage),
+            ConnectorMessageTypes.MenuChoose => typeof(MenuChooseMessage),
+            ConnectorMessageTypes.MenuUpdate => typeof(MenuUpdateMessage),
+            ConnectorMessageTypes.MenuClose => typeof(MenuCloseMessage),
             ConnectorMessageTypes.Error => typeof(ErrorMessage),
             _ => null,
         };

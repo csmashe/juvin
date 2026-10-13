@@ -15,14 +15,12 @@ public sealed class ModelProbeService
     public const string LmStudioUrl = "http://localhost:1234";
     public const string OllamaPullCommand = "ollama pull qwen3.5:27b";
 
-    private readonly HttpClient _http;
     private readonly Localizer _localizer;
     private readonly ProviderSelector _providers;
 
-    public ModelProbeService(ProviderSelector providers, HttpClient http, Localizer localizer)
+    public ModelProbeService(ProviderSelector providers, Localizer localizer)
     {
         _providers = providers;
-        _http = http;
         _localizer = localizer;
     }
 
@@ -72,18 +70,7 @@ public sealed class ModelProbeService
         string.Equals(a.Trim().TrimEnd('/'), b.Trim().TrimEnd('/'), StringComparison.OrdinalIgnoreCase);
 
     /// <summary>True for a loopback address, false for any other host, null when the URL is not valid.</summary>
-    public bool? IsThisDevice(string url)
-    {
-        try
-        {
-            // Constructing the provider sends nothing; it only parses the address.
-            return new OpenAiCompatibleProvider(_http, new AppSettings { LocalServerUrl = url }).RunsLocally;
-        }
-        catch (ProviderException)
-        {
-            return null;
-        }
-    }
+    public static bool? IsThisDevice(string url) => OpenAiCompatibleProvider.IsLoopbackServer(url);
 
     public string LocationLabel(string url) =>
         IsThisDevice(url) switch

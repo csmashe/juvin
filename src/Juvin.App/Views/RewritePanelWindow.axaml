@@ -94,6 +94,7 @@
                         <StackPanel Spacing="10">
                             <ProgressBar Classes="panel-progress" IsIndeterminate="True" IsVisible="{Binding IsRunning}" />
                             <TextBlock Classes="row-hint" Text="{Binding WorkingText}" IsVisible="{Binding IsWorking}" />
+                            <TextBlock Classes="row-hint" Text="{loc:Str Panel.PickAction}" IsVisible="{Binding IsIdle}" />
 
                             <SelectableTextBlock Classes="panel-result"
                                                  Text="{Binding ResultText}"

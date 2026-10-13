@@ -22,6 +22,13 @@ public sealed class ConnectorProtocolTests
            }}}
         """;
 
+    private const string MenuShow = """
+        {"v":1,"type":"menu.show","id":"m1","menuId":"menu-4","editorId":"e-7f3a",
+         "slots":[{"id":"missing","title":"What am I missing?"},{"id":"soften","title":"Soften"},{"id":"clearer","title":"Make clearer"},{"id":"shorter","title":"Make shorter"},{"id":"grammar","title":"Fix grammar"}],
+         "more":[{"id":"custom-3f2a9b","title":"Pirate voice"}],
+         "status":["6 messages","Entire thread","Private server: qwen3.5:27b"]}
+        """;
+
     // Every example in docs/connector-protocol.md, verbatim.
     public static TheoryData<string, Type> SpecExamples => new()
     {
@@ -69,6 +76,38 @@ public sealed class ConnectorProtocolTests
             """{"v":1,"type":"testpage.response","id":"t1","ok":false,"error":{"code":"internal","message":"The sample page could not be opened."}}""",
             typeof(TestPageResponseMessage)
         },
+        { MenuShow, typeof(MenuShowMessage) },
+        { """{"v":1,"type":"menu.response","id":"m1","ok":true}""", typeof(MenuResponseMessage) },
+        {
+            """{"v":1,"type":"menu.response","id":"m1","ok":false,"error":{"code":"unsupported","message":"This page cannot show the menu."}}""",
+            typeof(MenuResponseMessage)
+        },
+        { """{"v":1,"type":"menu.choose","menuId":"menu-4","action":"soften"}""", typeof(MenuChooseMessage) },
+        {
+            """{"v":1,"type":"menu.choose","menuId":"menu-4","action":"custom","instruction":"Make it sound less formal."}""",
+            typeof(MenuChooseMessage)
+        },
+        { """{"v":1,"type":"menu.choose","menuId":"menu-4","action":"review"}""", typeof(MenuChooseMessage) },
+        { """{"v":1,"type":"menu.choose","menuId":"menu-4","action":"recapture"}""", typeof(MenuChooseMessage) },
+        { """{"v":1,"type":"menu.update","menuId":"menu-4","state":"running","action":"soften"}""", typeof(MenuUpdateMessage) },
+        { """{"v":1,"type":"menu.update","menuId":"menu-4","state":"applied"}""", typeof(MenuUpdateMessage) },
+        {
+            """{"v":1,"type":"menu.update","menuId":"menu-4","state":"answer","text":"- The draft does not answer the question about the deadline."}""",
+            typeof(MenuUpdateMessage)
+        },
+        {
+            """{"v":1,"type":"menu.update","menuId":"menu-4","state":"draft-changed","text":"Hi team, thank you for the update..."}""",
+            typeof(MenuUpdateMessage)
+        },
+        {
+            """{"v":1,"type":"menu.update","menuId":"menu-4","state":"error","text":"Copy the rewrite instead.","canRetry":false,"result":"Hi team, thank you for the update..."}""",
+            typeof(MenuUpdateMessage)
+        },
+        {
+            """{"v":1,"type":"menu.update","menuId":"menu-4","state":"error","text":"The model did not answer in time.","canRetry":true}""",
+            typeof(MenuUpdateMessage)
+        },
+        { """{"v":1,"type":"menu.close","menuId":"menu-4"}""", typeof(MenuCloseMessage) },
         {
             """{"v":1,"type":"error","id":"c1","error":{"code":"unknown-type","message":"Unknown message type."}}""",
             typeof(ErrorMessage)
@@ -123,6 +162,20 @@ public sealed class ConnectorProtocolTests
     [InlineData("""{"v":1,"type":"testpage.response","ok":true}""", ConnectorErrorCodes.BadMessage, null)]
     [InlineData("""{"v":1,"type":"testpage.response","id":"t1","ok":false}""", ConnectorErrorCodes.BadMessage, "t1")]
     [InlineData("""{"v":1,"type":"testpage.response","id":"t1"}""", ConnectorErrorCodes.BadMessage, "t1")]
+    [InlineData("""{"v":1,"type":"menu.response","id":"m1","ok":false}""", ConnectorErrorCodes.BadMessage, "m1")]
+    [InlineData("""{"v":1,"type":"menu.response","ok":true}""", ConnectorErrorCodes.BadMessage, null)]
+    [InlineData("""{"v":1,"type":"menu.choose","action":"soften"}""", ConnectorErrorCodes.BadMessage, null)]
+    [InlineData("""{"v":1,"type":"menu.choose","menuId":"menu-4","action":""}""", ConnectorErrorCodes.BadMessage, null)]
+    [InlineData("""{"v":1,"type":"menu.choose","menuId":"menu-4","action":"custom"}""", ConnectorErrorCodes.BadMessage, null)]
+    [InlineData("""{"v":1,"type":"menu.choose","menuId":"menu-4","action":"custom","instruction":"  "}""", ConnectorErrorCodes.BadMessage, null)]
+    [InlineData("""{"v":1,"type":"menu.choose","menuId":"menu-4","action":"soften","instruction":"x"}""", ConnectorErrorCodes.BadMessage, null)]
+    [InlineData("""{"v":1,"type":"menu.update","menuId":"menu-4","state":"done"}""", ConnectorErrorCodes.BadMessage, null)]
+    [InlineData("""{"v":1,"type":"menu.update","menuId":"menu-4","state":"running"}""", ConnectorErrorCodes.BadMessage, null)]
+    [InlineData("""{"v":1,"type":"menu.update","menuId":"menu-4","state":"answer"}""", ConnectorErrorCodes.BadMessage, null)]
+    [InlineData("""{"v":1,"type":"menu.update","menuId":"menu-4","state":"draft-changed"}""", ConnectorErrorCodes.BadMessage, null)]
+    [InlineData("""{"v":1,"type":"menu.update","menuId":"menu-4","state":"error","text":"x"}""", ConnectorErrorCodes.BadMessage, null)]
+    [InlineData("""{"v":1,"type":"menu.update","state":"applied"}""", ConnectorErrorCodes.BadMessage, null)]
+    [InlineData("""{"v":1,"type":"menu.close"}""", ConnectorErrorCodes.BadMessage, null)]
     public void Parse_RejectsBadMessagesWithTheSpecCode(string json, string code, string? id)
     {
         var (message, error) = ConnectorProtocol.Parse(json);
@@ -140,6 +193,36 @@ public sealed class ConnectorProtocolTests
 
         Assert.Null(error);
         Assert.Equal("p1", Assert.IsType<PingMessage>(message).Id);
+    }
+
+    [Theory]
+    [InlineData("\"menuId\":\"menu-4\",", "")]
+    [InlineData("\"editorId\":\"e-7f3a\",", "")]
+    [InlineData(",{\"id\":\"grammar\",\"title\":\"Fix grammar\"}", "")]
+    [InlineData("{\"id\":\"grammar\",\"title\":\"Fix grammar\"}", "{\"id\":\"grammar\",\"title\":\"Fix grammar\"},{\"id\":\"extra\",\"title\":\"Extra\"}")]
+    [InlineData("{\"id\":\"grammar\",\"title\":\"Fix grammar\"}", "null")]
+    [InlineData("{\"id\":\"grammar\",\"title\":\"Fix grammar\"}", "{\"id\":\"grammar\"}")]
+    [InlineData("\"more\":[{\"id\":\"custom-3f2a9b\",\"title\":\"Pirate voice\"}],", "")]
+    [InlineData("\"more\":[{\"id\":\"custom-3f2a9b\",\"title\":\"Pirate voice\"}]", "\"more\":[null]")]
+    [InlineData("\"6 messages\"", "6")]
+    [InlineData("\"6 messages\"", "null")]
+    public void Parse_RejectsAMenuShowThatBreaksTheSpec(string find, string replace)
+    {
+        var (message, error) = ConnectorProtocol.Parse(MenuShow.Replace(find, replace));
+
+        Assert.Null(message);
+        Assert.Equal(ConnectorErrorCodes.BadMessage, error?.Error.Code);
+        Assert.Equal("m1", error?.Id);
+    }
+
+    [Fact]
+    public void Parse_KeepsTheMenuShowSlotsInKeyOrder()
+    {
+        var menu = Assert.IsType<MenuShowMessage>(ConnectorProtocol.Parse(MenuShow).Message);
+
+        Assert.Equal(["missing", "soften", "clearer", "shorter", "grammar"], menu.Slots.Select(slot => slot.Id));
+        Assert.Equal(new ConnectorAction("custom-3f2a9b", "Pirate voice"), Assert.Single(menu.More));
+        Assert.Equal(["6 messages", "Entire thread", "Private server: qwen3.5:27b"], menu.Status);
     }
 
     [Fact]

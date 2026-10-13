@@ -94,7 +94,7 @@ public sealed partial class ModelsSectionViewModel : ObservableObject
         }
 
         var url = value.Trim();
-        if (_probes.IsThisDevice(url) is null)
+        if (ModelProbeService.IsThisDevice(url) is null)
         {
             LocalStatus = _localizer["Models.Status.InvalidUrl"];
             return;
@@ -159,7 +159,7 @@ public sealed partial class ModelsSectionViewModel : ObservableObject
         var settings = _settings.Current;
         var url = settings.LocalServerUrl;
         // An invalid address is shown but never saved, so a check would probe the old one.
-        if (_probes.IsThisDevice(LocalServerUrl.Trim()) is null)
+        if (ModelProbeService.IsThisDevice(LocalServerUrl.Trim()) is null)
         {
             LocalStatus = _localizer["Models.Status.InvalidUrl"];
             return;
@@ -178,7 +178,7 @@ public sealed partial class ModelsSectionViewModel : ObservableObject
         _probedModels = status.Models;
         RebuildModelList(_settings.Current);
         // The address or model may have changed while the check ran.
-        if (_probes.IsThisDevice(LocalServerUrl.Trim()) is not null && ModelProbeService.IsSameServer(url, _settings.Current.LocalServerUrl))
+        if (ModelProbeService.IsThisDevice(LocalServerUrl.Trim()) is not null && ModelProbeService.IsSameServer(url, _settings.Current.LocalServerUrl))
         {
             LocalStatus = _probes.DescribeLocal(ModelProbeService.WithSelectedModel(status, _settings.Current.LocalModel));
         }
