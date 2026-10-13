@@ -443,7 +443,9 @@ public sealed class OpenAiCompatibleProviderTests
     [Theory]
     [InlineData("not a url")]
     [InlineData("ftp://host")]
-    public void NormaliseBaseUrl_RejectsInvalidUrls(string url)
+    [InlineData("")]
+    [InlineData(null)]
+    public void NormaliseBaseUrl_RejectsInvalidUrls(string? url)
     {
         var ex = Assert.Throws<ProviderException>(() => OpenAiCompatibleProvider.NormaliseBaseUrl(url));
 

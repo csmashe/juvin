@@ -23,7 +23,7 @@
                                     <TextBlock Classes="row-hint" Text="{loc:Str Home.ConnectorHint}" />
                                 </StackPanel>
                                 <Border Grid.Column="1" Classes="badge">
-                                    <TextBlock Classes="badge-text" Text="{loc:Str Common.ComingSoon}" />
+                                    <TextBlock Classes="badge-text" Text="{Binding ConnectorStatus}" />
                                 </Border>
                             </Grid>
                         </Border>
@@ -34,7 +34,7 @@
                                     <TextBlock Classes="row-hint" Text="{loc:Str Home.ModelHint}" />
                                 </StackPanel>
                                 <Border Grid.Column="1" Classes="badge">
-                                    <TextBlock Classes="badge-text" Text="{loc:Str Common.ComingSoon}" />
+                                    <TextBlock Classes="badge-text" Text="{Binding ModelStatus}" />
                                 </Border>
                             </Grid>
                         </Border>
@@ -45,7 +45,7 @@
                                     <TextBlock Classes="row-hint" Text="{loc:Str Home.ShortcutHint}" />
                                 </StackPanel>
                                 <Border Grid.Column="1" Classes="badge">
-                                    <TextBlock Classes="badge-text" Text="{loc:Str Common.ComingSoon}" />
+                                    <TextBlock Classes="badge-text" Text="{Binding ShortcutStatus}" />
                                 </Border>
                             </Grid>
                         </Border>

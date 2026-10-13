@@ -142,10 +142,12 @@ public sealed partial class OpenAiCompatibleProvider : IModelProvider
         return new ChatResult(text, usage.Model ?? model, usage.InputTokens, usage.OutputTokens);
     }
 
-    internal static (Uri Root, Uri OpenAiBase) NormaliseBaseUrl(string url)
+    // Null is what a hand-edited "localServerUrl": null in settings.json deserializes to.
+    internal static (Uri Root, Uri OpenAiBase) NormaliseBaseUrl(string? url)
     {
         if (
-            !Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri)
+            string.IsNullOrWhiteSpace(url)
+            || !Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri)
             || uri.Scheme is not ("http" or "https")
         )
         {
