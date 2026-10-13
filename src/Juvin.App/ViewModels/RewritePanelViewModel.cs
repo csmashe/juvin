@@ -184,6 +184,9 @@ public sealed partial class RewritePanelViewModel : ObservableObject
     /// <summary>Raised when the panel should hide: Close, Escape, or a successful Apply.</summary>
     public event Action? HideRequested;
 
+    /// <summary>Raised when a successful capture, including a Recapture, has been loaded.</summary>
+    public event Action? CaptureLoaded;
+
     /// <summary>
     ///     Shows a new capture, or the extension's error, replacing whatever the panel held, and runs the
     ///     default action. A null <paramref name="target" /> (no browser connected) disables Recapture.
@@ -405,6 +408,7 @@ public sealed partial class RewritePanelViewModel : ObservableObject
             return Task.CompletedTask;
         }
 
+        CaptureLoaded?.Invoke();
         return StartActionAsync(action);
     }
 

@@ -254,6 +254,49 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task ALaterDeclinedCapture_KeepsTheTickedRows()
+    {
+        var vm = Create();
+        await _connector.StartAsync(CancellationToken.None);
+        await using var stream = await ConnectAndSayHelloAsync();
+        await _panel.LoadAsync(new FakeRewriteTarget(), Capture());
+        Assert.True(vm.IsRewriteShown);
+
+        await WriteAsync(stream, """{"v":1,"type":"shortcut.pressed"}""");
+        var id = (await ReadAsync(stream)).GetProperty("id").GetString();
+        await WriteAsync(
+            stream,
+            $$$"""{"v":1,"type":"context.response","id":"{{{id}}}","ok":false,"error":{"code":"no-selection","message":"Declined."}}"""
+        );
+        await WaitUntilAsync(() => vm.HasTryItStatus);
+
+        Assert.True(vm.IsCaptured);
+        Assert.True(vm.IsRewriteShown);
+        Assert.Equal(_localizer.Format("Wizard.TryIt.CaptureFailed", _localizer["Panel.Error.NoSelection"]), vm.TryItStatus);
+    }
+
+    [Fact]
+    public async Task AFailedOpenAfterAnEarlierCapture_StillReportsTheFailure()
+    {
+        var vm = Create();
+        await _connector.StartAsync(CancellationToken.None);
+        await using var stream = await ConnectAndSayHelloAsync();
+        await WaitUntilAsync(() => vm.IsBrowserConnected);
+        await _panel.LoadAsync(new FakeRewriteTarget(), Capture());
+
+        var open = vm.OpenSampleCommand.ExecuteAsync(null);
+        var request = await ReadAsync(stream);
+        await WriteAsync(
+            stream,
+            $$$"""{"v":1,"type":"testpage.response","id":"{{{request.GetProperty("id").GetString()}}}","ok":false,"error":{"code":"internal","message":"Failed."}}"""
+        );
+        await open;
+
+        Assert.True(vm.IsRewriteShown);
+        Assert.Equal(_localizer.Format("Wizard.TryIt.OpenFailed", _localizer["Panel.Error.Unknown"]), vm.TryItStatus);
+    }
+
+    [Fact]
     public async Task AfterDispose_CapturesAndRewritesChangeNothing()
     {
         var vm = Create();

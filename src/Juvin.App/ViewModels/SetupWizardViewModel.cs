@@ -58,6 +58,9 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
     // Read and written on the UI thread only; captures post in either order, so an older one is dropped.
     private long _shownCapture;
 
+    // Counts every capture outcome the step saw, so a pending Open sample knows whether one arrived meanwhile.
+    private int _captureArrivals;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsCodexMode), nameof(ModeHint))]
     private ProcessingModeOption? _selectedMode;
@@ -148,6 +151,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         _connector.ClientsChanged += OnClientsChanged;
         _connector.CaptureCompleted += OnCaptureCompleted;
         _connector.TriggerFailed += OnTriggerFailed;
+        _panel.CaptureLoaded += OnPanelCaptureLoaded;
         _panel.PropertyChanged += OnPanelPropertyChanged;
         RefreshBrowserConnection();
     }
@@ -196,6 +200,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         _connector.ClientsChanged -= OnClientsChanged;
         _connector.CaptureCompleted -= OnCaptureCompleted;
         _connector.TriggerFailed -= OnTriggerFailed;
+        _panel.CaptureLoaded -= OnPanelCaptureLoaded;
         _panel.PropertyChanged -= OnPanelPropertyChanged;
         if (!_lifetime.IsCancellationRequested)
         {
@@ -327,6 +332,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
 
         IsOpeningSample = true;
         TryItStatus = _localizer["Wizard.TryIt.Opening"];
+        var arrivalsBefore = _captureArrivals;
         ConnectorError? error;
         try
         {
@@ -351,7 +357,12 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
 
         if (error is not null)
         {
-            TryItStatus = _localizer.Format("Wizard.TryIt.OpenFailed", _localizer[RewritePanelViewModel.ErrorKeyFor(error.Code)]);
+            // A capture that landed while the reply was in flight outranks the failure.
+            if (_captureArrivals == arrivalsBefore)
+            {
+                TryItStatus = _localizer.Format("Wizard.TryIt.OpenFailed", _localizer[RewritePanelViewModel.ErrorKeyFor(error.Code)]);
+            }
+
             return;
         }
 
@@ -523,6 +534,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         }
 
         _shownCapture = number;
+        _captureArrivals++;
         if (result.Ok)
         {
             // The panel can reach Done before this callback runs; a rewrite already shown stays shown.
@@ -535,29 +547,42 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
             return;
         }
 
-        TryItPhase = TryItPhase.CaptureFailed;
+        if (!IsCaptured)
+        {
+            TryItPhase = TryItPhase.CaptureFailed;
+        }
+
         TryItStatus = _localizer.Format("Wizard.TryIt.CaptureFailed", _localizer[RewritePanelViewModel.ErrorKeyFor(result.Error?.Code)]);
     }
 
     /// <summary>
-    ///     The panel's own state also moves the rows forward, because a Recapture from the panel
-    ///     goes straight to the session and never raises <see cref="ConnectorService.CaptureCompleted" />.
+    ///     The panel also moves the rows forward, because a Recapture from the panel goes straight to
+    ///     the session and never raises <see cref="ConnectorService.CaptureCompleted" />.
     /// </summary>
-    private void OnPanelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    private void OnPanelCaptureLoaded()
     {
         if (IsClosed)
         {
             return;
         }
 
-        var captured = e.PropertyName == nameof(RewritePanelViewModel.HasCapture) && _panel.HasCapture && !IsCaptured;
-        var shown = e.PropertyName == nameof(RewritePanelViewModel.State) && _panel.State == RewritePanelState.Done;
-        if (!captured && !shown)
+        _captureArrivals++;
+        if (!IsCaptured)
+        {
+            TryItPhase = TryItPhase.Captured;
+        }
+
+        TryItStatus = null;
+    }
+
+    private void OnPanelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (IsClosed || e.PropertyName != nameof(RewritePanelViewModel.State) || _panel.State != RewritePanelState.Done)
         {
             return;
         }
 
-        TryItPhase = shown ? TryItPhase.RewriteShown : TryItPhase.Captured;
+        TryItPhase = TryItPhase.RewriteShown;
         TryItStatus = null;
     }
 
