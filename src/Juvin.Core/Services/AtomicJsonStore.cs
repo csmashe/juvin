@@ -188,13 +188,13 @@ public sealed class AtomicJsonStore<T>
     {
         lock (_coordinator.Gate)
         {
-            var copies = CopiesOf(_filePath).Concat(CopiesOf(_backupPath)).Append(_backupPath);
+            var copies = CopiesOf(_filePath)
+                .Concat(CopiesOf(_backupPath))
+                .Append(_backupPath)
+                .Where(copy => File.Exists(copy) && (writtenBefore is null || File.GetLastWriteTimeUtc(copy) < writtenBefore));
             foreach (var copy in copies)
             {
-                if (File.Exists(copy) && (writtenBefore is null || File.GetLastWriteTimeUtc(copy) < writtenBefore))
-                {
-                    File.Delete(copy);
-                }
+                File.Delete(copy);
             }
         }
     }
