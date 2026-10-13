@@ -439,6 +439,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
 
         _serverChosenByUser = true;
         SaveSetting(s => s with { LocalServerUrl = row.Url });
+        ShowConfiguredServer();
         RefreshServerChoice();
     }
 
@@ -492,7 +493,13 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
 
         var reachable = rows.Where(row => row is { IsServer: true, IsReachable: true }).ToList();
         // A server the user typed or chose is never swapped for the only running one, even while it is down.
-        if (!_serverChosenByUser && reachable.Count == 1 && !ModelProbeService.IsSameServer(reachable[0].Url!, settings.LocalServerUrl))
+        // An address that is not a built-in default was set by the user, in this wizard or an earlier one or in Models.
+        if (
+            !_serverChosenByUser
+            && IsDefaultServer(settings.LocalServerUrl)
+            && reachable.Count == 1
+            && !ModelProbeService.IsSameServer(reachable[0].Url!, settings.LocalServerUrl)
+        )
         {
             SaveSetting(s => s with { LocalServerUrl = reachable[0].Url! });
         }
@@ -500,14 +507,14 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         RefreshServerChoice();
     }
 
+    private static bool IsDefaultServer(string url) =>
+        ModelProbeService.IsSameServer(url, ModelProbeService.OllamaUrl) || ModelProbeService.IsSameServer(url, ModelProbeService.LmStudioUrl);
+
     private IEnumerable<DetectionRow> DetectionCandidates(string configuredUrl)
     {
         yield return new DetectionRow(_localizer["Wizard.Mode.Ollama"], ModelProbeService.OllamaUrl, _localizer["Wizard.Checklist.Checking"]);
         yield return new DetectionRow(_localizer["Wizard.Mode.LmStudio"], ModelProbeService.LmStudioUrl, _localizer["Wizard.Checklist.Checking"]);
-        if (
-            !ModelProbeService.IsSameServer(configuredUrl, ModelProbeService.OllamaUrl)
-            && !ModelProbeService.IsSameServer(configuredUrl, ModelProbeService.LmStudioUrl)
-        )
+        if (!IsDefaultServer(configuredUrl))
         {
             yield return new DetectionRow(_localizer["Wizard.Mode.YourServer"], configuredUrl, _localizer["Wizard.Checklist.Checking"]);
         }
@@ -643,6 +650,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
 
     private void SaveSetting(Func<AppSettings, AppSettings> update)
     {
+        var previousUrl = _settings.Current.LocalServerUrl;
         try
         {
             _settings.Update(update);
@@ -656,6 +664,15 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
             _applyingMode = false;
         }
 
+        // Only a server change touches the address field, so saving a model keeps a draft and its error.
+        if (_settings.Current.LocalServerUrl != previousUrl)
+        {
+            ShowConfiguredServer();
+        }
+    }
+
+    private void ShowConfiguredServer()
+    {
         _applyingServerUrl = true;
         ServerUrl = _settings.Current.LocalServerUrl;
         _applyingServerUrl = false;
