@@ -22,6 +22,8 @@ public static class PlatformServices
         services.AddSingleton<ITrayHostProbe, NotificationAreaTrayHostProbe>();
         services.AddSingleton<IPanelWindowSupport, WindowsPanelWindowSupport>();
         services.AddSingleton<INativeHostRegistrar>(_ => new WindowsNativeHostRegistrar(NativeHost.Locate));
+        // The installer carries the launcher entry.
+        services.AddSingleton<ILauncherIntegration, NoLauncherIntegration>();
         services.AddSingleton<IHotkeyBackend, SharpHookHotkeyBackend>();
         return services;
     }

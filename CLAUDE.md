@@ -20,6 +20,7 @@ The solution is `Juvin.slnx` at the repo root. The protocol between the app and 
 - `dotnet test Juvin.slnx` - Run all tests (Windows-only tests are skipped elsewhere and run in CI)
 - `dotnet run --project src/Juvin.Cli -- rewrite --stdin` - Exercise the rewrite pipeline without the extension
 - `scripts/dev/register-host.sh` (Linux) or `scripts/dev/register-host.ps1` (Windows) - Register the Debug build of `juvin-host` with native Firefox and Chrome for development; the setup wizard does this for users
+- `scripts/dev/install-desktop-entry.sh [--uninstall]` (Linux) - Install a desktop entry and icons for the Debug build so GNOME shows the Juvin icon in the dock; the deb and rpm install their own and the AppImage writes one on first run
 - `scripts/build-linux-packages.sh <version>` - Build the deb, rpm, and AppImage into `dist/`; `scripts/smoke-test-linux-packages.sh <version>` checks them and installs them in Ubuntu and Fedora containers (`--validate-only` skips the containers). The Release Linux workflow runs both on a `v*` tag.
 - Package versions live in `Directory.Packages.props` (central package management); `nuget.config` pins nuget.org as the only feed.
 
