@@ -11,13 +11,13 @@ A cross-platform desktop app (Linux, macOS, Windows) built with .NET and Avaloni
 1. The user is writing an email reply in webmail. They press Ctrl+A (Cmd+A on Mac) to select their draft, or select part of it.
 2. They press the Juvin rewrite shortcut, which is editable in Juvin's settings.
 3. The browser extension captures the selected draft and the rest of the email conversation from the page and hands both to the desktop app.
-4. The desktop app shows a small panel with the context status ("Draft selected · 6 messages · Local model"), rewrite actions (Soften, Clearer, Shorter, Grammar, custom instruction), and a streamed preview.
-5. The user can ask follow-ups ("keep the deadline but sound less annoyed") or ask whether the draft misses anything the thread asked for.
-6. **Apply** replaces the original selection in the original editor, only if the editor and draft are unchanged. Otherwise the result is offered as Copy. The user sends the email themselves.
+4. An action menu opens beside the draft: the Juvin mark with five actions around it (What am I missing?, Soften, Make clearer, Make shorter, Fix grammar, on keys 1 to 5) and a status line ("6 messages · Local: qwen3.5:27b"). Nothing runs until the user picks.
+5. A picked action rewrites the draft and applies the result in place, only if the editor and draft are unchanged; Ctrl+Z (Cmd+Z) reverts it. Otherwise the result is offered as Copy. Clicking the mark opens "Ask for a change" for a free-text instruction, "What am I missing?" answers in the same card, and right-clicking the mark lists every action, custom ones included, plus Review, which opens the desktop panel with a streamed preview, a diff, and follow-ups.
+6. The user sends the email themselves.
 
 Processing runs on a local model by default. External providers are an explicit opt-in.
 
-The settings window and first-run setup wizard follow the TypeWhisper for Linux design (dark theme, left sidebar, card sections, checklist-driven wizard). The MVP needs design work only for those two surfaces plus the rewrite panel.
+The settings window and first-run setup wizard follow the TypeWhisper for Linux design (dark theme, left sidebar, card sections, checklist-driven wizard). The MVP needs design work only for those two surfaces plus the action menu (section 2.8) and the rewrite panel.
 
 ### Not in the MVP
 
@@ -121,6 +121,28 @@ Decided: Juvin is open source under **GPL-3.0** with no attribution to TypeWhisp
 
 This is engineering guidance, not legal advice.
 
+### 2.8 The action menu opens where the draft is
+
+Decided October 13, 2026 (decision 7). The shortcut opens a menu next to the draft instead of starting a rewrite, so the user picks the action every time and the result lands in the draft without a trip to another window.
+
+**One menu, two renderers.** The desktop app owns the menu: which actions fill the five slots and the right-click list, the status line, the session that runs the chosen action, the apply with its hash check, and every state the menu shows. A renderer only draws what the app sends and reports clicks and keys. For a browser draft the renderer is the extension's content script, which draws the menu in a closed shadow root attached to the page, so page styles neither reach it nor are reached by it. It is not part of a site adapter: Gmail, the generic adapter, the test page, and a later Outlook on the web adapter all get the same menu. Drafts outside the browser (Mac Mail, Outlook desktop, Thunderbird) arrive with the accessibility capture after the MVP; those get an Avalonia renderer of the same menu, near the caret where the OS reports it and at a fixed spot on Wayland, and the app logic does not change.
+
+**Look.** Brand colors, not the light mockup it started from. The Juvin mark sits on a navy (`#0F2D5B`) disc with a soft navy radial glow fading out behind the whole menu. Five round bubbles surround it on the dark panel color (`#141D26`, border `#283644`), each with a FluentIcons glyph, a label, and its number key; hover and keyboard focus draw the orange border. Clockwise from the lower left, matching the keys: 1 What am I missing?, 2 Soften, 3 Make clearer, 4 Make shorter, 5 Fix grammar. The status line sits under the ring and keeps the context chips' honesty: message count, completeness, and "Local", "Private server", or "Codex: cloud" with the model. The card below (Ask for a change, answers, errors) is the same dark panel with an orange Run button, orange being the one accent.
+
+**Behaviour.**
+
+- Placement: beside the draft editor's box, to its right when it fits, otherwise above or below, kept inside the viewport and repositioned on scroll and resize.
+- Focus: the menu does not take focus from the editor, so the selection stays as captured. While it is open a capture-phase key listener takes 1 to 5, Escape, and the arrow keys and Enter for moving between bubbles; other keys pass through. Only the Ask card's text box takes focus.
+- Running: the chosen bubble shows progress, the others dim, and Escape cancels. Results are not previewed in the menu; on Done the app applies.
+- Applied: the menu closes and a small note beside the editor says the draft was rewritten and Ctrl+Z (Cmd+Z) undoes it, then fades.
+- Draft changed: when the hash check refuses, the card shows the result with Copy and Recapture, as the panel does today.
+- Failure: a provider error shows in the card with Try again. Local mode still never falls back to another provider.
+- Ask for a change (click the mark): a text box and Run; the result applies like a quick action.
+- What am I missing? answers in the card as bullet points with Copy and a follow-up box, since there is nothing to apply.
+- Right-click on the mark: a list of the whole action catalog, custom actions from the Rewrite actions section included, then Review, which hands the capture to the desktop rewrite panel for a streamed preview, the Changes diff, follow-ups, and Apply. The panel opens with nothing running and the user picks an action there; there is no default action any more.
+- Closing: Escape, a click outside, the shortcut pressed again, or a new capture closes the menu and cancels anything in flight.
+- Privacy: the menu holds results only while it is open, and the extension stores nothing. The page could read the shadow root's text while it is shown, which is the same exposure as the draft itself.
+
 ## 3. What is reused from TypeWhisper, and how
 
 The TypeWhisper code is Linux-only and has no OS abstraction layer. Juvin needs one from day one. The table shows what carries over and what changes.
@@ -146,15 +168,15 @@ The TypeWhisper code is Linux-only and has no OS abstraction layer. Juvin needs 
 
 | Feature | Detail |
 | --- | --- |
-| Trigger | Global hotkey or extension command, both configurable, default Ctrl+Shift+F (Cmd+Shift+F on macOS) |
+| Trigger | Global hotkey or extension command, both configurable, default Ctrl+Shift+F (Cmd+Shift+F on macOS); opens the action menu (section 2.8) |
 | Capture | Selection, editor identity, thread messages, participants, subject, page URL, capture time, completeness state |
-| Actions | Soften, Clearer, Shorter, Fix grammar, Custom instruction, "What am I missing?" (checks the draft against requests in the thread) |
-| Preview | Streamed result, side-by-side or inline diff toggle, follow-up input retaining context |
-| Apply | Replaces original selection only if editor and draft hash still match. Otherwise shows "Draft changed" with Copy and Recapture |
+| Actions | "What am I missing?" (checks the draft against requests in the thread), Soften, Clearer, Shorter, Fix grammar on keys 1 to 5; Ask for a change (free text); custom actions in the right-click list |
+| Preview | Only through Review, which opens the desktop panel: streamed result, diff toggle, follow-up input retaining context |
+| Apply | Automatic when a menu action finishes. Replaces the original selection only if editor and draft hash still match. Otherwise shows "Draft changed" with Copy and Recapture |
 | Copy | Always available |
-| Undo | Editor-native Undo works after Apply because replacement goes through the editing API |
+| Undo | Editor-native Undo reverts an applied rewrite because replacement goes through the editing API |
 | Guardrails in prompt | Preserve deadlines, amounts, names, commitments, and firmness. Quoted thread is data, not instruction |
-| Context panel | Chips for each source, message count, completeness state, provider, local/cloud label, expandable raw context |
+| Context panel | Status line under the menu; in the Review panel, chips for each source, message count, completeness state, provider, local/cloud label, expandable raw context |
 | History | Opt-in local history of rewrites with delete and export |
 
 ### 4.2 Settings window sections
@@ -163,7 +185,7 @@ The TypeWhisper code is Linux-only and has no OS abstraction layer. Juvin needs 
 | --- | --- |
 | Home | Status: browser connector connected, model reachable, shortcut registered. Recent rewrites. "Open setup wizard" |
 | Shortcuts | Rewrite shortcut (global), extension shortcut mirror, backend status, desktop-integration setup on Linux |
-| Rewrite actions | Built-in actions with editable prompts, custom actions, default action, length guidance |
+| Rewrite actions | Built-in actions with editable prompts, custom actions, length guidance |
 | Browser connector | Detected browsers, registration status per browser, extension install links, sandboxed-browser warnings, connection test |
 | Models | Processing mode (Local / Codex), local server URL and model picker with capability check, Codex binary and sign-in status, connection test |
 | Privacy and data | History on/off and retention, provenance capture, crash reporting (off by default), data folder, delete all |
@@ -185,8 +207,8 @@ The TypeWhisper code is Linux-only and has no OS abstraction layer. Juvin needs 
 | --- | --- |
 | Manifest | MV3, permissions: `nativeMessaging`, `activeTab`, `scripting`, `storage`, `commands`. Host permissions only for supported webmail origins plus optional all-sites for the generic adapter |
 | Background | Connects to the native host on demand, relays requests and results, surfaces connection errors as a badge |
-| Content script | Adapter registry: Gmail, generic, test page. Captures selection and thread; applies replacement; verifies draft hash before apply |
-| Popup | Connection status, "Open Juvin", shortcut reminder. No chat UI in the extension; the panel is the desktop app |
+| Content script | Adapter registry: Gmail, generic, test page. Captures selection and thread; applies replacement; verifies draft hash before apply; draws the action menu the app sends (section 2.8) |
+| Popup | Connection status, "Open Juvin", shortcut reminder. No chat UI; the action menu sits in the page and Review opens the desktop panel |
 | Builds | One source, two outputs. Firefox needs `browser_specific_settings.gecko.id`; Chrome needs a stable extension ID (publish or pin a `key`) because the host manifest allowlists it |
 
 ### 4.5 Native messaging protocol
@@ -197,6 +219,7 @@ JSON messages over the native host, forwarded verbatim to the desktop app socket
 - `context.request` (desktop to extension) and `context.response` with the capture payload.
 - `apply.request` with the replacement text and the expected draft hash; `apply.response` with success or `draft-changed`.
 - `shortcut.pressed` (extension to desktop) when the extension command fires.
+- Planned with the action menu (section 2.8), names settled when `docs/connector-protocol.md` is updated in its first slice: `menu.show` (desktop to extension: the capture's editor, the five slots, the right-click list, the status line), `menu.choose` (extension to desktop: an action id, Ask with its text, or Review), `menu.update` (desktop to extension: running, answer text, applied, draft changed, error), and `menu.close` (either direction).
 - `ping` for the connection test.
 
 ## 5. Architecture
@@ -313,7 +336,7 @@ Result (October 12, 2026): done on Linux and Windows; macOS assumed. From a real
 
 Exit: a fresh machine on each OS can install Juvin, run the wizard, and complete a rewrite.
 
-Progress (October 13, 2026): slice 1, history and the Privacy and data section, is merged (PR #15). Slice 2, the Try it wizard step, is merged (PR #16). Slice 3, Linux packaging, is merged (PR #17). A walkthrough of the app on October 13 found four things to fix first (listed below); all four are fixed: the Home status rows (PR #18), the wizard's server address field (PR #19), the placeholder filling (PR #20), and the AppImage desktop entry (PR #21). Next after them: the Windows installer and the dmg, then the extension store submissions.
+Progress (October 13, 2026): slice 1, history and the Privacy and data section, is merged (PR #15). Slice 2, the Try it wizard step, is merged (PR #16). Slice 3, Linux packaging, is merged (PR #17). A walkthrough of the app on October 13 found four things to fix first (listed below); all four are fixed: the Home status rows (PR #18), the wizard's server address field (PR #19), the placeholder filling (PR #20), and the AppImage desktop entry (PR #21). Next after them: the action menu redesign (decision 7), then the Windows installer and the dmg, then the extension store submissions.
 
 - Slice 1, history and Privacy and data (PR #15, October 12): with Rewrite history turned on (off by default), every completed rewrite, follow-ups and action switches included, is kept as a `HistoryEntry` (action, subject, adapter, draft, result, mode, provider, model, local or not, message count, completeness, duration, and whether Apply succeeded) in `history.json` in the data folder through `HistoryService`, which uses `AtomicJsonStore` with no backup copy, so a deleted entry does not live on in the previous snapshot; a corrupt file is preserved aside and reset, and an unreadable one shows as unavailable instead of failing. Retention is 7, 30 (the default), or 90 days, 1 year, or Keep forever; older entries are removed after each rewrite, when the period changes, and at startup. A failed history write is traced by exception type and never hides the rewrite, and traces carry entry ids and lengths only. Privacy and data now has the history and provenance capture toggles, the retention picker, Open folder, Export history (Markdown or JSON), Clear history (which also removes preserved copies of a corrupt file), and Delete all data (history, the encrypted secrets and their key, and settings reset to defaults, so setup runs again), both behind an inline confirm. Home lists the five newest rewrites with Applied, Copy, and Delete. Crash reporting stays Coming later until Phase 6 adds a reporter. 740 .NET tests pass (14 Windows-only tests skipped on Linux).
 - Slice 2, Try it step (PR #16, October 13): the wizard gains a Try it step between the checklist and Done, so it now has seven steps. Open sample email sends the new `testpage.request` to the most recently connected extension, which opens its bundled `test-page.html` in a new active tab, brings that window to the front, and answers `testpage.response`; the app cannot open the page itself because it is an extension page. The step then watches the same signals the panel uses: `ConnectorService.CaptureCompleted` and `TriggerFailed` tick "Draft captured" or show the declined capture's localized reason (the panel's error-code table, now shared through `RewritePanelViewModel.ErrorKeyFor`), and the rewrite panel reaching Done ticks "Rewrite shown". Any adapter counts, so a capture from Gmail ticks the rows as well as one from the sample page, and the step never blocks Next. With no browser connected the button is disabled and the step points back to Connect your browser. Rows only move forward: a later declined capture keeps them ticked, an opening failure defers to a capture that arrived while the request was pending, and the panel raises `CaptureLoaded` so a Recapture clears a stale status. The step was verified by unit tests only; it has not yet been driven in the app with a real browser. 758 .NET tests pass (14 Windows-only tests skipped on Linux) and 118 extension tests pass.
@@ -329,11 +352,15 @@ Walkthrough (October 13, 2026): before the remaining packaging work, the user ra
 
 Remaining work after those fixes, in order:
 
-1. Windows installer (Inno Setup or MSIX), with the self-contained host bundled; verified on VM 500.
-2. macOS: the dmg with notarization, and the first real run of the macOS platform package (Keychain store, SharpHook hook, the panel's floating level and Spaces, the Accessibility task, the registrar beyond its path tests), likely on the GitHub macOS runner since no Mac is available.
-3. Launch at login: the setting is saved but registered with no OS. It needs a platform interface with Linux autostart, macOS login item, and Windows registry implementations.
-4. Extension store submissions for Chrome Web Store and Firefox Add-ons.
-5. Phase 6 below: the acceptance scenarios, the privacy policy, and a crash reporter (Privacy and data shows "Coming later" for it today). Carried-forward items that may need code: the KDE shortcut writer has not been exercised in one session, Sway centres the panel, and the physical-key recording is covered by unit tests only.
+1. Action menu redesign (section 2.8, decision 7), so the installers and store builds ship it. Three slices:
+   - Slice A, protocol and app session: the `menu.*` messages in `docs/connector-protocol.md` and both sides' parsers; a capture from the shortcut sends `menu.show` instead of opening the panel; a menu session runs the chosen action through the existing rewrite pipeline, applies through the existing `apply.request` with its hash and format checks, reports each state with `menu.update`, and on Review hands the capture to the panel, which opens idle until an action is picked. The `DefaultRewriteAction` setting and the Rewrite actions section's default picker are removed, since nothing runs without a choice; Recapture in the panel reruns the action last picked. Unit tests with a fake connection.
+   - Slice B, in-page menu: the shadow-root renderer in the content script, placement beside the editor, the key listener, progress, the applied note, and the draft-changed and error card, checked against the bundled test page and Gmail.
+   - Slice C, Ask for a change, the What am I missing? card with follow-ups, the right-click list with custom actions, and Review; the Try it wizard step ticks on a menu shown and a rewrite applied instead of the panel reaching Done. Verified with real presses on Linux and Windows, as in the Phase 4 Result.
+2. Windows installer (Inno Setup or MSIX), with the self-contained host bundled; verified on VM 500.
+3. macOS: the dmg with notarization, and the first real run of the macOS platform package (Keychain store, SharpHook hook, the panel's floating level and Spaces, the Accessibility task, the registrar beyond its path tests), likely on the GitHub macOS runner since no Mac is available.
+4. Launch at login: the setting is saved but registered with no OS. It needs a platform interface with Linux autostart, macOS login item, and Windows registry implementations.
+5. Extension store submissions for Chrome Web Store and Firefox Add-ons.
+6. Phase 6 below: the acceptance scenarios, the privacy policy, and a crash reporter (Privacy and data shows "Coming later" for it today). Carried-forward items that may need code: the KDE shortcut writer has not been exercised in one session, Sway centres the panel, and the physical-key recording is covered by unit tests only.
 
 ### Phase 6: hardening and acceptance (1 to 2 weeks)
 
@@ -367,12 +394,16 @@ Settled on October 8, 2026:
 1. **First mail adapter:** Gmail.
 2. **License:** GPL-3.0, open source, no TypeWhisper attribution. Only files original to the Linux port may be copied (section 2.7); nothing is copied from commercial references.
 3. **Providers in the MVP:** local OpenAI-compatible server and the Codex CLI subscription. API-key providers come later.
-4. **Panel location:** a desktop window owned by Juvin, not injected into the page.
+4. **Panel location:** a desktop window owned by Juvin, not injected into the page. Superseded by decision 7: the rewrite panel stays a desktop window, reached through Review, and the first surface is now an in-page action menu.
 5. **Product name:** Juvin.
 
 Settled on October 10, 2026:
 
 6. **Default shortcut:** Ctrl+Shift+F (Cmd+Shift+F on macOS), for both the extension command and the global hotkey, after a real key press showed Firefox's Downloads binding wins over Ctrl+Shift+Y on Linux (section 2.3).
+
+Settled on October 13, 2026:
+
+7. **Action menu:** the shortcut opens a menu beside the draft with five actions on keys 1 to 5 and nothing runs until the user picks; a picked action applies automatically, undone with Ctrl+Z (Cmd+Z); the desktop app owns the menu and the extension draws it in the page, with an Avalonia renderer added when non-browser drafts arrive (section 2.8).
 
 No decisions remain open.
 
