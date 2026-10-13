@@ -23,6 +23,8 @@ public static class PlatformServices
         services.AddSingleton<ITrayHostProbe, MenuBarTrayHostProbe>();
         services.AddSingleton<IPanelWindowSupport, MacPanelWindowSupport>();
         services.AddSingleton<INativeHostRegistrar>(_ => new MacNativeHostRegistrar(NativeHost.Locate));
+        // The bundle carries the launcher entry.
+        services.AddSingleton<ILauncherIntegration, NoLauncherIntegration>();
         services.AddSingleton<IHotkeyBackend, SharpHookHotkeyBackend>();
         services.AddSingleton<ISetupTask>(sp => new AccessibilityPermissionSetupTask(
             sp.GetRequiredService<Localizer>(),
