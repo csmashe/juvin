@@ -218,7 +218,12 @@ public sealed partial class BrowserConnectorPanelViewModel : ObservableObject, I
         foreach (var client in _connector.Clients.Select(session => session.Client!))
         {
             ConnectedClients.Add(
-                _localizer.Format("BrowserConnector.ConnectedClient", client.Browser.Name, client.Browser.Version, client.Extension.Version)
+                _localizer.Format(
+                    "BrowserConnector.ConnectedClient",
+                    BrowserLabels.Describe(client.Browser.Name, _localizer),
+                    client.Browser.Version,
+                    client.Extension.Version
+                )
             );
         }
 
