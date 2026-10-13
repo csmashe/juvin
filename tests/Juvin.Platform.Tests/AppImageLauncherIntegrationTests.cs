@@ -111,6 +111,20 @@ public sealed class AppImageLauncherIntegrationTests : IDisposable
     }
 
     [LinuxFact]
+    public async Task ChangedIcon_WithTheSameSizeAndTime_IsCopiedAgain()
+    {
+        await RunAsync();
+        var source = Path.Join(SourceIcons, "256x256", "apps", "juvin.png");
+        var time = File.GetLastWriteTimeUtc(source);
+        WriteIcon(Path.Join("256x256", "apps", "juvin.png"), "PNG 256");
+        File.SetLastWriteTimeUtc(source, time);
+
+        await RunAsync();
+
+        Assert.Equal("PNG 256", await File.ReadAllTextAsync(TargetIcon(Path.Join("256x256", "apps", "juvin.png"))));
+    }
+
+    [LinuxFact]
     public async Task MovedAppImage_RewritesExec()
     {
         await RunAsync();

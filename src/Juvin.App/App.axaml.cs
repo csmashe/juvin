@@ -18,6 +18,7 @@ namespace Juvin.App;
 public class App : Application
 {
     private static readonly TimeSpan s_hotkeyStopTimeout = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan s_launcherInstallTimeout = TimeSpan.FromSeconds(2);
     private readonly CancellationTokenSource _socketLifetime = new();
     private bool _exiting;
 
@@ -51,6 +52,8 @@ public class App : Application
         var tray = services.GetRequiredService<TrayIconService>();
         tray.Initialize();
 
+        // GNOME matches a window to its desktop entry when the window first maps, so the entry must exist by then.
+        InstallLauncher(services.GetRequiredService<ILauncherIntegration>());
         var main = services.GetRequiredService<MainWindow>();
         desktop.MainWindow = main;
         // The rewrite panel stays open while hidden, so it must not keep the app alive.
@@ -93,7 +96,6 @@ public class App : Application
         var hotkeys = services.GetRequiredService<HotkeyService>();
         commands.TriggerRequested += hotkeys.HandleTrigger;
         _ = StartHotkeysAsync(hotkeys);
-        _ = InstallLauncherAsync(services.GetRequiredService<ILauncherIntegration>());
 
         desktop.Exit += (_, _) =>
         {
@@ -176,15 +178,12 @@ public class App : Application
         }
     }
 
-    private async Task InstallLauncherAsync(ILauncherIntegration launcher)
+    // Bounded: the entry is cosmetic and must not hold up startup on a slow disk.
+    private static void InstallLauncher(ILauncherIntegration launcher)
     {
-        try
+        if (!launcher.EnsureInstalledAsync(CancellationToken.None).Wait(s_launcherInstallTimeout))
         {
-            await launcher.EnsureInstalledAsync(_socketLifetime.Token);
-        }
-        catch (OperationCanceledException)
-        {
-            Trace.WriteLine("[App] Launcher entry install was cancelled.");
+            Trace.WriteLine("[App] Launcher entry install did not finish in time.");
         }
     }
 

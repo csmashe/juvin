@@ -90,7 +90,13 @@ public sealed class AppImageLauncherIntegration : ILauncherIntegration
             var destination = Path.Join(target, Path.GetRelativePath(source, file));
             var sourceInfo = new FileInfo(file);
             var targetInfo = new FileInfo(destination);
-            if (targetInfo.Exists && targetInfo.Length == sourceInfo.Length && targetInfo.LastWriteTimeUtc == sourceInfo.LastWriteTimeUtc)
+            // Matching size and time can still hide a changed icon, so equal metadata is confirmed by content.
+            if (
+                targetInfo.Exists
+                && targetInfo.Length == sourceInfo.Length
+                && targetInfo.LastWriteTimeUtc == sourceInfo.LastWriteTimeUtc
+                && File.ReadAllBytes(file).AsSpan().SequenceEqual(File.ReadAllBytes(destination))
+            )
             {
                 continue;
             }
