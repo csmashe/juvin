@@ -150,6 +150,20 @@ public sealed class ConnectorSession : IAsyncDisposable
         };
     }
 
+    /// <summary>Asks the extension to open its bundled sample thread page. Returns null on success.</summary>
+    /// <exception cref="TimeoutException">No response within <paramref name="timeout" />.</exception>
+    /// <exception cref="ConnectorException">The connection closed first.</exception>
+    public async Task<ConnectorError?> OpenTestPageAsync(TimeSpan timeout, CancellationToken ct)
+    {
+        var response = await RequestAsync(new TestPageRequestMessage { Id = NextId("t") }, timeout, ct).ConfigureAwait(false);
+        return response switch
+        {
+            TestPageResponseMessage { Ok: true } => null,
+            TestPageResponseMessage { Error: { } error } => error,
+            _ => ErrorOf(response),
+        };
+    }
+
     /// <summary>Returns the round-trip time of a <c>ping</c>.</summary>
     /// <exception cref="TimeoutException">No <c>pong</c> within <paramref name="timeout" />.</exception>
     /// <exception cref="ConnectorException">The connection closed first or the extension answered with an error.</exception>
@@ -228,11 +242,11 @@ public sealed class ConnectorSession : IAsyncDisposable
             case ShortcutPressedMessage:
                 Raise(ShortcutPressed);
                 break;
-            case PongMessage or ContextResponseMessage or ApplyResponseMessage or ErrorMessage:
+            case PongMessage or ContextResponseMessage or ApplyResponseMessage or TestPageResponseMessage or ErrorMessage:
                 Complete(message);
                 break;
             default:
-                // config, context.request, and apply.request only travel from the app to the extension.
+                // config, context.request, apply.request, and testpage.request only travel from the app to the extension.
                 await TrySendAsync(
                         ConnectorProtocol.CreateError(
                             message!.Id,

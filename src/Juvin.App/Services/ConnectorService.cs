@@ -161,6 +161,26 @@ public sealed class ConnectorService
         }
     }
 
+    /// <summary>Asks the most recently connected extension to open its sample page; null on success, <c>no-browser</c> with none connected. Never throws.</summary>
+    public async Task<ConnectorError?> OpenTestPageAsync(TimeSpan timeout, CancellationToken ct)
+    {
+        var clients = Clients;
+        if (clients.Count == 0)
+        {
+            return new ConnectorError(NoBrowserCode, _localizer["Panel.Error.NoBrowser"]);
+        }
+
+        try
+        {
+            return await clients[^1].OpenTestPageAsync(timeout, ct);
+        }
+        catch (Exception ex) when (ex is TimeoutException or ConnectorException)
+        {
+            Trace.WriteLine($"[ConnectorService] Opening the sample page failed ({ex.GetType().Name}).");
+            return ConnectorRewriteTarget.ErrorOf(ex);
+        }
+    }
+
     /// <summary>
     ///     Captures for the desktop hotkey, which has no originating browser: asks every connected
     ///     extension at once and reports the first capture, else an error other than

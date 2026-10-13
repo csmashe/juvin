@@ -28,9 +28,9 @@ Every message is a JSON object with:
 - `type`: one of the types below.
 - `id`: for requests, a string the sender chooses (unique per connection); the matching response echoes it. Notifications have no `id`.
 
-Unknown properties are ignored. A message that is not an object, lacks `type`, has a missing or non-numeric `v`, or has a null in a required field gets `error` with code `bad-message`. A numeric `v` other than `1` gets `unsupported-version`, after which the app closes the connection (the extension does not close on its own). An `error` reply is never answered with another `error`. Requests sent in the wrong direction (for example `config` from the extension) get `unknown-type`. The app ignores an unmatched response and logs only its type and code; an `error` that echoes a pending request's id fails that request.
+Unknown properties are ignored. A message that is not an object, lacks `type`, has a missing or non-numeric `v`, or has a null in a required field gets `error` with code `bad-message`. A numeric `v` other than `1` gets `unsupported-version`, after which the app closes the connection (the extension does not close on its own). An `error` reply is never answered with another `error`. Requests sent in the wrong direction (for example `config` or `testpage.request` from the extension) get `unknown-type`. The app ignores an unmatched response and logs only its type and code; an `error` that echoes a pending request's id fails that request.
 
-Required fields: `id` on every request and response; `editorId`, `expectedHash`, `start`, `end`, and `text` on `apply.request`, with `0 <= start <= end`; `capture` when `ok` is true and `error` when it is false; in a capture, `adapter`, `editor`, `selection`, and `thread` with `completeness` and `messages`. Optional: `editorId` and `requireFocus` on `context.request`, `pageUrl`, `capturedAt`, `subject`, `collapsedCount` (default 0), and `to` and `sent` on a message. A `sent` value that does not parse becomes null; one with no offset is read as UTC.
+Required fields: `id` on every request and response; `editorId`, `expectedHash`, `start`, `end`, and `text` on `apply.request`, with `0 <= start <= end`; on `context.response`, `capture` when `ok` is true and `error` when it is false; on `apply.response` and `testpage.response`, `ok`, plus `error` when it is false; in a capture, `adapter`, `editor`, `selection`, and `thread` with `completeness` and `messages`. Optional: `editorId` and `requireFocus` on `context.request`, `pageUrl`, `capturedAt`, `subject`, `collapsedCount` (default 0), and `to` and `sent` on a message. A `sent` value that does not parse becomes null; one with no offset is read as UTC.
 
 Error payload used everywhere: `"error": {"code": "<kebab-case>", "message": "<English text for logs, never email content>"}`.
 
@@ -138,6 +138,23 @@ Codes: `no-active-tab`, `editor-gone` (a `context.request` with `editorId` whose
 ```
 
 Codes: `draft-changed`, `editor-gone` (unknown editor id, the editor left the page, or the tab that captured it is closed or unreachable), `internal`.
+
+### `testpage.request` (app to extension)
+
+```json
+{"v":1,"type":"testpage.request","id":"t1"}
+```
+
+Sent by the setup wizard's Try it step. The extension opens its bundled sample thread page (`test-page.html`) in a new active tab of its last focused window and brings that window to the front, ignoring a failure to focus it, then answers. The app cannot open the page itself because it is an extension page.
+
+### `testpage.response` (extension to app)
+
+```json
+{"v":1,"type":"testpage.response","id":"t1","ok":true}
+{"v":1,"type":"testpage.response","id":"t1","ok":false,"error":{"code":"internal","message":"The sample page could not be opened."}}
+```
+
+Codes: `internal`.
 
 ### `error` (either direction)
 
