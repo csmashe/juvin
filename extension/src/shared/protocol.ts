@@ -49,7 +49,8 @@ export interface Capture {
   capturedAt: string;
   subject?: string;
   editor: { id: string; hash: string };
-  selection: { text: string; start: number; end: number };
+  /** `markdown` is the selection in the Markdown subset and `formatHash` fingerprints its formatting; both only for a rich editor. */
+  selection: { text: string; start: number; end: number; markdown?: string; formatHash?: string };
   thread: Thread;
 }
 
@@ -103,6 +104,10 @@ export interface ApplyRequestMessage {
   start: number;
   end: number;
   text: string;
+  /** Absent for plain text. */
+  format?: "markdown";
+  /** The capture's `selection.formatHash`; present exactly when `format` is set. */
+  expectedFormatHash?: string;
 }
 
 export interface TestPageRequestMessage {
@@ -299,13 +304,30 @@ export function parseIncoming(raw: unknown): ParseResult {
         },
       };
     case "apply.request":
-      if (id === undefined || !isString(raw.editorId) || !isString(raw.expectedHash) || !isOffsets(raw.start, raw.end) || !isString(raw.text)) {
+      if (
+        id === undefined ||
+        !isString(raw.editorId) ||
+        !isString(raw.expectedHash) ||
+        !isOffsets(raw.start, raw.end) ||
+        !isString(raw.text) ||
+        (raw.format != null && (raw.format !== "markdown" || !isString(raw.expectedFormatHash)))
+      ) {
         return bad("apply.request");
       }
 
       return {
         ok: true,
-        message: { v: 1, type: "apply.request", id, editorId: raw.editorId, expectedHash: raw.expectedHash, start: raw.start as number, end: raw.end as number, text: raw.text },
+        message: {
+          v: 1,
+          type: "apply.request",
+          id,
+          editorId: raw.editorId,
+          expectedHash: raw.expectedHash,
+          start: raw.start as number,
+          end: raw.end as number,
+          text: raw.text,
+          ...(raw.format === "markdown" && isString(raw.expectedFormatHash) ? { format: "markdown" as const, expectedFormatHash: raw.expectedFormatHash } : {}),
+        },
       };
     case "testpage.request":
       if (id === undefined) {

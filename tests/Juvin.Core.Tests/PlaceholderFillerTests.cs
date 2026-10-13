@@ -28,6 +28,13 @@ public sealed class PlaceholderFillerTests
         Assert.Equal("Thanks,\r\n-- Chris\r\n[Your Title]\r\n", PlaceholderFiller.Fill(text, "Chris"));
     }
 
+    [Fact]
+    public void Fill_WorksOnMarkdownAndLeavesAFormattedPlaceholder()
+    {
+        Assert.Equal("**Thanks**,\nChris", PlaceholderFiller.Fill("**Thanks**,\n[Your Name]", "Chris"));
+        Assert.Equal("Thanks,\n**[Your Name]**", PlaceholderFiller.Fill("Thanks,\n**[Your Name]**", "Chris"));
+    }
+
     [Theory]
     [InlineData("See [Attachment] at [2 pm].")]
     [InlineData("Please enter [Your Name] in the form.")]

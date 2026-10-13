@@ -8,6 +8,7 @@ import { applyReplacement, type ExecCommand } from "../src/content/apply";
 import { captureContext } from "../src/content/capture";
 import { EditorRegistry } from "../src/content/editor-registry";
 import { hashText } from "../src/content/hash";
+import { formatSignature } from "../src/content/formatting";
 import { offsetsToRange, readPlainText } from "../src/content/plain-text";
 
 const TEST_PAGE: PageLocation & { href: string } = {
@@ -51,11 +52,18 @@ function select(root: HTMLElement, start: number, end: number): void {
   selection.addRange(offsetsToRange(root, readPlainText(root), start, end));
 }
 
-/** Stands in for the browser's insertText: replaces the current selection in the DOM. */
-const fakeExec: ExecCommand = (doc, _command, value) => {
+/** Stands in for the browser's insertText and insertHTML: replaces the current selection in the DOM. */
+const fakeExec: ExecCommand = (doc, command, value) => {
   const range = doc.getSelection()!.getRangeAt(0);
   range.deleteContents();
-  range.insertNode(doc.createTextNode(value ?? ""));
+  if (command === "insertHTML") {
+    const template = doc.createElement("template");
+    template.innerHTML = value ?? "";
+    range.insertNode(template.content);
+  } else {
+    range.insertNode(doc.createTextNode(value ?? ""));
+  }
+
   return true;
 };
 
@@ -223,6 +231,39 @@ describe("captureContext", () => {
     expect(result.ok && result.capture.thread).toEqual({ completeness: "draft-only", collapsedCount: 0, messages: [] });
   });
 
+  it("adds the selection as Markdown for a rich editor", async () => {
+    document.body.innerHTML = `<div id="ed" contenteditable="true"><div>Hi <b>Ana</b>,</div><ul><li>one</li></ul></div>`;
+    const editor = document.getElementById("ed")!;
+    select(editor, 0, 11);
+    const result = await captureContext(document, OTHER_SITE, new EditorRegistry());
+    expect(result.ok && result.capture.selection).toEqual({ text: "Hi Ana,\none", start: 0, end: 11, markdown: "Hi **Ana**,\n- one", formatHash: await hashText(formatSignature(editor, 0, 11)) });
+  });
+
+  it("takes the Markdown from the same draft as the plain text when the editor changes during the thread wait", async () => {
+    document.body.innerHTML = `<div id="ed" contenteditable="true">hey <b>robin</b></div>`;
+    const editor = document.getElementById("ed")!;
+    select(editor, 0, 9);
+    const formatHash = await hashText(formatSignature(editor, 0, 9));
+    const editing: SiteAdapter = {
+      id: "editing",
+      matches: () => true,
+      findEditor: () => editor,
+      captureThread: async () => {
+        editor.innerHTML = "hey <i>someone else</i>";
+        return { messages: [], completeness: "draft-only", collapsedCount: 0 };
+      },
+    };
+    const result = await captureContext(document, OTHER_SITE, new EditorRegistry(), [editing]);
+    expect(result.ok && result.capture.selection).toEqual({ text: "hey robin", start: 0, end: 9, markdown: "hey **robin**", formatHash });
+  });
+
+  it("sends no Markdown for a plaintext-only editor", async () => {
+    document.body.innerHTML = `<div id="ed" contenteditable="plaintext-only">hey robin</div>`;
+    select(document.getElementById("ed")!, 4, 9);
+    const result = await captureContext(document, OTHER_SITE, new EditorRegistry());
+    expect(result.ok && result.capture.selection).toEqual({ text: "robin", start: 4, end: 9 });
+  });
+
   it("captures a textarea selection", async () => {
     document.body.innerHTML = `<textarea id="ta">hello there</textarea>`;
     const textarea = document.getElementById("ta") as HTMLTextAreaElement;
@@ -234,7 +275,7 @@ describe("captureContext", () => {
 });
 
 describe("applyReplacement", () => {
-  async function captured(): Promise<{ editor: HTMLElement; registry: EditorRegistry; hash: string }> {
+  async function captured(): Promise<{ editor: HTMLElement; registry: EditorRegistry; hash: string; formatHash: string }> {
     const editor = testPage();
     select(editor, 4, 9);
     const registry = new EditorRegistry(() => "e-1");
@@ -243,7 +284,7 @@ describe("applyReplacement", () => {
       throw new Error("capture failed");
     }
 
-    return { editor, registry, hash: result.capture.editor.hash };
+    return { editor, registry, hash: result.capture.editor.hash, formatHash: result.capture.selection.formatHash! };
   }
 
   it("replaces the captured range when the draft is unchanged", async () => {
@@ -405,6 +446,308 @@ describe("applyReplacement", () => {
     const { registry, hash } = await captured();
     const result = await applyReplacement(document, registry, { editorId: "e-1", expectedHash: hash, start: 4, end: 9, text: "Robin" }, () => false);
     expect(!result.ok && result.error.code).toBe("internal");
+  });
+
+  describe("with Markdown", () => {
+    it("inserts HTML built from the Markdown into a rich editor", async () => {
+      const { editor, registry, hash, formatHash } = await captured();
+      const commands: string[] = [];
+      const exec: ExecCommand = (doc, command, value) => (commands.push(command), fakeExec(doc, command, value));
+      const request = { editorId: "e-1", expectedHash: hash, start: 4, end: 9, text: "**Robin**,\n- one\n- [two](https://example.com)", format: "markdown" as const, expectedFormatHash: formatHash };
+      const result = await applyReplacement(document, registry, request, exec);
+      expect(result).toEqual({ ok: true });
+      expect(commands).toEqual(["insertHTML"]);
+      expect(editor.querySelector("b")?.textContent).toBe("Robin");
+      expect(editor.querySelector("a")?.getAttribute("href")).toBe("https://example.com");
+      expect(readPlainText(editor).text).toBe("hey Robin,\none\ntwo\napril works");
+    });
+
+    it("never turns HTML in the Markdown into elements", async () => {
+      const { editor, registry, hash, formatHash } = await captured();
+      const text = `<img src=x onerror="alert(1)"><script>x</script>`;
+      const result = await applyReplacement(document, registry, { editorId: "e-1", expectedHash: hash, start: 4, end: 9, text, format: "markdown", expectedFormatHash: formatHash }, fakeExec);
+      expect(result).toEqual({ ok: true });
+      expect(editor.querySelector("img, script")).toBeNull();
+      expect(readPlainText(editor).text).toBe(`hey ${text}\napril works`);
+    });
+
+    it("inserts the Markdown stripped to plain text into a textarea", async () => {
+      document.body.innerHTML = `<textarea id="ta">hello there</textarea>`;
+      const textarea = document.getElementById("ta") as HTMLTextAreaElement;
+      textarea.focus();
+      textarea.setSelectionRange(6, 11);
+      const registry = new EditorRegistry(() => "e-1");
+      const capture = await captureContext(document, OTHER_SITE, registry);
+      const hash = capture.ok ? capture.capture.editor.hash : "";
+      const commands: { command: string; value?: string }[] = [];
+      const exec: ExecCommand = (_doc, command, value) => {
+        commands.push({ command, value });
+        textarea.setRangeText(value ?? "", textarea.selectionStart, textarea.selectionEnd, "end");
+        return true;
+      };
+      const text = "**you**\n* [one](https://example.com)";
+      const result = await applyReplacement(document, registry, { editorId: "e-1", expectedHash: hash, start: 6, end: 11, text, format: "markdown", expectedFormatHash: "sha256:unused" }, exec);
+      expect(result).toEqual({ ok: true });
+      expect(commands).toEqual([{ command: "insertText", value: "you\n- one" }]);
+      expect(textarea.value).toBe("hello you\n- one");
+    });
+
+    it("rolls back and reports internal when the editor ends up with other text", async () => {
+      const { editor, registry, hash, formatHash } = await captured();
+      const original = editor.innerHTML;
+      const commands: string[] = [];
+      const exec: ExecCommand = (_doc, command) => {
+        commands.push(command);
+        editor.firstElementChild!.textContent = command === "undo" ? "hey robin" : "something else";
+        return true;
+      };
+      const result = await applyReplacement(document, registry, { editorId: "e-1", expectedHash: hash, start: 4, end: 9, text: "**Robin**", format: "markdown", expectedFormatHash: formatHash }, exec);
+      expect(!result.ok && result.error.code).toBe("internal");
+      expect(commands).toEqual(["insertHTML", "undo"]);
+      expect(editor.innerHTML).toBe(original);
+    });
+
+    it("refuses with draft-changed when only the formatting changed since the capture", async () => {
+      document.body.innerHTML = `<div id="ed" contenteditable="true">see <a href="https://old.example.com">the site</a> today</div>`;
+      const editor = document.getElementById("ed")!;
+      select(editor, 0, 18);
+      const registry = new EditorRegistry(() => "e-1");
+      const capture = await captureContext(document, OTHER_SITE, registry);
+      if (!capture.ok) {
+        throw new Error("capture failed");
+      }
+
+      const request = {
+        editorId: "e-1",
+        expectedHash: capture.capture.editor.hash,
+        start: 0,
+        end: 18,
+        text: "see [the site](https://old.example.com) **today**",
+        format: "markdown" as const,
+        expectedFormatHash: capture.capture.selection.formatHash!,
+      };
+      let called = false;
+      const exec: ExecCommand = (doc, command, value) => ((called = true), fakeExec(doc, command, value));
+
+      editor.querySelector("a")!.setAttribute("href", "https://new.example.com");
+      const relinked = await applyReplacement(document, registry, request, exec);
+      expect(!relinked.ok && relinked.error.code).toBe("draft-changed");
+
+      editor.querySelector("a")!.setAttribute("href", "https://old.example.com");
+      const today = editor.lastChild as Text;
+      const bold = document.createElement("b");
+      bold.textContent = "today";
+      today.data = " ";
+      editor.append(bold);
+      const bolded = await applyReplacement(document, registry, request, exec);
+      expect(!bolded.ok && bolded.error.code).toBe("draft-changed");
+      expect(called).toBe(false);
+
+      bold.replaceWith("today");
+      const unchanged = await applyReplacement(document, registry, request, exec);
+      expect(unchanged).toEqual({ ok: true });
+      expect(editor.querySelector("b")?.textContent).toBe("today");
+    });
+
+    it("refuses with draft-changed when overlapping bold and italic were removed since the capture", async () => {
+      document.body.innerHTML = `<div id="ed" contenteditable="true">pay <b>US</b><i><b>D</b>100</i></div>`;
+      const editor = document.getElementById("ed")!;
+      select(editor, 0, 10);
+      const registry = new EditorRegistry(() => "e-1");
+      const capture = await captureContext(document, OTHER_SITE, registry);
+      if (!capture.ok) {
+        throw new Error("capture failed");
+      }
+
+      expect(capture.capture.selection.markdown).toBe("pay USD100");
+      editor.innerHTML = "pay USD100";
+      const request = {
+        editorId: "e-1",
+        expectedHash: capture.capture.editor.hash,
+        start: 0,
+        end: 10,
+        text: "pay USD100",
+        format: "markdown" as const,
+        expectedFormatHash: capture.capture.selection.formatHash!,
+      };
+      const result = await applyReplacement(document, registry, request, fakeExec);
+      expect(!result.ok && result.error.code).toBe("draft-changed");
+    });
+
+    it("reports internal when a formatting-only change leaves the editor untouched", async () => {
+      const { registry, hash, formatHash } = await captured();
+      const commands: string[] = [];
+      const exec: ExecCommand = (_doc, command) => (commands.push(command), true);
+      const request = { editorId: "e-1", expectedHash: hash, start: 4, end: 9, text: "**robin**", format: "markdown" as const, expectedFormatHash: formatHash };
+      const result = await applyReplacement(document, registry, request, exec);
+      expect(!result.ok && result.error.code).toBe("internal");
+      expect(commands).toEqual(["insertHTML"]);
+    });
+
+    it("rolls back and reports internal when the editor inserts the text but drops the formatting", async () => {
+      const { editor, registry, hash, formatHash } = await captured();
+      const original = editor.innerHTML;
+      const commands: string[] = [];
+      const exec: ExecCommand = (doc, command) => {
+        commands.push(command);
+        if (command === "undo") {
+          editor.innerHTML = original;
+          return true;
+        }
+
+        return fakeExec(doc, "insertText", "Robin");
+      };
+      const request = { editorId: "e-1", expectedHash: hash, start: 4, end: 9, text: "**Robin**", format: "markdown" as const, expectedFormatHash: formatHash };
+      const result = await applyReplacement(document, registry, request, exec);
+      expect(!result.ok && result.error.code).toBe("internal");
+      expect(commands).toEqual(["insertHTML", "undo"]);
+      expect(editor.innerHTML).toBe(original);
+    });
+
+    it("applies a formatting-only change the editor carries out", async () => {
+      const { editor, registry, hash, formatHash } = await captured();
+      const request = { editorId: "e-1", expectedHash: hash, start: 4, end: 9, text: "**robin**", format: "markdown" as const, expectedFormatHash: formatHash };
+      const result = await applyReplacement(document, registry, request, fakeExec);
+      expect(result).toEqual({ ok: true });
+      expect(editor.querySelector("b")?.textContent).toBe("robin");
+    });
+
+    async function richCapture(html: string, start: number, end: number): Promise<{ editor: HTMLElement; registry: EditorRegistry; request: { editorId: string; expectedHash: string; start: number; end: number; format: "markdown"; expectedFormatHash: string } }> {
+      document.body.innerHTML = `<div id="ed" contenteditable="true">${html}</div>`;
+      const editor = document.getElementById("ed")!;
+      select(editor, start, end);
+      const registry = new EditorRegistry(() => "e-1");
+      const capture = await captureContext(document, OTHER_SITE, registry);
+      if (!capture.ok) {
+        throw new Error("capture failed");
+      }
+
+      const request = { editorId: "e-1", expectedHash: capture.capture.editor.hash, start, end, format: "markdown" as const, expectedFormatHash: capture.capture.selection.formatHash! };
+      return { editor, registry, request };
+    }
+
+    it("replaces text inside a list item with the same text", async () => {
+      const { editor, registry, request } = await richCapture("<ul><li>first item</li></ul>", 2, 5);
+      const result = await applyReplacement(document, registry, { ...request, text: "rst" }, fakeExec);
+      expect(result).toEqual({ ok: true });
+      expect(readPlainText(editor).text).toBe("first item");
+    });
+
+    it("inserts a bold word inside a list item and keeps the item", async () => {
+      const { editor, registry, request } = await richCapture("<ul><li>first item</li></ul>", 6, 10);
+      const result = await applyReplacement(document, registry, { ...request, text: "**entry**" }, fakeExec);
+      expect(result).toEqual({ ok: true });
+      expect(editor.querySelector("li b")?.textContent).toBe("entry");
+      expect(readPlainText(editor).text).toBe("first entry");
+    });
+
+    it("accepts plain text that the editor keeps bold inside an existing bold run", async () => {
+      const { editor, registry, request } = await richCapture("hey <b>robin hood</b>", 5, 9);
+      const result = await applyReplacement(document, registry, { ...request, text: "OBIN" }, fakeExec);
+      expect(result).toEqual({ ok: true });
+      expect(editor.querySelector("b")?.textContent).toBe("rOBIN hood");
+    });
+
+    it("refuses with draft-changed when a numbered list was renumbered since the capture", async () => {
+      const { editor, registry, request } = await richCapture("<ol><li>one</li><li>two</li></ol>", 0, 7);
+      editor.querySelector("ol")!.setAttribute("start", "5");
+      const result = await applyReplacement(document, registry, { ...request, text: "1. one\n2. two" }, fakeExec);
+      expect(!result.ok && result.error.code).toBe("draft-changed");
+    });
+
+    it("refuses with draft-changed when two bullets were merged since the capture", async () => {
+      const { editor, registry, request } = await richCapture("<ul><li>one</li><li>two</li></ul>", 0, 7);
+      editor.innerHTML = "<ul><li>one<br>two</li></ul>";
+      const result = await applyReplacement(document, registry, { ...request, text: "- one\n- two" }, fakeExec);
+      expect(!result.ok && result.error.code).toBe("draft-changed");
+    });
+
+    it("refuses with draft-changed when a numbered list was reversed since the capture", async () => {
+      const { editor, registry, request } = await richCapture("<ol><li>one</li><li>two</li></ol>", 0, 7);
+      editor.querySelector("ol")!.setAttribute("reversed", "");
+      const result = await applyReplacement(document, registry, { ...request, text: "1. one\n2. two" }, fakeExec);
+      expect(!result.ok && result.error.code).toBe("draft-changed");
+    });
+
+    it("rolls back and reports internal when the editor merges the inserted items", async () => {
+      const { editor, registry, request } = await richCapture("<div>one</div><div>two</div>", 0, 7);
+      const original = editor.innerHTML;
+      const commands: string[] = [];
+      const exec: ExecCommand = (_doc, command) => {
+        commands.push(command);
+        editor.innerHTML = command === "undo" ? original : "<ul><li>one<br>two</li></ul>";
+        return true;
+      };
+      const result = await applyReplacement(document, registry, { ...request, text: "- one\n- two" }, exec);
+      expect(!result.ok && result.error.code).toBe("internal");
+      expect(commands).toEqual(["insertHTML", "undo"]);
+      expect(editor.innerHTML).toBe(original);
+    });
+
+    it("applies a list the editor inserts item by item", async () => {
+      const { editor, registry, request } = await richCapture("<div>one</div><div>two</div>", 0, 7);
+      const result = await applyReplacement(document, registry, { ...request, text: "- one\n- two" }, fakeExec);
+      expect(result).toEqual({ ok: true });
+      expect(editor.querySelectorAll("li")).toHaveLength(2);
+    });
+
+    it("applies a rewrite of a later numbered item that the editor keeps in the list", async () => {
+      const { editor, registry, request } = await richCapture("<ol><li>one</li><li>two</li><li>three</li></ol>", 4, 7);
+      const exec: ExecCommand = (_doc, command) => {
+        if (command === "insertHTML") {
+          editor.querySelectorAll("li")[1]!.textContent = "TWO";
+        }
+
+        return true;
+      };
+      const result = await applyReplacement(document, registry, { ...request, text: "2. TWO" }, exec);
+      expect(result).toEqual({ ok: true });
+    });
+
+    it("applies a rewrite that turns two items into three and renumbers the ones after", async () => {
+      const items = (texts: string[]): string => `<ol>${texts.map((t) => `<li>${t}</li>`).join("")}</ol>`;
+      const { editor, registry, request } = await richCapture(items(["one", "two", "three", "four", "five"]), 4, 13);
+      const commands: string[] = [];
+      const exec: ExecCommand = (_doc, command) => {
+        commands.push(command);
+        editor.innerHTML = items(["one", "a", "b", "c", "four", "five"]);
+        return true;
+      };
+      const result = await applyReplacement(document, registry, { ...request, text: "2. a\n3. b\n4. c" }, exec);
+      expect(result).toEqual({ ok: true });
+      expect(commands).toEqual(["insertHTML"]);
+    });
+
+    it("inserts plain text into a plaintext-only editor", async () => {
+      document.body.innerHTML = `<div id="ed" contenteditable="plaintext-only">hey robin</div>`;
+      const editor = document.getElementById("ed")!;
+      select(editor, 4, 9);
+      const registry = new EditorRegistry(() => "e-1");
+      const capture = await captureContext(document, OTHER_SITE, registry);
+      const hash = capture.ok ? capture.capture.editor.hash : "";
+      const commands: string[] = [];
+      const exec: ExecCommand = (doc, command, value) => (commands.push(command), fakeExec(doc, command, value));
+      const request = { editorId: "e-1", expectedHash: hash, start: 4, end: 9, text: "**Robin**", format: "markdown" as const, expectedFormatHash: "sha256:unused" };
+      const result = await applyReplacement(document, registry, request, exec);
+      expect(result).toEqual({ ok: true });
+      expect(commands).toEqual(["insertText"]);
+      expect(editor.querySelector("b")).toBeNull();
+      expect(readPlainText(editor).text).toBe("hey Robin");
+    });
+
+    it("checks the hash and the draft before editing", async () => {
+      const { editor, registry, hash, formatHash } = await captured();
+      let called = false;
+      const exec: ExecCommand = () => (called = true);
+      const request = { editorId: "e-1", expectedHash: hash, start: 4, end: 9, text: "**Robin**", format: "markdown" as const, expectedFormatHash: formatHash };
+      const pending = applyReplacement(document, registry, request, exec);
+      editor.firstElementChild!.append(" and team");
+      const edited = await pending;
+      expect(!edited.ok && edited.error.code).toBe("draft-changed");
+      const result = await applyReplacement(document, registry, request, exec);
+      expect(!result.ok && result.error.code).toBe("draft-changed");
+      expect(called).toBe(false);
+    });
   });
 
   it("reports internal when the command claims success but nothing changed", async () => {

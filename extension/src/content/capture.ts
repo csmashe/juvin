@@ -2,8 +2,10 @@ import type { ContextErrorCode, ErrorPayload } from "../shared/protocol";
 import type { CaptureResult } from "../shared/runtime-messages";
 import type { PageLocation, SiteAdapter } from "./adapters/adapter";
 import { selectAdapter } from "./adapters/registry";
-import { isTextArea, type Editor, type EditorRegistry, type Offsets } from "./editor-registry";
+import { isPlainEditor, isTextArea, type Editor, type EditorRegistry, type Offsets } from "./editor-registry";
 import { hashText } from "./hash";
+import { formatSignature } from "./formatting";
+import { selectionMarkdown } from "./markdown";
 import { pointToOffset, readPlainText } from "./plain-text";
 
 /** The editor's full plain text: the value of a textarea, the walked text of a contenteditable. */
@@ -68,8 +70,13 @@ export async function captureContext(
     return failure("no-selection", "Nothing is selected in the editor.");
   }
 
+  // Taken together before any await, so an edit during the thread wait cannot split them.
   const text = editorText(editor);
+  const rich = !isPlainEditor(editor);
+  const markdown = rich ? selectionMarkdown(editor, offsets.start, offsets.end) : undefined;
+  const signature = rich ? formatSignature(editor, offsets.start, offsets.end) : undefined;
   const hash = await hashText(text);
+  const formatHash = signature === undefined ? undefined : await hashText(signature);
   const thread = await adapter.captureThread(doc, editor);
   if (!editor.isConnected) {
     if (editorId !== undefined) {
@@ -89,7 +96,12 @@ export async function captureContext(
       capturedAt: new Date().toISOString(),
       ...(thread.subject ? { subject: thread.subject } : {}),
       editor: { id, hash },
-      selection: { text: text.slice(offsets.start, offsets.end), start: offsets.start, end: offsets.end },
+      selection: {
+        text: text.slice(offsets.start, offsets.end),
+        start: offsets.start,
+        end: offsets.end,
+        ...(markdown === undefined || formatHash === undefined ? {} : { markdown, formatHash }),
+      },
       thread: { completeness: thread.completeness, collapsedCount: thread.collapsedCount, messages: thread.messages },
     },
   };
