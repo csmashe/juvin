@@ -117,6 +117,32 @@
                             </ItemsControl>
                         </Border>
 
+                        <StackPanel Spacing="14" IsVisible="{Binding !IsCodexMode}">
+                            <TextBlock Classes="section-label" Text="{loc:Str Wizard.Mode.ServerLabel}" />
+                            <Border Classes="panel">
+                                <Border Classes="section-row">
+                                    <StackPanel Spacing="10">
+                                        <StackPanel>
+                                            <TextBlock Classes="row-title" Text="{loc:Str Wizard.Mode.ServerAddress}" />
+                                            <TextBlock Classes="row-hint" Text="{loc:Str Wizard.Mode.ServerAddressHint}" />
+                                        </StackPanel>
+                                        <TextBox x:Name="ServerUrlBox"
+                                                 Text="{Binding ServerUrl, UpdateSourceTrigger=LostFocus}">
+                                            <TextBox.KeyBindings>
+                                                <KeyBinding Gesture="Enter"
+                                                            Command="{Binding CommitServerUrlCommand}"
+                                                            CommandParameter="{Binding #ServerUrlBox.Text}" />
+                                            </TextBox.KeyBindings>
+                                        </TextBox>
+                                        <TextBlock Classes="row-hint"
+                                                   Margin="0"
+                                                   Text="{Binding ServerUrlError}"
+                                                   IsVisible="{Binding HasServerUrlError}" />
+                                    </StackPanel>
+                                </Border>
+                            </Border>
+                        </StackPanel>
+
                         <Border Classes="panel" IsVisible="{Binding ShowModelPanel}">
                             <StackPanel>
                                 <Border Classes="section-row" IsVisible="{Binding HasRecommendation}">
