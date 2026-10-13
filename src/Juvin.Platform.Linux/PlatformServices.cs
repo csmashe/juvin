@@ -3,6 +3,7 @@ using Juvin.Core.Providers;
 using Juvin.Platform.Hotkeys;
 using Juvin.Platform.Linux.Hotkeys.DesktopShortcut;
 using Juvin.Platform.Linux.Hotkeys.Evdev;
+using Juvin.Platform.Linux.Launcher;
 using Juvin.Platform.Linux.NativeMessaging;
 using Juvin.Platform.Linux.Panel;
 using Juvin.Platform.Linux.Secrets;
@@ -25,6 +26,11 @@ public static class PlatformServices
         services.AddSingleton<ITrayHostProbe, StatusNotifierTrayHostProbe>();
         services.AddSingleton<IPanelWindowSupport>(sp => new HyprlandPanelWindowSupport(new X11PanelWindowSupport(), sp.GetRequiredService<IProcessRunner>()));
         services.AddSingleton<INativeHostRegistrar>(_ => new LinuxNativeHostRegistrar(NativeHost.Locate));
+        services.AddSingleton<ILauncherIntegration>(_ => new AppImageLauncherIntegration(
+            Environment.GetEnvironmentVariable,
+            Environment.ProcessPath,
+            DesktopSession.FromEnvironment().DataHome
+        ));
 
         // Preference order: evdev on any session with keyboard access, the hook on X11, then the desktop's own shortcut.
         services.AddSingleton<IHotkeyBackend, EvdevHotkeyBackend>();
