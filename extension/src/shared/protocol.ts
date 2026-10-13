@@ -25,6 +25,10 @@ export type ContextErrorCode =
 
 export type ApplyErrorCode = "draft-changed" | "editor-gone" | "internal";
 
+export type MenuErrorCode = "editor-gone" | "page-not-ready" | "unsupported" | "internal";
+
+export type MenuState = "running" | "applied" | "answer" | "draft-changed" | "error";
+
 export interface ErrorPayload<TCode extends string = string> {
   code: TCode;
   message: string;
@@ -116,6 +120,35 @@ export interface TestPageRequestMessage {
   id: string;
 }
 
+export interface MenuShowMessage {
+  v: 1;
+  type: "menu.show";
+  id: string;
+  menuId: string;
+  editorId: string;
+  /** The five bubbles in key order, 1 to 5. */
+  slots: Action[];
+  /** The right-click list. */
+  more: Action[];
+  /** The status line, already localized, in display order. */
+  status: string[];
+}
+
+/** `text` is shown to the user and never logged: an answer, an unapplied result, or a localized error. */
+export type MenuUpdateMessage =
+  | { v: 1; type: "menu.update"; menuId: string; state: "running"; action: string }
+  | { v: 1; type: "menu.update"; menuId: string; state: "applied" }
+  | { v: 1; type: "menu.update"; menuId: string; state: "answer" | "draft-changed"; text: string }
+  /** `result` is a finished rewrite that could not be applied, offered for Copy. */
+  | { v: 1; type: "menu.update"; menuId: string; state: "error"; text: string; canRetry: boolean; result?: string };
+
+/** Sent both ways: the app superseded the menu, or the user dismissed it. */
+export interface MenuCloseMessage {
+  v: 1;
+  type: "menu.close";
+  menuId: string;
+}
+
 export interface ErrorMessage {
   v: 1;
   type: "error";
@@ -130,6 +163,9 @@ export type IncomingMessage =
   | ContextRequestMessage
   | ApplyRequestMessage
   | TestPageRequestMessage
+  | MenuShowMessage
+  | MenuUpdateMessage
+  | MenuCloseMessage
   | ErrorMessage;
 
 export interface HelloMessage {
@@ -156,6 +192,19 @@ export type TestPageResponseMessage =
   | { v: 1; type: "testpage.response"; id: string; ok: true }
   | { v: 1; type: "testpage.response"; id: string; ok: false; error: ErrorPayload<"internal"> };
 
+export type MenuResponseMessage =
+  | { v: 1; type: "menu.response"; id: string; ok: true }
+  | { v: 1; type: "menu.response"; id: string; ok: false; error: ErrorPayload<MenuErrorCode> };
+
+/** `action` is an id from the menu, `custom` with the user's instruction, `review`, or `recapture`. */
+export interface MenuChooseMessage {
+  v: 1;
+  type: "menu.choose";
+  menuId: string;
+  action: string;
+  instruction?: string;
+}
+
 export type OutgoingMessage =
   | HelloMessage
   | ShortcutPressedMessage
@@ -164,6 +213,9 @@ export type OutgoingMessage =
   | ContextResponseMessage
   | ApplyResponseMessage
   | TestPageResponseMessage
+  | MenuResponseMessage
+  | MenuChooseMessage
+  | MenuCloseMessage
   | ErrorMessage;
 
 export function hello(
@@ -209,6 +261,23 @@ export function testPageError(id: string, error: ErrorPayload<"internal">): Test
   return { v: 1, type: "testpage.response", id, ok: false, error };
 }
 
+export function menuOk(id: string): MenuResponseMessage {
+  return { v: 1, type: "menu.response", id, ok: true };
+}
+
+export function menuError(id: string, error: ErrorPayload<MenuErrorCode>): MenuResponseMessage {
+  return { v: 1, type: "menu.response", id, ok: false, error };
+}
+
+/** `instruction` goes only with `custom`, which requires it. */
+export function menuChoose(menuId: string, action: string, instruction?: string): MenuChooseMessage {
+  return instruction === undefined ? { v: 1, type: "menu.choose", menuId, action } : { v: 1, type: "menu.choose", menuId, action, instruction };
+}
+
+export function menuClose(menuId: string): MenuCloseMessage {
+  return { v: 1, type: "menu.close", menuId };
+}
+
 export function errorMessage(id: string | undefined, code: string, message: string): ErrorMessage {
   return id === undefined ? { v: 1, type: "error", error: { code, message } } : { v: 1, type: "error", id, error: { code, message } };
 }
@@ -233,6 +302,37 @@ function isHealth(value: unknown): value is Health {
     (value.mode === "local" || value.mode === "codex") &&
     (value.modelReachable === true || value.modelReachable === false || value.modelReachable === null)
   );
+}
+
+function isMenuUpdate(raw: Record<string, unknown>): boolean {
+  switch (raw.state) {
+    case "running":
+      return isString(raw.action);
+    case "applied":
+      return true;
+    case "answer":
+    case "draft-changed":
+      return isString(raw.text);
+    case "error":
+      return isString(raw.text) && typeof raw.canRetry === "boolean";
+    default:
+      return false;
+  }
+}
+
+function toMenuUpdate(menuId: string, raw: Record<string, unknown>): MenuUpdateMessage {
+  const base = { v: 1, type: "menu.update", menuId } as const;
+  switch (raw.state) {
+    case "running":
+      return { ...base, state: "running", action: raw.action as string };
+    case "applied":
+      return { ...base, state: "applied" };
+    case "answer":
+    case "draft-changed":
+      return { ...base, state: raw.state, text: raw.text as string };
+    default:
+      return { ...base, state: "error", text: raw.text as string, canRetry: raw.canRetry as boolean, ...(isString(raw.result) ? { result: raw.result } : {}) };
+  }
 }
 
 function isOffsets(start: unknown, end: unknown): boolean {
@@ -335,6 +435,47 @@ export function parseIncoming(raw: unknown): ParseResult {
       }
 
       return { ok: true, message: { v: 1, type: "testpage.request", id } };
+    case "menu.show":
+      if (
+        id === undefined ||
+        !isString(raw.menuId) ||
+        !isString(raw.editorId) ||
+        !Array.isArray(raw.slots) ||
+        raw.slots.length !== 5 ||
+        !raw.slots.every(isAction) ||
+        !Array.isArray(raw.more) ||
+        !raw.more.every(isAction) ||
+        !Array.isArray(raw.status) ||
+        !raw.status.every(isString)
+      ) {
+        return bad("menu.show");
+      }
+
+      return {
+        ok: true,
+        message: {
+          v: 1,
+          type: "menu.show",
+          id,
+          menuId: raw.menuId,
+          editorId: raw.editorId,
+          slots: raw.slots.map((a) => ({ id: a.id, title: a.title })),
+          more: raw.more.map((a) => ({ id: a.id, title: a.title })),
+          status: [...raw.status],
+        },
+      };
+    case "menu.update":
+      if (!isString(raw.menuId) || !isMenuUpdate(raw)) {
+        return bad("menu.update");
+      }
+
+      return { ok: true, message: toMenuUpdate(raw.menuId, raw) };
+    case "menu.close":
+      if (!isString(raw.menuId)) {
+        return bad("menu.close");
+      }
+
+      return { ok: true, message: menuClose(raw.menuId) };
     case "error":
       if (!isErrorPayload(raw.error)) {
         return bad("error");

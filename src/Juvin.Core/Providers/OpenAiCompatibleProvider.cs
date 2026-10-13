@@ -143,6 +143,19 @@ public sealed partial class OpenAiCompatibleProvider : IModelProvider
     }
 
     // Null is what a hand-edited "localServerUrl": null in settings.json deserializes to.
+    /// <summary>True for a loopback address, false for any other host, null when the URL is not valid. Sends nothing.</summary>
+    public static bool? IsLoopbackServer(string? url)
+    {
+        try
+        {
+            return NormaliseBaseUrl(url).Root.IsLoopback;
+        }
+        catch (ProviderException)
+        {
+            return null;
+        }
+    }
+
     internal static (Uri Root, Uri OpenAiBase) NormaliseBaseUrl(string? url)
     {
         if (

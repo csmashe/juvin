@@ -17,7 +17,7 @@ public sealed record ContextResult(CapturedContext? Capture, ConnectorError? Err
 
 /// <summary>
 ///     The app side of one extension connection: answers <c>hello</c> and <c>ping</c>, raises
-///     <see cref="ShortcutPressed" />, and sends requests whose responses it matches by id.
+///     <see cref="ShortcutPressed" /> and the menu events, and sends requests whose responses it matches by id.
 /// </summary>
 /// <remarks>
 ///     Events are raised on the receive loop's thread, which is a thread-pool thread. Handlers
@@ -54,6 +54,12 @@ public sealed class ConnectorSession : IAsyncDisposable
     public event Action<ConnectorSession>? HelloReceived;
 
     public event Action<ConnectorSession>? ShortcutPressed;
+
+    /// <summary>Raised for every <c>menu.choose</c>; the menu's owner checks the menu id.</summary>
+    public event Action<ConnectorSession, MenuChooseMessage>? MenuChosen;
+
+    /// <summary>Raised when the extension reports a menu dismissed or its editor gone.</summary>
+    public event Action<ConnectorSession, MenuCloseMessage>? MenuClosed;
 
     /// <summary>Runs the receive loop until the peer disconnects, the protocol requires closing, or <paramref name="ct" /> fires.</summary>
     public async Task RunAsync(CancellationToken ct)
@@ -171,6 +177,31 @@ public sealed class ConnectorSession : IAsyncDisposable
         };
     }
 
+    /// <summary>
+    ///     Asks the extension to draw the action menu beside the capture's editor. Returns null on success;
+    ///     the session assigns the request id, so any <see cref="ConnectorMessage.Id" /> on <paramref name="menu" /> is replaced.
+    /// </summary>
+    /// <exception cref="TimeoutException">No response within <paramref name="timeout" />.</exception>
+    /// <exception cref="ConnectorException">The connection closed first.</exception>
+    public async Task<ConnectorError?> ShowMenuAsync(MenuShowMessage menu, TimeSpan timeout, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(menu);
+
+        var response = await RequestAsync(menu with { Id = NextId("m") }, timeout, ct).ConfigureAwait(false);
+        return response switch
+        {
+            MenuResponseMessage { Ok: true } => null,
+            MenuResponseMessage { Error: { } error } => error,
+            _ => ErrorOf(response),
+        };
+    }
+
+    /// <exception cref="ConnectorException">The connection is closed.</exception>
+    public Task SendMenuUpdateAsync(MenuUpdateMessage update, CancellationToken ct) => SendAsync(update, ct);
+
+    /// <exception cref="ConnectorException">The connection is closed.</exception>
+    public Task SendMenuCloseAsync(MenuCloseMessage close, CancellationToken ct) => SendAsync(close, ct);
+
     /// <summary>Returns the round-trip time of a <c>ping</c>.</summary>
     /// <exception cref="TimeoutException">No <c>pong</c> within <paramref name="timeout" />.</exception>
     /// <exception cref="ConnectorException">The connection closed first or the extension answered with an error.</exception>
@@ -249,11 +280,22 @@ public sealed class ConnectorSession : IAsyncDisposable
             case ShortcutPressedMessage:
                 Raise(ShortcutPressed);
                 break;
-            case PongMessage or ContextResponseMessage or ApplyResponseMessage or TestPageResponseMessage or ErrorMessage:
+            case MenuChooseMessage choose:
+                Raise(MenuChosen, choose);
+                break;
+            case MenuCloseMessage close:
+                Raise(MenuClosed, close);
+                break;
+            case PongMessage
+                or ContextResponseMessage
+                or ApplyResponseMessage
+                or TestPageResponseMessage
+                or MenuResponseMessage
+                or ErrorMessage:
                 Complete(message);
                 break;
             default:
-                // config, context.request, apply.request, and testpage.request only travel from the app to the extension.
+                // config, context.request, apply.request, testpage.request, menu.show, and menu.update only travel from the app to the extension.
                 await TrySendAsync(
                         ConnectorProtocol.CreateError(
                             message!.Id,
@@ -352,6 +394,18 @@ public sealed class ConnectorSession : IAsyncDisposable
         try
         {
             handler?.Invoke(this);
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[ConnectorSession] An event handler threw {ex.GetType().Name}.");
+        }
+    }
+
+    private void Raise<T>(Action<ConnectorSession, T>? handler, T message)
+    {
+        try
+        {
+            handler?.Invoke(this, message);
         }
         catch (Exception ex)
         {

@@ -38,9 +38,6 @@ public sealed record AppSettings
     /// <summary>The id of the hotkey backend the user picked; null chooses the first available one.</summary>
     public string? HotkeyBackend { get; init; }
 
-    /// <summary>The id of the action run as soon as a capture arrives.</summary>
-    public string DefaultRewriteAction { get; init; } = "clearer";
-
     /// <summary>Edited instructions by built-in action id; an action with no entry uses its default.</summary>
     public IReadOnlyDictionary<string, string> RewriteInstructionOverrides
     {

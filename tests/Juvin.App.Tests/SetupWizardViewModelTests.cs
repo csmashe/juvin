@@ -205,7 +205,7 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
         await WaitUntilAsync(() => vm.IsCaptured);
 
         Assert.False(vm.IsRewriteShown);
-        await _panel.LoadAsync(new FakeRewriteTarget(), Capture());
+        await LoadAndRunInPanelAsync();
 
         Assert.True(vm.IsRewriteShown);
         Assert.Equal(TryItPhase.RewriteShown, vm.TryItPhase);
@@ -246,7 +246,7 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
         await WaitUntilAsync(() => vm.TryItPhase == TryItPhase.CaptureFailed);
 
         // The panel's Recapture talks to the session directly, so only the panel's state reports it.
-        await _panel.LoadAsync(new FakeRewriteTarget(), Capture());
+        await LoadAndRunInPanelAsync();
 
         Assert.True(vm.IsCaptured);
         Assert.True(vm.IsRewriteShown);
@@ -259,7 +259,7 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
         var vm = Create();
         await _connector.StartAsync(CancellationToken.None);
         await using var stream = await ConnectAndSayHelloAsync();
-        await _panel.LoadAsync(new FakeRewriteTarget(), Capture());
+        await LoadAndRunInPanelAsync();
         Assert.True(vm.IsRewriteShown);
 
         await WriteAsync(stream, """{"v":1,"type":"shortcut.pressed"}""");
@@ -282,7 +282,7 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
         await _connector.StartAsync(CancellationToken.None);
         await using var stream = await ConnectAndSayHelloAsync();
         await WaitUntilAsync(() => vm.IsBrowserConnected);
-        await _panel.LoadAsync(new FakeRewriteTarget(), Capture());
+        await LoadAndRunInPanelAsync();
 
         var open = vm.OpenSampleCommand.ExecuteAsync(null);
         var request = await ReadAsync(stream);
@@ -303,7 +303,7 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
         vm.Dispose();
 
         await _connector.TriggerCaptureAsync();
-        await _panel.LoadAsync(new FakeRewriteTarget(), Capture());
+        await LoadAndRunInPanelAsync();
 
         Assert.Equal(TryItPhase.NotStarted, vm.TryItPhase);
         Assert.Null(vm.TryItStatus);
@@ -581,6 +581,13 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
         // Shown in the OS's own form: Cmd on macOS, Ctrl elsewhere.
         Assert.True(KeyChord.TryParse("Ctrl+Alt+J", out var chord));
         Assert.Contains(chord.ToDisplayString(OperatingSystem.IsMacOS()), vm.DoneBody);
+    }
+
+    /// <summary>The panel opens idle, so the rewrite shows once the user picks an action there.</summary>
+    private async Task LoadAndRunInPanelAsync()
+    {
+        await _panel.LoadAsync(new FakeRewriteTarget(), Capture());
+        await _panel.SelectActionCommand.ExecuteAsync(_panel.Actions[0]);
     }
 
     private SetupWizardViewModel Create(params FakeSetupTask[] tasks)

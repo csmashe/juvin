@@ -11,8 +11,8 @@ using Juvin.Core.Rewrite;
 namespace Juvin.App.ViewModels.Sections;
 
 /// <summary>
-///     Edits the built-in instructions, the user's own actions, and the default action. Text that
-///     fails validation, or that could not be saved, stays in its box so the user can fix or retry it.
+///     Edits the built-in instructions and the user's own actions. Text that fails validation, or
+///     that could not be saved, stays in its box so the user can fix or retry it.
 /// </summary>
 public sealed partial class RewriteActionsSectionViewModel : ObservableObject
 {
@@ -24,9 +24,6 @@ public sealed partial class RewriteActionsSectionViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSaveError))]
     private string? _saveError;
-
-    [ObservableProperty]
-    private DefaultActionOption? _selectedDefault;
 
     public RewriteActionsSectionViewModel(ISettingsService settings, Localizer localizer)
     {
@@ -50,17 +47,8 @@ public sealed partial class RewriteActionsSectionViewModel : ObservableObject
 
     public IReadOnlyList<BuiltInActionRow> BuiltInActions { get; }
     public ObservableCollection<CustomActionRow> CustomActions { get; } = [];
-    public ObservableCollection<DefaultActionOption> DefaultOptions { get; } = [];
     public bool HasCustomActions => CustomActions.Count > 0;
     public bool HasSaveError => SaveError is not null;
-
-    partial void OnSelectedDefaultChanged(DefaultActionOption? value)
-    {
-        if (!_applyingSettings && value is not null)
-        {
-            SaveDefault(value.Id);
-        }
-    }
 
     [RelayCommand]
     private void AddCustomAction() =>
@@ -80,15 +68,15 @@ public sealed partial class RewriteActionsSectionViewModel : ObservableObject
     private void RemoveCustomAction(CustomActionRow row)
     {
         CustomActions.Remove(row);
-        SaveRows(row.Id);
+        SaveRows();
     }
 
     /// <summary>
     ///     Saves what the rows hold. An invalid built-in instruction keeps its saved override; an
     ///     unfinished user action keeps its last saved version, or stays out of the settings when it
-    ///     was never saved. Removing the default action makes Clearer the default.
+    ///     was never saved.
     /// </summary>
-    private void SaveRows(string? removedId = null)
+    private void SaveRows()
     {
         try
         {
@@ -118,10 +106,7 @@ public sealed partial class RewriteActionsSectionViewModel : ObservableObject
                     }
                 }
 
-                var next = s with { RewriteInstructionOverrides = overrides, CustomRewriteActions = actions };
-                return string.Equals(s.DefaultRewriteAction, removedId, StringComparison.OrdinalIgnoreCase)
-                    ? next with { DefaultRewriteAction = RewriteAction.Clearer.Id }
-                    : next;
+                return s with { RewriteInstructionOverrides = overrides, CustomRewriteActions = actions };
             });
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -132,42 +117,24 @@ public sealed partial class RewriteActionsSectionViewModel : ObservableObject
         }
     }
 
-    private void SaveDefault(string id)
-    {
-        try
-        {
-            _settings.Update(s => s with { DefaultRewriteAction = id });
-            if (!_rowsUnsaved)
-            {
-                SaveError = null;
-            }
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            Trace.WriteLine($"[RewriteActionsSection] Could not save settings: {ex.GetType().Name}");
-            SaveError = _localizer.Format("RewriteActions.SaveFailed", ex.Message);
-            ApplyDefaultOptions(RewriteActionCatalog.Resolve(_settings.Current), _settings.Current.DefaultRewriteAction);
-        }
-    }
-
     private void ApplySettings(AppSettings settings)
     {
         _applyingSettings = true;
         try
         {
-            var actions = RewriteActionCatalog.Resolve(settings);
             // Unsaved drafts stay in their boxes until Retry saves them.
-            if (!_rowsUnsaved)
+            if (_rowsUnsaved)
             {
-                foreach (var row in BuiltInActions.Where(row => !row.IsInvalid))
-                {
-                    row.Instruction = actions.First(action => action.Id == row.Id).Instruction;
-                }
-
-                ApplyCustomActions([.. actions.Where(action => action.Title is not null)]);
+                return;
             }
 
-            ApplyDefaultOptions(actions, settings.DefaultRewriteAction);
+            var actions = RewriteActionCatalog.Resolve(settings);
+            foreach (var row in BuiltInActions.Where(row => !row.IsInvalid))
+            {
+                row.Instruction = actions.First(action => action.Id == row.Id).Instruction;
+            }
+
+            ApplyCustomActions([.. actions.Where(action => action.Title is not null)]);
         }
         finally
         {
@@ -215,30 +182,7 @@ public sealed partial class RewriteActionsSectionViewModel : ObservableObject
             CustomActions.Add(row);
         }
     }
-
-    /// <summary>An unknown default runs Clearer, so the picker shows Clearer for it.</summary>
-    private void ApplyDefaultOptions(IReadOnlyList<RewriteAction> actions, string defaultId)
-    {
-        var options = actions
-            .Where(action => !action.IsCustom)
-            .Select(action => new DefaultActionOption(action.Id, action.DisplayName(_localizer)))
-            .ToList();
-        if (!options.SequenceEqual(DefaultOptions))
-        {
-            DefaultOptions.Clear();
-            foreach (var option in options)
-            {
-                DefaultOptions.Add(option);
-            }
-        }
-
-        SelectedDefault =
-            DefaultOptions.FirstOrDefault(option => string.Equals(option.Id, defaultId, StringComparison.OrdinalIgnoreCase))
-            ?? DefaultOptions.First(option => option.Id == RewriteAction.Clearer.Id);
-    }
 }
-
-public sealed record DefaultActionOption(string Id, string Title);
 
 /// <summary>A built-in action whose instruction can be edited and reset.</summary>
 public sealed partial class BuiltInActionRow : ObservableObject

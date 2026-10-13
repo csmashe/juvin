@@ -11,97 +11,77 @@ namespace Juvin.App.Tests;
 
 public sealed class RewritePanelServiceTests
 {
+    private readonly FakeModelProvider _local = new(ProcessingMode.Local);
+    private readonly RewritePanelViewModel _viewModel;
+
+    public RewritePanelServiceTests()
+    {
+        _viewModel = new RewritePanelViewModel(
+            new ProviderSelector(_ => _local, _ => new FakeModelProvider(ProcessingMode.Codex)),
+            new FakeSettingsService(),
+            new FakeHistoryService(),
+            new Localizer(),
+            action => action()
+        );
+    }
+
     [Fact]
     public void AnOlderCapturePostedAfterANewerOne_IsIgnored()
     {
-        var settings = new FakeSettingsService();
-        var localizer = new Localizer();
-        var local = new FakeModelProvider(ProcessingMode.Local);
-        var viewModel = new RewritePanelViewModel(
-            new ProviderSelector(_ => local, _ => new FakeModelProvider(ProcessingMode.Codex)),
-            settings,
-            new FakeHistoryService(),
-            localizer,
-            action => action()
-        );
         var posted = new List<Action>();
         var shows = 0;
-        var service = new RewritePanelService(
-            new ConnectorService(new FakeConnectorSocket(), new FakeNativeHostRegistrar(), settings, localizer),
-            viewModel,
-            () => shows++,
-            () => { },
-            posted.Add
-        );
-        var session = new ConnectorSession(new StreamConnectorChannel(new MemoryStream()), () => throw new NotSupportedException());
+        var service = new RewritePanelService(_viewModel, () => shows++, () => { }, posted.Add);
 
-        service.OnCaptureCompleted(session, 2, Capture("newer"));
-        service.OnCaptureCompleted(session, 1, Capture("older"));
+        service.Show(new FakeRewriteTarget(), 2, Capture("newer"));
+        service.Show(new FakeRewriteTarget(), 1, Capture("older"));
         foreach (var post in posted)
         {
             post();
         }
 
-        Assert.Equal("newer", viewModel.Subject);
-        Assert.Single(local.Requests);
+        Assert.Equal("newer", _viewModel.Subject);
         Assert.Equal(1, shows);
+    }
+
+    [Fact]
+    public void Show_LoadsTheCaptureIdle()
+    {
+        var service = new RewritePanelService(_viewModel, () => { }, () => { }, action => action());
+
+        service.Show(new FakeRewriteTarget(), 1, Capture("idle"));
+
+        Assert.True(_viewModel.IsIdle);
+        Assert.Empty(_local.Requests);
     }
 
     [Fact]
     public void Stop_CancelsTheRunningRewriteAndHidesThePanel()
     {
-        var settings = new FakeSettingsService();
-        var localizer = new Localizer();
-        var local = new FakeModelProvider(ProcessingMode.Local) { CompletionGate = new TaskCompletionSource() };
-        var viewModel = new RewritePanelViewModel(
-            new ProviderSelector(_ => local, _ => new FakeModelProvider(ProcessingMode.Codex)),
-            settings,
-            new FakeHistoryService(),
-            localizer,
-            action => action()
-        );
+        _local.CompletionGate = new TaskCompletionSource();
         var hides = 0;
-        var service = new RewritePanelService(
-            new ConnectorService(new FakeConnectorSocket(), new FakeNativeHostRegistrar(), settings, localizer),
-            viewModel,
-            () => { },
-            () => hides++,
-            action => action()
-        );
+        var service = new RewritePanelService(_viewModel, () => { }, () => hides++, action => action());
         service.Start();
-        var session = new ConnectorSession(new StreamConnectorChannel(new MemoryStream()), () => throw new NotSupportedException());
-        service.OnCaptureCompleted(session, 1, Capture("running"));
-        Assert.True(viewModel.IsRunning);
+        service.Show(new FakeRewriteTarget(), 1, Capture("running"));
+        _ = _viewModel.SelectActionCommand.ExecuteAsync(_viewModel.Actions[0]);
+        Assert.True(_viewModel.IsRunning);
 
         service.Stop();
 
-        Assert.False(viewModel.IsRunning);
+        Assert.False(_viewModel.IsRunning);
         Assert.Equal(1, hides);
     }
 
     [Fact]
-    public async Task AHotkeyWithNoBrowser_ShowsTheErrorWithRecaptureDisabled()
+    public void ADeclinedCaptureWithNoTarget_ShowsTheErrorWithRecaptureDisabled()
     {
-        var settings = new FakeSettingsService();
         var localizer = new Localizer();
-        var viewModel = new RewritePanelViewModel(
-            new ProviderSelector(_ => new FakeModelProvider(ProcessingMode.Local), _ => new FakeModelProvider(ProcessingMode.Codex)),
-            settings,
-            new FakeHistoryService(),
-            localizer,
-            action => action()
-        );
-        var connector = new ConnectorService(new FakeConnectorSocket(), new FakeNativeHostRegistrar(), settings, localizer);
-        var shows = 0;
-        var service = new RewritePanelService(connector, viewModel, () => shows++, () => { }, action => action());
-        service.Start();
+        var service = new RewritePanelService(_viewModel, () => { }, () => { }, action => action());
 
-        await connector.TriggerCaptureAsync();
+        service.Show(null, 1, new ContextResult(null, new ConnectorError(ConnectorService.NoBrowserCode, "No browser.")));
 
-        Assert.Equal(1, shows);
-        Assert.True(viewModel.HasError);
-        Assert.Equal(localizer["Panel.Error.NoBrowser"], viewModel.ErrorMessage);
-        Assert.False(viewModel.CanRecapture);
+        Assert.True(_viewModel.HasError);
+        Assert.Equal(localizer["Panel.Error.NoBrowser"], _viewModel.ErrorMessage);
+        Assert.False(_viewModel.CanRecapture);
     }
 
     [Theory]
@@ -110,34 +90,6 @@ public sealed class RewritePanelServiceTests
     [InlineData("no-selection", true)]
     public void AnsweredByBrowser_OnlyABrowsersOwnAnswerCounts(string code, bool expected) =>
         Assert.Equal(expected, ConnectorService.AnsweredByBrowser(new ContextResult(null, new ConnectorError(code, "x"))));
-
-    [Fact]
-    public void ANotFocusedBrowser_ShowsTheErrorWithRecaptureDisabled() => AssertRecaptureDisabled(ConnectorService.BrowserNotFocusedCode);
-
-    [Fact]
-    public void ATimedOutBrowser_ShowsTheErrorWithRecaptureDisabled() => AssertRecaptureDisabled(ConnectorRewriteTarget.TimeoutCode);
-
-    private static void AssertRecaptureDisabled(string code)
-    {
-        var settings = new FakeSettingsService();
-        var localizer = new Localizer();
-        var viewModel = new RewritePanelViewModel(
-            new ProviderSelector(_ => new FakeModelProvider(ProcessingMode.Local), _ => new FakeModelProvider(ProcessingMode.Codex)),
-            settings,
-            new FakeHistoryService(),
-            localizer,
-            action => action()
-        );
-        var connector = new ConnectorService(new FakeConnectorSocket(), new FakeNativeHostRegistrar(), settings, localizer);
-        var service = new RewritePanelService(connector, viewModel, () => { }, () => { }, action => action());
-        service.Start();
-        var session = new ConnectorSession(new StreamConnectorChannel(new MemoryStream()), () => throw new NotSupportedException());
-
-        service.OnCaptureCompleted(session, 1, new ContextResult(null, new ConnectorError(code, "Not from a focused browser.")));
-
-        Assert.True(viewModel.HasError);
-        Assert.False(viewModel.CanRecapture);
-    }
 
     private static ContextResult Capture(string subject)
     {

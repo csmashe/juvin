@@ -1,22 +1,32 @@
-import browser, { type Tabs } from "webextension-polyfill";
+import browser, { type Runtime, type Tabs } from "webextension-polyfill";
 import { log, warn } from "../shared/log";
 import {
   applyError,
   applyOk,
   contextError,
+  menuChoose,
+  menuClose,
+  menuError,
+  menuOk,
   shortcutPressed,
   testPageError,
   testPageOk,
   type ApplyRequestMessage,
   type ContextRequestMessage,
   type IncomingMessage,
+  type MenuCloseMessage,
+  type MenuShowMessage,
+  type MenuUpdateMessage,
   type TestPageRequestMessage,
 } from "../shared/protocol";
 import {
+  isMenuNotice,
   isPopupRequest,
   type ApplyResult,
   type CaptureResult,
   type ContentRequest,
+  type MenuNotice,
+  type MenuShowResult,
   type PingResult,
   type PopupRequest,
   type Status,
@@ -31,6 +41,12 @@ const CONTENT_SCRIPT = "content.js";
 const connection = new Connection(onAppRequest);
 
 const editorTabs = new EditorTabs((tabId) => browser.tabs.get(tabId));
+
+// The extension shows one menu at a time; this is the tab drawing it.
+let openMenu: { menuId: string; tabId: number } | undefined;
+
+// A menu.show still waiting for its tab; a close or a newer show meanwhile makes its result stale.
+let pendingShow: { menuId: string; cancelled: boolean } | undefined;
 
 async function activeTab(): Promise<Tabs.Tab | undefined> {
   const [tab] = await browser.tabs.query({ active: true, lastFocusedWindow: true });
@@ -168,6 +184,108 @@ async function handleApplyRequest({ id, editorId, expectedHash, start, end, text
   reply(result.ok ? applyOk(id) : applyError(id, result.error));
 }
 
+async function handleMenuShow({ id, menuId, editorId, slots, more, status }: MenuShowMessage, reply: Reply): Promise<void> {
+  if (pendingShow) {
+    pendingShow.cancelled = true;
+  }
+
+  const pending = { menuId, cancelled: false };
+  pendingShow = pending;
+  const stale = (): boolean => {
+    if (pendingShow === pending) {
+      pendingShow = undefined;
+    }
+
+    return pending.cancelled;
+  };
+
+  const tab = await editorTabs.find(editorId);
+  if (!tab || pending.cancelled) {
+    stale();
+    reply(menuError(id, tab ? { code: "internal", message: "The menu was replaced before it was shown." } : { code: "editor-gone", message: "The editor is no longer open." }));
+    return;
+  }
+
+  // No injection, as for apply: a freshly injected script would not know the editor id.
+  const result = (await sendToTab(tab.id, { kind: "juvin.menu.show", menuId, editorId, slots, more, status })) as MenuShowResult | undefined;
+  if (stale()) {
+    log("menu.show.stale", { id, menuId });
+    if (result?.ok) {
+      void sendToTab(tab.id, { kind: "juvin.menu.close", menuId });
+    }
+
+    reply(menuError(id, { code: "internal", message: "The menu was replaced before it was shown." }));
+    return;
+  }
+
+  if (!result) {
+    reply(menuError(id, { code: "page-not-ready", message: "The page cannot show the menu yet." }));
+    return;
+  }
+
+  log("menu.show", { id, menuId, more: more.length, code: result.ok ? "ok" : result.error.code });
+  if (result.ok) {
+    const previous = openMenu;
+    openMenu = { menuId, tabId: tab.id };
+    // A new menu replaces the old one in any tab without reporting it closed.
+    if (previous && previous.tabId !== tab.id) {
+      void sendToTab(previous.tabId, { kind: "juvin.menu.close", menuId: previous.menuId });
+    }
+  }
+
+  reply(result.ok ? menuOk(id) : menuError(id, result.error));
+}
+
+async function handleMenuUpdate(update: MenuUpdateMessage): Promise<void> {
+  if (openMenu?.menuId !== update.menuId) {
+    return;
+  }
+
+  log("menu.update", { menuId: update.menuId, state: update.state, textLength: "text" in update ? update.text.length : undefined });
+  const { tabId } = openMenu;
+  if (update.state === "applied") {
+    openMenu = undefined;
+  }
+
+  await sendToTab(tabId, { kind: "juvin.menu.update", update });
+}
+
+async function handleMenuClose({ menuId }: MenuCloseMessage): Promise<void> {
+  if (pendingShow?.menuId === menuId) {
+    pendingShow.cancelled = true;
+    return;
+  }
+
+  if (openMenu?.menuId !== menuId) {
+    return;
+  }
+
+  const { tabId } = openMenu;
+  openMenu = undefined;
+  await sendToTab(tabId, { kind: "juvin.menu.close", menuId });
+}
+
+function onMenuNotice(notice: MenuNotice, sender: Runtime.MessageSender): void {
+  if (openMenu?.menuId !== notice.menuId || openMenu.tabId !== sender.tab?.id) {
+    return;
+  }
+
+  if (notice.kind === "juvin.menu.closed") {
+    log("menu.closed", { menuId: notice.menuId });
+    openMenu = undefined;
+    connection.send(menuClose(notice.menuId));
+    return;
+  }
+
+  log("menu.choose", { menuId: notice.menuId, action: notice.action, instructionLength: notice.instruction?.length });
+  // The menu closes itself on Review, and the app sends no menu.close for it.
+  if (notice.action === "review") {
+    openMenu = undefined;
+  }
+
+  connection.send(menuChoose(notice.menuId, notice.action, notice.instruction));
+}
+
 async function handleTestPageRequest({ id }: TestPageRequestMessage, reply: Reply): Promise<void> {
   // Without windowId the tab lands in the "current" window, not the last-used one; popups are skipped by hand because Firefox ignores windowTypes.
   const window = await browser.windows.getLastFocused().catch(() => undefined);
@@ -193,6 +311,12 @@ function handleAppRequest(message: IncomingMessage, reply: Reply): Promise<void>
       return handleApplyRequest(message, reply);
     case "testpage.request":
       return handleTestPageRequest(message, reply);
+    case "menu.show":
+      return handleMenuShow(message, reply);
+    case "menu.update":
+      return handleMenuUpdate(message);
+    case "menu.close":
+      return handleMenuClose(message);
     default:
       return Promise.resolve();
   }
@@ -211,6 +335,9 @@ function onAppRequest(message: IncomingMessage, reply: Reply): void {
         break;
       case "testpage.request":
         reply(testPageError(message.id, { code: "internal", message: "The sample page could not be opened." }));
+        break;
+      case "menu.show":
+        reply(menuError(message.id, { code: "internal", message: "The menu could not be shown." }));
         break;
     }
   });
@@ -250,6 +377,23 @@ browser.commands.onCommand.addListener((command: string, commandTab: Tabs.Tab | 
     .catch(() => log("shortcut.not-connected"));
 });
 
-browser.runtime.onMessage.addListener((message: unknown) => (isPopupRequest(message) ? onPopupRequest(message) : undefined));
+browser.runtime.onMessage.addListener((message: unknown, sender: Runtime.MessageSender) => {
+  if (isPopupRequest(message)) {
+    return onPopupRequest(message);
+  }
 
-browser.tabs.onRemoved.addListener((tabId: number) => editorTabs.forgetTab(tabId));
+  if (isMenuNotice(message)) {
+    onMenuNotice(message, sender);
+  }
+
+  return undefined;
+});
+
+browser.tabs.onRemoved.addListener((tabId: number) => {
+  editorTabs.forgetTab(tabId);
+  if (openMenu?.tabId === tabId) {
+    log("menu.tab-closed", { menuId: openMenu.menuId });
+    connection.send(menuClose(openMenu.menuId));
+    openMenu = undefined;
+  }
+});

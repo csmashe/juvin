@@ -1,6 +1,6 @@
 # Browser connector protocol
 
-Date: October 9, 2026. Implements section 4.5 of `mvp-scope.md`. This is the contract between the extension (TypeScript) and the desktop app (C#); both sides are written against this file and tested with its examples.
+Date: October 9, 2026; the action menu messages were added October 13, 2026. Implements section 4.5 of `mvp-scope.md`. This is the contract between the extension (TypeScript) and the desktop app (C#); both sides are written against this file and tested with its examples.
 
 ## Transport
 
@@ -30,7 +30,7 @@ Every message is a JSON object with:
 
 Unknown properties are ignored. A message that is not an object, lacks `type`, has a missing or non-numeric `v`, or has a null in a required field gets `error` with code `bad-message`. A numeric `v` other than `1` gets `unsupported-version`, after which the app closes the connection (the extension does not close on its own). An `error` reply is never answered with another `error`. Requests sent in the wrong direction (for example `config` or `testpage.request` from the extension) get `unknown-type`. The app ignores an unmatched response and logs only its type and code; an `error` that echoes a pending request's id fails that request.
 
-Required fields: `id` on every request and response; `editorId`, `expectedHash`, `start`, `end`, and `text` on `apply.request`, with `0 <= start <= end`; on `context.response`, `capture` when `ok` is true and `error` when it is false; on `apply.response` and `testpage.response`, `ok`, plus `error` when it is false; in a capture, `adapter`, `editor`, `selection`, and `thread` with `completeness` and `messages`. Optional: `editorId` and `requireFocus` on `context.request`, `format` and `expectedFormatHash` on `apply.request` (`expectedFormatHash` required when `format` is set), `pageUrl`, `capturedAt`, `subject`, `selection.markdown` and `selection.formatHash` (sent together), `collapsedCount` (default 0), and `to` and `sent` on a message. A `sent` value that does not parse becomes null; one with no offset is read as UTC.
+Required fields: `id` on every request and response; `editorId`, `expectedHash`, `start`, `end`, and `text` on `apply.request`, with `0 <= start <= end`; on `context.response`, `capture` when `ok` is true and `error` when it is false; on `apply.response`, `testpage.response`, and `menu.response`, `ok`, plus `error` when it is false; in a capture, `adapter`, `editor`, `selection`, and `thread` with `completeness` and `messages`; `menuId` on every `menu.*` message, plus `editorId`, `slots` (exactly five actions), `more`, and `status` on `menu.show`, `action` on `menu.choose` (with `instruction` when it is `custom`, and only then), and `state` on `menu.update` with the fields its state requires. Optional: `result` on a `menu.update` error, `editorId` and `requireFocus` on `context.request`, `format` and `expectedFormatHash` on `apply.request` (`expectedFormatHash` required when `format` is set), `pageUrl`, `capturedAt`, `subject`, `selection.markdown` and `selection.formatHash` (sent together), `collapsedCount` (default 0), and `to` and `sent` on a message. A `sent` value that does not parse becomes null; one with no offset is read as UTC.
 
 Error payload used everywhere: `"error": {"code": "<kebab-case>", "message": "<English text for logs, never email content>"}`.
 
@@ -175,6 +175,72 @@ Sent by the setup wizard's Try it step. The extension opens its bundled sample t
 
 Codes: `internal`.
 
+### `menu.show` (app to extension)
+
+```json
+{"v":1,"type":"menu.show","id":"m1","menuId":"menu-4","editorId":"e-7f3a",
+ "slots":[{"id":"missing","title":"What am I missing?"},{"id":"soften","title":"Soften"},{"id":"clearer","title":"Make clearer"},{"id":"shorter","title":"Make shorter"},{"id":"grammar","title":"Fix grammar"}],
+ "more":[{"id":"custom-3f2a9b","title":"Pirate voice"}],
+ "status":["6 messages","Entire thread","Private server: qwen3.5:27b"]}
+```
+
+Sent after every successful capture from the shortcut or the desktop hotkey (section 2.8 of `mvp-scope.md`). The app owns the menu; the extension only draws what this message carries and reports what the user does. `menuId` names this menu in every later `menu.*` message. `slots` are the five bubbles in key order, 1 to 5; `more` is the right-click list, possibly empty; `status` is the status line, already localized, in display order. Titles and status strings are display text and contain no email content.
+
+The extension finds the editor's tab by `editorId` the way `apply.request` does, has that tab's content script draw the menu beside the editor without taking focus from it, and answers `menu.response`. The extension shows one menu at a time: a new `menu.show` replaces whatever menu is open, in any tab, without reporting the old one closed. The app sends `menu.close` for the old menu first anyway, and before a `menu.show` it also cancels any action the old menu was running.
+
+### `menu.response` (extension to app)
+
+```json
+{"v":1,"type":"menu.response","id":"m1","ok":true}
+{"v":1,"type":"menu.response","id":"m1","ok":false,"error":{"code":"unsupported","message":"This page cannot show the menu."}}
+```
+
+Codes: `editor-gone` (unknown editor id, the editor left the page, or its tab is closed or unreachable), `page-not-ready` (the content script could not be reached), `unsupported` (the extension or the page cannot draw the menu), `internal`. On any error, and when an older extension answers `error` with `unknown-type`, the app opens the rewrite panel with the capture instead, idle until an action is picked there.
+
+### `menu.choose` (extension to app, notification)
+
+```json
+{"v":1,"type":"menu.choose","menuId":"menu-4","action":"soften"}
+{"v":1,"type":"menu.choose","menuId":"menu-4","action":"custom","instruction":"Make it sound less formal."}
+{"v":1,"type":"menu.choose","menuId":"menu-4","action":"review"}
+{"v":1,"type":"menu.choose","menuId":"menu-4","action":"recapture"}
+```
+
+`action` is an id from `slots` or `more`, or one of the reserved words `review` and `recapture`, which are never action ids. `custom` is Ask for a change and carries the user's `instruction`. While the menu shows an `answer`, `custom` continues that conversation and gets another `answer`; nothing is applied until a different action is picked. Try again after an error sends the same choice again. The app ignores a choice for a `menuId` it no longer holds and a choice that arrives while this menu's action is running.
+
+- An action id runs that action over the capture and reports through `menu.update`. The app applies the result itself, through `apply.request` with the capture's hash and format checks, so the editor is written only when it still matches the capture.
+- `review` hands the capture to the desktop rewrite panel, which opens idle until an action is picked there. The extension closes the menu as soon as it sends this; the app sends no `menu.close` for it.
+- `recapture` reads the editor again (a `context.request` with this capture's `editorId`). On success the app closes this menu and shows a new one, with a new `menuId`, over the fresh capture; on failure it reports `error` on this menu with `canRetry` false.
+
+### `menu.update` (app to extension, notification)
+
+```json
+{"v":1,"type":"menu.update","menuId":"menu-4","state":"running","action":"soften"}
+{"v":1,"type":"menu.update","menuId":"menu-4","state":"applied"}
+{"v":1,"type":"menu.update","menuId":"menu-4","state":"answer","text":"- The draft does not answer the question about the deadline."}
+{"v":1,"type":"menu.update","menuId":"menu-4","state":"draft-changed","text":"Hi team, thank you for the update..."}
+{"v":1,"type":"menu.update","menuId":"menu-4","state":"error","text":"The model did not answer in time.","canRetry":true}
+{"v":1,"type":"menu.update","menuId":"menu-4","state":"error","text":"The draft editor is no longer on the page. Copy the rewrite instead.","canRetry":false,"result":"Hi team, thank you for the update..."}
+```
+
+`state` is one of:
+
+- `running`, with `action`: that bubble shows progress and the others dim; Escape cancels through `menu.close`.
+- `applied`: the result replaced the selection. The extension closes the menu and shows a short note beside the editor that the draft was rewritten and Ctrl+Z (Cmd+Z on macOS) undoes it.
+- `answer`, with `text`: the action returned advice rather than a draft (What am I missing?, and the follow-ups to it). Nothing was applied; the card shows the text and the menu stays open.
+- `draft-changed`, with `text`: the result could not be applied because the editor no longer matches the capture. The card shows the result with Copy and Recapture.
+- `error`, with `text` and `canRetry`: `text` is the message to show the user, already localized, which makes it the one error text in this protocol that is not just for logs. With `canRetry` the card offers Try again. When a finished rewrite could not be applied for a reason other than `draft-changed` (the editor is gone, the browser timed out or disconnected), `result` carries it so the card can offer Copy; a rewrite is never lost to an apply failure. A failure in local mode is reported here and never retried through another provider.
+
+A `menuId` the extension no longer shows is ignored.
+
+### `menu.close` (either direction, notification)
+
+```json
+{"v":1,"type":"menu.close","menuId":"menu-4"}
+```
+
+From the extension: the user dismissed the menu (Escape or a click outside it), or the editor or its tab went away. The app cancels the action that menu was running and forgets the menu. From the app: a new capture superseded the menu, or the app is exiting; the extension removes the menu. An unknown `menuId` is ignored in both directions.
+
 ### `error` (either direction)
 
 ```json
@@ -185,4 +251,4 @@ Codes: `bad-message`, `unsupported-version`, `unknown-type`, `hello-required`.
 
 ## Privacy
 
-Neither side logs `selection.text`, `selection.markdown`, `thread.messages[].body`, `subject`, `apply.request.text`, or any part of them. Logs carry message types, ids, byte lengths, message counts, and completeness only.
+Neither side logs `selection.text`, `selection.markdown`, `thread.messages[].body`, `subject`, `apply.request.text`, `menu.choose.instruction`, `menu.update.text`, `menu.update.result`, or any part of them. Logs carry message types, ids, byte lengths, message counts, and completeness only.

@@ -24,8 +24,8 @@ public enum RewritePanelState
 }
 
 /// <summary>
-///     The rewrite panel: runs the default action on each capture, then lets the user switch
-///     action, ask follow-ups, compare, and Apply, Copy, or Recapture. Traces carry lengths,
+///     The rewrite panel: shows each capture idle until the user picks an action, then lets them
+///     switch action, ask follow-ups, compare, and Apply, Copy, or Recapture. Traces carry lengths,
 ///     counts, action ids, and error codes only, never the draft, thread, prompt, or result.
 /// </summary>
 /// <remarks>
@@ -52,12 +52,13 @@ public sealed partial class RewritePanelViewModel : ObservableObject
 
     // Marked applied when Apply succeeds.
     private string? _historyEntryId;
-    private RewriteAction _lastAction = RewriteAction.Clearer;
+    private RewriteAction? _lastAction;
     private string? _lastInstruction;
     private CancellationTokenSource? _recapture;
     private string? _recaptureEditorId;
     private CancellationTokenSource? _run;
-    private RewriteAction _selectedAction = RewriteAction.Clearer;
+    // The chip last picked for this capture, which Recapture runs again; null until one is picked.
+    private RewriteAction? _selectedAction;
     private RewriteSession? _session;
 
     // Started the session; follow-ups inherit whether its results can be applied.
@@ -153,6 +154,7 @@ public sealed partial class RewritePanelViewModel : ObservableObject
     public bool HasCapture => _capture is not null;
     public bool HasSubject => !string.IsNullOrWhiteSpace(Subject);
     public bool HasContextMessages => ContextMessages.Count > 0;
+    public bool IsIdle => State == RewritePanelState.Idle && HasCapture;
     public bool IsRunning => State == RewritePanelState.Running;
     public bool IsWorking => IsRunning && !IsStreaming;
     public bool HasError => State == RewritePanelState.Failed;
@@ -188,14 +190,14 @@ public sealed partial class RewritePanelViewModel : ObservableObject
     public event Action? CaptureLoaded;
 
     /// <summary>
-    ///     Shows a new capture, or the extension's error, replacing whatever the panel held, and runs the
-    ///     default action. A null <paramref name="target" /> (no browser connected) disables Recapture.
+    ///     Shows a new capture, or the extension's error, replacing whatever the panel held; nothing runs
+    ///     until an action is picked. A null <paramref name="target" /> (no browser connected) disables Recapture.
     /// </summary>
     public Task LoadAsync(IRewriteTarget? target, ContextResult result)
     {
         _target = target;
         _recaptureEditorId = null;
-        return LoadCaptureAsync(result, ResolveOrClearer(_settings.Current.DefaultRewriteAction));
+        return LoadCaptureAsync(result, null);
     }
 
     partial void OnStateChanged(RewritePanelState value) => Refresh();
@@ -237,15 +239,15 @@ public sealed partial class RewritePanelViewModel : ObservableObject
     [RelayCommand(AllowConcurrentExecutions = true)]
     private Task RetryAsync()
     {
-        if (_capture is null)
+        if (_capture is null || _lastAction is not { } action)
         {
             return Task.CompletedTask;
         }
 
         // A failed first turn rebuilds the session so a model corrected in Settings is picked up.
         return _session is null || _session.History.Count == 0
-            ? StartActionAsync(_lastAction, _lastInstruction)
-            : RunAsync(_lastAction, _lastInstruction);
+            ? StartActionAsync(action, _lastInstruction)
+            : RunAsync(action, _lastInstruction);
     }
 
     [RelayCommand]
@@ -380,11 +382,14 @@ public sealed partial class RewritePanelViewModel : ObservableObject
             return;
         }
 
+        // The picked action may have been edited or removed since; an unknown one loads the capture idle.
+        var rerun = _selectedAction is null ? null : RewriteActionCatalog.Find(_settings.Current, _selectedAction.Id);
         // Not awaited, so Recapture is available again while the model runs; LoadCaptureAsync handles its own failures.
-        _ = LoadCaptureAsync(result, ResolveOrClearer(_selectedAction.Id));
+        _ = LoadCaptureAsync(result, rerun is { IsCustom: false } ? rerun : null);
     }
 
-    private Task LoadCaptureAsync(ContextResult result, RewriteAction action)
+    /// <summary>Loads a capture and runs <paramref name="action" /> over it, or with none leaves the panel idle.</summary>
+    private Task LoadCaptureAsync(ContextResult result, RewriteAction? action)
     {
         Supersede();
         _capture = result.Capture;
@@ -400,7 +405,6 @@ public sealed partial class RewritePanelViewModel : ObservableObject
         ShowContext(result.Capture, null);
         ProviderLabel = DescribeProvider(null, null);
 
-        // ReSharper disable once InvertIf -- the declined capture is the guard clause; the success case follows
         if (result.Capture is null)
         {
             Trace.WriteLine($"[RewritePanel] Capture declined ({result.Error?.Code}).");
@@ -409,7 +413,17 @@ public sealed partial class RewritePanelViewModel : ObservableObject
         }
 
         CaptureLoaded?.Invoke();
-        return StartActionAsync(action);
+        if (action is not null)
+        {
+            return StartActionAsync(action);
+        }
+
+        _lastAction = null;
+        _lastInstruction = null;
+        ErrorMessage = null;
+        CanRetry = false;
+        State = RewritePanelState.Idle;
+        return Task.CompletedTask;
     }
 
     /// <summary>A different action is a fresh first turn, so it gets a new session over the same capture.</summary>
@@ -536,28 +550,7 @@ public sealed partial class RewritePanelViewModel : ObservableObject
             return;
         }
 
-        var provenance = result.Provenance;
-        var entry = new HistoryEntry
-        {
-            Id = HistoryEntry.NewId(),
-            CreatedAt = DateTimeOffset.UtcNow,
-            ActionId = action.Id,
-            ActionTitle = action.DisplayName(_localizer),
-            Subject = capture.Context.Subject,
-            Adapter = capture.Adapter,
-            Draft = capture.Context.Draft,
-            Result = result.Text,
-            Mode = provenance.Mode,
-            ProviderName = provenance.ProviderName,
-            ModelId = provenance.ModelId,
-            RanLocally = provenance.RanLocally,
-            ThreadMessageCount = provenance.ThreadMessageCount,
-            Completeness = provenance.Completeness,
-            Duration = provenance.Duration,
-            // The session captured with the settings it was created from; consent is checked again now.
-            SystemPrompt = settings.ProvenanceCaptureEnabled ? provenance.SystemPromptSent : null,
-            MessagesSent = settings.ProvenanceCaptureEnabled ? provenance.MessagesSent : null,
-        };
+        var entry = RewriteHistory.CreateEntry(action, capture, result, settings, _localizer);
         WriteHistory(() =>
         {
             _history.Add(entry);
@@ -596,12 +589,12 @@ public sealed partial class RewritePanelViewModel : ObservableObject
         State = RewritePanelState.Failed;
     }
 
-    private void SelectChip(RewriteAction action)
+    private void SelectChip(RewriteAction? action)
     {
         _selectedAction = action;
         foreach (var chip in Actions)
         {
-            chip.IsSelected = chip.Action.Id == action.Id;
+            chip.IsSelected = chip.Action.Id == action?.Id;
         }
     }
 
@@ -618,12 +611,6 @@ public sealed partial class RewritePanelViewModel : ObservableObject
             Actions.Add(new PanelActionChip(action, action.DisplayName(_localizer)) { IsSelected = action.Id == selectedId });
         }
     }
-
-    /// <summary>The configured action with this id, or Clearer when it is unknown, removed, or the free-text action.</summary>
-    private RewriteAction ResolveOrClearer(string id) =>
-        RewriteActionCatalog.Find(_settings.Current, id) is { IsCustom: false } action
-            ? action
-            : RewriteActionCatalog.Find(_settings.Current, RewriteAction.Clearer.Id)!;
 
     private void ShowContext(CapturedContext? capture, RewriteProvenance? provenance)
     {
@@ -643,8 +630,8 @@ public sealed partial class RewritePanelViewModel : ObservableObject
         AdapterLabel = AdapterLabels.Describe(capture.Adapter, _localizer);
 
         var count = provenance?.ThreadMessageCount ?? context.Thread.Count;
-        MessageCountLabel = count == 1 ? _localizer["Panel.MessageCountOne"] : _localizer.Format("Panel.MessageCount", count);
-        CompletenessLabel = DescribeCompleteness(provenance?.Completeness ?? context.Completeness, context.CollapsedCount);
+        MessageCountLabel = CaptureLabels.MessageCount(count, _localizer);
+        CompletenessLabel = CaptureLabels.Completeness(provenance?.Completeness ?? context.Completeness, context.CollapsedCount, _localizer);
         Subject = context.Subject;
         // Once a result is in, list only the messages the prompt builder kept; it drops the oldest.
         var shown = provenance is null ? context.Thread.Count : Math.Min(provenance.ThreadMessageCount, context.Thread.Count);
@@ -670,31 +657,8 @@ public sealed partial class RewritePanelViewModel : ObservableObject
         Refresh();
     }
 
-    private string DescribeCompleteness(ThreadCompleteness completeness, int collapsedCount) =>
-        completeness switch
-        {
-            ThreadCompleteness.EntireThread => _localizer["Panel.Completeness.EntireThread"],
-            ThreadCompleteness.LoadedMessagesOnly when collapsedCount > 0 =>
-                _localizer.Format("Panel.Completeness.LoadedWithCollapsed", collapsedCount),
-            ThreadCompleteness.LoadedMessagesOnly => _localizer["Panel.Completeness.LoadedMessagesOnly"],
-            ThreadCompleteness.VisibleTextOnly => _localizer["Panel.Completeness.VisibleTextOnly"],
-            ThreadCompleteness.DraftOnly => _localizer["Panel.Completeness.DraftOnly"],
-            _ => _localizer["Panel.Completeness.Truncated"],
-        };
-
-    private string DescribeProvider(IModelProvider? provider, string? modelId)
-    {
-        var settings = _settings.Current;
-        if ((provider?.Mode ?? settings.ProcessingMode) == ProcessingMode.Codex)
-        {
-            return _localizer["Panel.Provider.Codex"];
-        }
-
-        var model = modelId ?? settings.LocalModel ?? _localizer["Panel.Provider.DefaultModel"];
-        return provider is { RunsLocally: false }
-            ? _localizer.Format("Panel.Provider.PrivateServer", model)
-            : _localizer.Format("Panel.Provider.Local", model);
-    }
+    private string DescribeProvider(IModelProvider? provider, string? modelId) =>
+        CaptureLabels.Provider(provider, modelId, _settings.Current, _localizer);
 
     private string ErrorText(string? code) => _localizer[ErrorKeyFor(code)];
 
@@ -731,6 +695,7 @@ public sealed partial class RewritePanelViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(HasCapture));
         OnPropertyChanged(nameof(HasContextMessages));
+        OnPropertyChanged(nameof(IsIdle));
         OnPropertyChanged(nameof(IsRunning));
         OnPropertyChanged(nameof(IsWorking));
         OnPropertyChanged(nameof(HasError));

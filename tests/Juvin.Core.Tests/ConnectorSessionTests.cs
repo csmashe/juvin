@@ -86,6 +86,10 @@ public sealed class ConnectorSessionTests : IAsyncDisposable
     [InlineData("""{"v":1,"type":"teleport","id":"t1"}""", "t1")]
     [InlineData("""{"v":1,"type":"context.request","id":"c1"}""", "c1")]
     [InlineData("""{"v":1,"type":"testpage.request","id":"t1"}""", "t1")]
+    [InlineData(
+        """{"v":1,"type":"menu.show","id":"m1","menuId":"menu-1","editorId":"e-1","slots":[{"id":"a","title":"A"},{"id":"b","title":"B"},{"id":"c","title":"C"},{"id":"d","title":"D"},{"id":"e","title":"E"}],"more":[],"status":[]}""",
+        "m1"
+    )]
     public async Task UnknownOrWrongDirectionTypes_GetUnknownType(string json, string id)
     {
         await SayHelloAsync();
@@ -335,6 +339,91 @@ public sealed class ConnectorSessionTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task ShowMenu_SendsTheMenuWithItsOwnIdAndReturnsNullOnOk()
+    {
+        await SayHelloAsync();
+
+        var shown = _session.ShowMenuAsync(Menu() with { Id = "ignored" }, s_timeout, CancellationToken.None);
+        var request = await _channel.NextSentAsync();
+        Assert.Equal("menu.show", request.GetProperty("type").GetString());
+        Assert.Equal("menu-1", request.GetProperty("menuId").GetString());
+        Assert.Equal("e-1", request.GetProperty("editorId").GetString());
+        Assert.Equal(5, request.GetProperty("slots").GetArrayLength());
+        var id = request.GetProperty("id").GetString()!;
+        Assert.StartsWith("m", id);
+        Assert.NotEqual("ignored", id);
+        _channel.Deliver($$"""{"v":1,"type":"menu.response","id":"{{id}}","ok":true}""");
+
+        Assert.Null(await shown);
+    }
+
+    [Theory]
+    [InlineData("""{"v":1,"type":"menu.response","id":"ID","ok":false,"error":{"code":"unsupported","message":"No menu."}}""", "unsupported")]
+    [InlineData("""{"v":1,"type":"error","id":"ID","error":{"code":"unknown-type","message":"Unknown message type."}}""", "unknown-type")]
+    public async Task ShowMenu_ReturnsTheExtensionsError(string reply, string code)
+    {
+        await SayHelloAsync();
+
+        var shown = _session.ShowMenuAsync(Menu(), s_timeout, CancellationToken.None);
+        var id = (await _channel.NextSentAsync()).GetProperty("id").GetString()!;
+        _channel.Deliver(reply.Replace("ID", id));
+
+        Assert.Equal(code, (await shown)?.Code);
+    }
+
+    [Fact]
+    public async Task MenuChooseAndClose_RaiseTheirEvents()
+    {
+        await SayHelloAsync();
+        var chosen = new TaskCompletionSource<MenuChooseMessage>();
+        var closed = new TaskCompletionSource<MenuCloseMessage>();
+        _session.MenuChosen += (_, choose) => chosen.TrySetResult(choose);
+        _session.MenuClosed += (_, close) => closed.TrySetResult(close);
+
+        _channel.Deliver("""{"v":1,"type":"menu.choose","menuId":"menu-1","action":"custom","instruction":"Less formal."}""");
+        _channel.Deliver("""{"v":1,"type":"menu.close","menuId":"menu-1"}""");
+
+        var choice = await chosen.Task.WaitAsync(s_timeout);
+        Assert.Equal(("menu-1", "custom", "Less formal."), (choice.MenuId, choice.Action, choice.Instruction));
+        Assert.Equal("menu-1", (await closed.Task.WaitAsync(s_timeout)).MenuId);
+        Assert.False(_channel.HasSent);
+    }
+
+    [Fact]
+    public async Task MenuUpdateAndClose_AreSentAsNotifications()
+    {
+        await SayHelloAsync();
+
+        await _session.SendMenuUpdateAsync(
+            new MenuUpdateMessage { MenuId = "menu-1", State = MenuStates.Error, Text = "Failed.", CanRetry = false },
+            CancellationToken.None
+        );
+        await _session.SendMenuCloseAsync(new MenuCloseMessage { MenuId = "menu-1" }, CancellationToken.None);
+
+        var update = await _channel.NextSentAsync();
+        Assert.Equal("menu.update", update.GetProperty("type").GetString());
+        Assert.False(update.TryGetProperty("id", out _));
+        Assert.Equal("error", update.GetProperty("state").GetString());
+        Assert.False(update.GetProperty("canRetry").GetBoolean());
+        var close = await _channel.NextSentAsync();
+        Assert.Equal("menu.close", close.GetProperty("type").GetString());
+        Assert.Equal("menu-1", close.GetProperty("menuId").GetString());
+    }
+
+    [Fact]
+    public async Task MenuClose_AfterTheConnectionClosed_Throws()
+    {
+        await SayHelloAsync();
+        _channel.Disconnect();
+        await _loop.WaitAsync(s_timeout);
+
+        var ex = await Assert.ThrowsAsync<ConnectorException>(() =>
+            _session.SendMenuCloseAsync(new MenuCloseMessage { MenuId = "menu-1" }, CancellationToken.None)
+        );
+        Assert.Equal(ConnectorErrorCodes.Disconnected, ex.Code);
+    }
+
+    [Fact]
     public async Task SendConfig_SendsTheNewConfig()
     {
         await SayHelloAsync();
@@ -381,6 +470,16 @@ public sealed class ConnectorSessionTests : IAsyncDisposable
           "thread":{"completeness":"{{{completeness}}}","messages":[]}}
         }
         """;
+
+    private static MenuShowMessage Menu() =>
+        new()
+        {
+            MenuId = "menu-1",
+            EditorId = "e-1",
+            Slots = [.. "abcde".Select(c => new ConnectorAction(c.ToString(), c.ToString()))],
+            More = [],
+            Status = ["1 message"],
+        };
 
     private static void AssertError(JsonElement reply, string code, string? id)
     {

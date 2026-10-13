@@ -279,7 +279,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
     private void ApplyServerUrl(string value)
     {
         var url = value.Trim();
-        if (_probes.IsThisDevice(url) is null)
+        if (ModelProbeService.IsThisDevice(url) is null)
         {
             ServerUrlError = _localizer["Models.Status.InvalidUrl"];
             return;
@@ -537,7 +537,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         }
 
         var name = row.Url == ModelProbeService.LmStudioUrl ? row.Title : _probes.ServerName(status);
-        var key = _probes.IsThisDevice(row.Url!) == true ? "Wizard.Mode.FoundHere" : "Wizard.Mode.FoundPrivate";
+        var key = ModelProbeService.IsThisDevice(row.Url!) == true ? "Wizard.Mode.FoundHere" : "Wizard.Mode.FoundPrivate";
         return _localizer.Format(key, name, _probes.ModelCount(status.Models.Count));
     }
 
