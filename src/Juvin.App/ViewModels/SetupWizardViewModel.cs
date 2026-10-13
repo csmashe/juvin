@@ -1,8 +1,10 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FluentIcons.Common;
 using Juvin.App.Services;
+using Juvin.Core.Connector;
 using Juvin.Core.Interfaces;
 using Juvin.Core.Localization;
 using Juvin.Core.Models;
@@ -11,10 +13,7 @@ using Juvin.Platform.Setup;
 
 namespace Juvin.App.ViewModels;
 
-/// <summary>
-///     Order of the wizard pages. The view has one tab per member, in the same order. The try-it
-///     step is added here when its phase lands.
-/// </summary>
+/// <summary>Order of the wizard pages. The view has one tab per member, in the same order.</summary>
 public enum SetupWizardStep
 {
     // ReSharper disable once UnusedMember.Global -- step 0, reached through StepIndex
@@ -23,7 +22,18 @@ public enum SetupWizardStep
     BrowserConnector,
     Shortcut,
     Checklist,
+    TryIt,
     Done,
+}
+
+/// <summary>How far the user got through the try-it step's sample rewrite.</summary>
+public enum TryItPhase
+{
+    NotStarted,
+    SampleOpened,
+    Captured,
+    RewriteShown,
+    CaptureFailed,
 }
 
 /// <summary>
@@ -33,12 +43,20 @@ public enum SetupWizardStep
 /// </summary>
 public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
 {
+    private static readonly TimeSpan s_openSampleTimeout = TimeSpan.FromSeconds(5);
+
+    private readonly ConnectorService _connector;
     private readonly ProbeGate _detection = new();
     private readonly CancellationTokenSource _lifetime = new();
     private readonly Localizer _localizer;
+    private readonly RewritePanelViewModel _panel;
+    private readonly Action<Action> _post;
     private readonly ModelProbeService _probes;
     private readonly ISettingsService _settings;
     private bool _applyingMode;
+
+    // Read and written on the UI thread only; captures post in either order, so an older one is dropped.
+    private long _shownCapture;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsCodexMode), nameof(ModeHint))]
@@ -73,16 +91,42 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private string? _saveError;
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanOpenSample))]
+    private bool _isBrowserConnected;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanOpenSample))]
+    private bool _isOpeningSample;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SampleOpenedSymbol))]
+    private bool _isSampleOpened;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsCaptured), nameof(IsRewriteShown), nameof(CapturedSymbol), nameof(RewriteShownSymbol))]
+    private TryItPhase _tryItPhase;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasTryItStatus))]
+    private string? _tryItStatus;
+
     public SetupWizardViewModel(
         ISettingsService settings,
         Localizer localizer,
         ModelProbeService probes,
         BrowserConnectorPanelViewModel connector,
         ShortcutPanelViewModel shortcut,
-        IEnumerable<ISetupTask> setupTasks
+        ConnectorService connectorService,
+        RewritePanelViewModel panel,
+        IEnumerable<ISetupTask> setupTasks,
+        Action<Action> post
     )
     {
         _settings = settings;
+        _connector = connectorService;
+        _panel = panel;
+        _post = post;
         Connector = connector;
         Shortcut = shortcut;
         _localizer = localizer;
@@ -99,6 +143,13 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         ];
         StepDots = [.. Enumerable.Range(0, StepCount).Select(index => new StepDot(index))];
         RefreshStepState();
+
+        // The connector and the panel outlive the wizard, so Dispose unsubscribes.
+        _connector.ClientsChanged += OnClientsChanged;
+        _connector.CaptureCompleted += OnCaptureCompleted;
+        _connector.TriggerFailed += OnTriggerFailed;
+        _panel.PropertyChanged += OnPanelPropertyChanged;
+        RefreshBrowserConnection();
     }
 
     public event EventHandler? RequestClose;
@@ -112,6 +163,14 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
     public ObservableCollection<DetectionRow> Detections { get; } = [];
     public ObservableCollection<StepDot> StepDots { get; }
     public string DoneBody => _localizer.Format("Wizard.Done.Body", Shortcut.ShortcutText);
+    public string TryItBody => _localizer.Format("Wizard.TryIt.Body", Shortcut.ShortcutText);
+    public bool CanOpenSample => IsBrowserConnected && !IsOpeningSample;
+    public bool IsCaptured => TryItPhase is TryItPhase.Captured or TryItPhase.RewriteShown;
+    public bool IsRewriteShown => TryItPhase == TryItPhase.RewriteShown;
+    public bool HasTryItStatus => !string.IsNullOrWhiteSpace(TryItStatus);
+    public Symbol SampleOpenedSymbol => ProgressSymbol(IsSampleOpened);
+    public Symbol CapturedSymbol => ProgressSymbol(IsCaptured);
+    public Symbol RewriteShownSymbol => ProgressSymbol(IsRewriteShown);
 
     public SetupWizardStep Step => (SetupWizardStep)StepIndex;
     public bool IsFirstStep => StepIndex == 0;
@@ -134,6 +193,10 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        _connector.ClientsChanged -= OnClientsChanged;
+        _connector.CaptureCompleted -= OnCaptureCompleted;
+        _connector.TriggerFailed -= OnTriggerFailed;
+        _panel.PropertyChanged -= OnPanelPropertyChanged;
         if (!_lifetime.IsCancellationRequested)
         {
             _lifetime.Cancel();
@@ -151,6 +214,11 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         if (Step == SetupWizardStep.BrowserConnector)
         {
             Connector.DetectCommand.Execute(null);
+        }
+
+        if (Step == SetupWizardStep.TryIt)
+        {
+            RefreshBrowserConnection();
         }
 
         _ = Step switch
@@ -241,6 +309,60 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
 
         // One fix can satisfy several tasks, so every row is re-evaluated.
         await RefreshSetupAsync();
+    }
+
+    [RelayCommand]
+    private async Task OpenSampleAsync()
+    {
+        if (IsClosed || IsOpeningSample)
+        {
+            return;
+        }
+
+        if (_connector.Clients.Count == 0)
+        {
+            TryItStatus = _localizer["Wizard.TryIt.NoBrowser"];
+            return;
+        }
+
+        IsOpeningSample = true;
+        TryItStatus = _localizer["Wizard.TryIt.Opening"];
+        ConnectorError? error;
+        try
+        {
+            error = await _connector.OpenTestPageAsync(s_openSampleTimeout, _lifetime.Token);
+        }
+        catch (OperationCanceledException) when (IsClosed)
+        {
+            return;
+        }
+        finally
+        {
+            if (!IsClosed)
+            {
+                IsOpeningSample = false;
+            }
+        }
+
+        if (IsClosed)
+        {
+            return;
+        }
+
+        if (error is not null)
+        {
+            TryItStatus = _localizer.Format("Wizard.TryIt.OpenFailed", _localizer[RewritePanelViewModel.ErrorKeyFor(error.Code)]);
+            return;
+        }
+
+        // Rows only move forward: a capture that landed while the reply was in flight stays ticked.
+        IsSampleOpened = true;
+        if (TryItPhase is TryItPhase.NotStarted or TryItPhase.CaptureFailed)
+        {
+            TryItPhase = TryItPhase.SampleOpened;
+        }
+
+        TryItStatus = TryItPhase == TryItPhase.SampleOpened ? _localizer["Wizard.TryIt.Waiting"] : null;
     }
 
     [RelayCommand]
@@ -376,6 +498,69 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         PullCommand = needsBetterModel && ModelProbeService.IsOllama(status) ? ModelProbeService.OllamaPullCommand : null;
     }
 
+    private static Symbol ProgressSymbol(bool reached) => reached ? Symbol.CheckmarkCircle : Symbol.Circle;
+
+    private void OnClientsChanged() => _post(RefreshBrowserConnection);
+
+    private void OnCaptureCompleted(ConnectorSession session, long number, ContextResult result) => _post(() => ShowCapture(number, result));
+
+    private void OnTriggerFailed(long number, ContextResult result) => _post(() => ShowCapture(number, result));
+
+    private void RefreshBrowserConnection()
+    {
+        if (!IsClosed)
+        {
+            IsBrowserConnected = _connector.Clients.Count > 0;
+        }
+    }
+
+    /// <summary>Any adapter counts, so a capture from Gmail ticks the row as well as one from the sample page.</summary>
+    private void ShowCapture(long number, ContextResult result)
+    {
+        if (IsClosed || number < _shownCapture)
+        {
+            return;
+        }
+
+        _shownCapture = number;
+        if (result.Ok)
+        {
+            // The panel can reach Done before this callback runs; a rewrite already shown stays shown.
+            if (!IsRewriteShown)
+            {
+                TryItPhase = TryItPhase.Captured;
+            }
+
+            TryItStatus = null;
+            return;
+        }
+
+        TryItPhase = TryItPhase.CaptureFailed;
+        TryItStatus = _localizer.Format("Wizard.TryIt.CaptureFailed", _localizer[RewritePanelViewModel.ErrorKeyFor(result.Error?.Code)]);
+    }
+
+    /// <summary>
+    ///     The panel's own state also moves the rows forward, because a Recapture from the panel
+    ///     goes straight to the session and never raises <see cref="ConnectorService.CaptureCompleted" />.
+    /// </summary>
+    private void OnPanelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (IsClosed)
+        {
+            return;
+        }
+
+        var captured = e.PropertyName == nameof(RewritePanelViewModel.HasCapture) && _panel.HasCapture && !IsCaptured;
+        var shown = e.PropertyName == nameof(RewritePanelViewModel.State) && _panel.State == RewritePanelState.Done;
+        if (!captured && !shown)
+        {
+            return;
+        }
+
+        TryItPhase = shown ? TryItPhase.RewriteShown : TryItPhase.Captured;
+        TryItStatus = null;
+    }
+
     private void SaveSetting(Func<AppSettings, AppSettings> update)
     {
         try
@@ -465,6 +650,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(StepText));
         OnPropertyChanged(nameof(CanAdvance));
         OnPropertyChanged(nameof(DoneBody));
+        OnPropertyChanged(nameof(TryItBody));
     }
 
     private void RefreshGating()

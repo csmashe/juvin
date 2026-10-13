@@ -31,7 +31,7 @@ The native host manifest allowlists these IDs, so they must not change.
 3. Load the extension:
    - Chrome: open `chrome://extensions`, turn on Developer mode, choose "Load unpacked", and pick `extension/dist/chrome`.
    - Firefox: `npx web-ext run --source-dir dist/firefox` from `extension/`.
-4. Open the Juvin popup, check that it says "Connected to Juvin", and use "Open test page" to try a capture without Gmail.
+4. Open the Juvin popup, check that it says "Connected to Juvin", and use "Open test page" to try a capture without Gmail. The setup wizard's Try it step opens the same page by sending `testpage.request`.
 
 The rewrite shortcut is `Ctrl+Shift+F` (`Command+Shift+F` on macOS); Ctrl+Shift+Y was dropped because Firefox on Linux binds it to Downloads and its own shortcuts win over extension commands. Change it on the browser's shortcut page; the popup links to it.
 
@@ -39,7 +39,7 @@ The rewrite shortcut is `Ctrl+Shift+F` (`Command+Shift+F` on macOS); Ctrl+Shift+
 
 ## Layout
 
-- `src/background/`: native messaging connection, routing of `context.request` and `apply.request` to tabs, thread trimming to the frame cap.
+- `src/background/`: native messaging connection, routing of `context.request` and `apply.request` to tabs, opening the test page for `testpage.request`, thread trimming to the frame cap.
 - `src/content/`: site adapters, editor registry, capture, and apply. Only adapters read a site's DOM.
 - `src/popup/`: connection status, connection test, shortcut, and the all-sites permission for the generic adapter.
 - `src/test-page/`: a bundled sample thread with a reply editor, handled by the `test-page` adapter.

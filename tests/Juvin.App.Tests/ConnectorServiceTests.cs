@@ -348,6 +348,37 @@ public sealed class ConnectorServiceTests : IAsyncDisposable
         Assert.NotNull(await ping);
     }
 
+    [Fact]
+    public async Task OpenTestPage_WithNoBrowser_ReturnsNoBrowser()
+    {
+        await _service.StartAsync(CancellationToken.None);
+
+        var error = await _service.OpenTestPageAsync(s_timeout, CancellationToken.None);
+
+        Assert.Equal(ConnectorService.NoBrowserCode, error?.Code);
+    }
+
+    [Fact]
+    public async Task OpenTestPage_AsksTheConnectedClientAndReturnsItsAnswer()
+    {
+        await _service.StartAsync(CancellationToken.None);
+        await using var stream = await ConnectAndSayHelloAsync();
+
+        var opened = _service.OpenTestPageAsync(s_timeout, CancellationToken.None);
+        var request = await ReadAsync(stream);
+        Assert.Equal("testpage.request", request.GetProperty("type").GetString());
+        await WriteAsync(stream, $$"""{"v":1,"type":"testpage.response","id":"{{request.GetProperty("id").GetString()}}","ok":true}""");
+        Assert.Null(await opened);
+
+        var failed = _service.OpenTestPageAsync(s_timeout, CancellationToken.None);
+        var id = (await ReadAsync(stream)).GetProperty("id").GetString();
+        await WriteAsync(
+            stream,
+            $$$"""{"v":1,"type":"testpage.response","id":"{{{id}}}","ok":false,"error":{"code":"internal","message":"Could not open."}}"""
+        );
+        Assert.Equal("internal", (await failed)?.Code);
+    }
+
     private async Task<Stream> ConnectAndSayHelloAsync()
     {
         var connected = _service.Clients.Count;

@@ -132,6 +132,20 @@ public sealed record ApplyResponseMessage() : ConnectorMessage(ConnectorMessageT
     internal override bool IsWellFormed => Id is not null && (Ok || Error is not null);
 }
 
+public sealed record TestPageRequestMessage() : ConnectorMessage(ConnectorMessageTypes.TestPageRequest)
+{
+    internal override bool IsWellFormed => Id is not null;
+}
+
+public sealed record TestPageResponseMessage() : ConnectorMessage(ConnectorMessageTypes.TestPageResponse)
+{
+    public required bool Ok { get; init; }
+
+    public ConnectorError? Error { get; init; }
+
+    internal override bool IsWellFormed => Id is not null && (Ok || Error is not null);
+}
+
 public sealed record ErrorMessage() : ConnectorMessage(ConnectorMessageTypes.Error)
 {
     public required ConnectorError Error { get; init; }
