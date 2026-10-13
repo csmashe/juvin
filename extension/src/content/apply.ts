@@ -1,7 +1,7 @@
 import type { ApplyErrorCode } from "../shared/protocol";
 import type { ApplyResult } from "../shared/runtime-messages";
 import { editorText } from "./capture";
-import { isEditable, isTextArea, type EditorRegistry } from "./editor-registry";
+import { isEditable, isTextArea, type Editor, type EditorRegistry } from "./editor-registry";
 import { hashText } from "./hash";
 import { offsetsToRange, readPlainText } from "./plain-text";
 
@@ -13,6 +13,16 @@ export const browserExecCommand: ExecCommand = (doc, command, value) =>
 
 function failure(code: ApplyErrorCode, message: string): ApplyResult {
   return { ok: false, error: { code, message } };
+}
+
+// A rich editor keeps a run of inserted spaces visible by storing some of them as no-break spaces;
+// a textarea keeps exactly what was inserted. An editor left untouched never counts as a requested change.
+function editedAsExpected(editor: Editor, before: string, after: string, expected: string): boolean {
+  if (isTextArea(editor) || (after === before && expected !== before)) {
+    return after === expected;
+  }
+
+  return after.replaceAll("\u00a0", " ") === expected.replaceAll("\u00a0", " ");
 }
 
 /**
@@ -80,7 +90,7 @@ export async function applyReplacement(
 
   const expected = before.slice(0, offsets.start) + text + before.slice(offsets.end);
   const after = editorText(editor);
-  if (after !== expected) {
+  if (!editedAsExpected(editor, before, after, expected)) {
     if (after !== before) {
       // An unconditional Undo could take the user's own last edit.
       if (usedFallback && isTextArea(editor)) {

@@ -309,6 +309,45 @@ describe("applyReplacement", () => {
     expect(called).toBe(false);
   });
 
+  it("accepts an edit the editor stored with no-break spaces in a run of spaces", async () => {
+    const { editor, registry, hash } = await captured();
+    const exec: ExecCommand = (doc, command, value) => fakeExec(doc, command, value?.replaceAll("   ", "\u00a0 \u00a0"));
+    const result = await applyReplacement(document, registry, { editorId: "e-1", expectedHash: hash, start: 4, end: 9, text: "*   Robin" }, exec);
+    expect(result).toEqual({ ok: true });
+    expect(readPlainText(editor).text).toBe("hey *\u00a0 \u00a0Robin\napril works");
+  });
+
+  it("still reports internal when a rich editor's text differs by more than no-break spaces", async () => {
+    const { registry, hash } = await captured();
+    const exec: ExecCommand = (doc, command, value) => fakeExec(doc, command, value?.replace("Robin", "Rob\u00a0in"));
+    const result = await applyReplacement(document, registry, { editorId: "e-1", expectedHash: hash, start: 4, end: 9, text: "*   Robin" }, exec);
+    expect(!result.ok && result.error.code).toBe("internal");
+  });
+
+  it("reports internal when a rich editor is left untouched by a change that differs only in spaces", async () => {
+    document.body.innerHTML = `<div id="ed" contenteditable="true">10\u00a0kg</div>`;
+    const editor = document.getElementById("ed")!;
+    select(editor, 0, 5);
+    const registry = new EditorRegistry(() => "e-1");
+    const capture = await captureContext(document, OTHER_SITE, registry);
+    const hash = capture.ok ? capture.capture.editor.hash : "";
+    const result = await applyReplacement(document, registry, { editorId: "e-1", expectedHash: hash, start: 0, end: 5, text: "10 kg" }, () => true);
+    expect(!result.ok && result.error.code).toBe("internal");
+  });
+
+  it("keeps a textarea check exact, so a command that changed nothing is not a success", async () => {
+    document.body.innerHTML = `<textarea id="ta">10 kg</textarea>`;
+    const textarea = document.getElementById("ta") as HTMLTextAreaElement;
+    textarea.focus();
+    textarea.setSelectionRange(0, 5);
+    const registry = new EditorRegistry(() => "e-1");
+    const capture = await captureContext(document, OTHER_SITE, registry);
+    const hash = capture.ok ? capture.capture.editor.hash : "";
+    const result = await applyReplacement(document, registry, { editorId: "e-1", expectedHash: hash, start: 0, end: 5, text: "10\u00a0kg" }, () => true);
+    expect(!result.ok && result.error.code).toBe("internal");
+    expect(textarea.value).toBe("10 kg");
+  });
+
   it("normalizes CRLF in the replacement before editing and checking", async () => {
     const { editor, registry, hash } = await captured();
     const result = await applyReplacement(document, registry, { editorId: "e-1", expectedHash: hash, start: 4, end: 9, text: "Robin,\r\nhi" }, fakeExec);
