@@ -157,6 +157,92 @@ public sealed record TestPageResponseMessage() : ConnectorMessage(ConnectorMessa
     internal override bool IsWellFormed => Id is not null && (Ok || Error is not null);
 }
 
+public sealed record MenuShowMessage() : ConnectorMessage(ConnectorMessageTypes.MenuShow)
+{
+    private const int SlotCount = 5;
+
+    public required string MenuId { get; init; }
+
+    public required string EditorId { get; init; }
+
+    /// <summary>The five bubbles in key order, 1 to 5.</summary>
+    public required IReadOnlyList<ConnectorAction> Slots { get; init; }
+
+    /// <summary>The right-click list; may be empty.</summary>
+    public required IReadOnlyList<ConnectorAction> More { get; init; }
+
+    /// <summary>The status line, localized, in display order.</summary>
+    public required IReadOnlyList<string> Status { get; init; }
+
+    // ReSharper disable ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract -- System.Text.Json does not enforce element nullability
+    internal override bool IsWellFormed =>
+        Id is not null
+        && Slots.Count == SlotCount
+        && Slots.All(slot => slot is not null)
+        && More.All(action => action is not null)
+        && Status.All(line => line is not null);
+    // ReSharper restore ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract
+}
+
+public sealed record MenuResponseMessage() : ConnectorMessage(ConnectorMessageTypes.MenuResponse)
+{
+    public required bool Ok { get; init; }
+
+    public ConnectorError? Error { get; init; }
+
+    internal override bool IsWellFormed => Id is not null && (Ok || Error is not null);
+}
+
+public sealed record MenuChooseMessage() : ConnectorMessage(ConnectorMessageTypes.MenuChoose)
+{
+    public required string MenuId { get; init; }
+
+    /// <summary>An action id from the menu, or one of <see cref="MenuChoices" />.</summary>
+    public required string Action { get; init; }
+
+    /// <summary>The user's text for <see cref="MenuChoices.Custom" />; never sent with any other action.</summary>
+    public string? Instruction { get; init; }
+
+    internal override bool IsWellFormed =>
+        Action.Length > 0
+        && (Action == MenuChoices.Custom ? !string.IsNullOrWhiteSpace(Instruction) : Instruction is null);
+}
+
+public sealed record MenuUpdateMessage() : ConnectorMessage(ConnectorMessageTypes.MenuUpdate)
+{
+    public required string MenuId { get; init; }
+
+    /// <summary>One of <see cref="MenuStates" />.</summary>
+    public required string State { get; init; }
+
+    /// <summary>The running action's id; set with <see cref="MenuStates.Running" />.</summary>
+    public string? Action { get; init; }
+
+    /// <summary>The answer, the unapplied result, or the localized error; never traced.</summary>
+    public string? Text { get; init; }
+
+    /// <summary>Whether the error card offers Try again; set with <see cref="MenuStates.Error" />.</summary>
+    public bool? CanRetry { get; init; }
+
+    /// <summary>A finished rewrite that could not be applied, offered for Copy with <see cref="MenuStates.Error" />; never traced.</summary>
+    public string? Result { get; init; }
+
+    internal override bool IsWellFormed =>
+        State switch
+        {
+            MenuStates.Running => Action is not null,
+            MenuStates.Applied => true,
+            MenuStates.Answer or MenuStates.DraftChanged => Text is not null,
+            MenuStates.Error => Text is not null && CanRetry is not null,
+            _ => false,
+        };
+}
+
+public sealed record MenuCloseMessage() : ConnectorMessage(ConnectorMessageTypes.MenuClose)
+{
+    public required string MenuId { get; init; }
+}
+
 public sealed record ErrorMessage() : ConnectorMessage(ConnectorMessageTypes.Error)
 {
     public required ConnectorError Error { get; init; }

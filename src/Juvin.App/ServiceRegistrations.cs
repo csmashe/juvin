@@ -30,7 +30,7 @@ public static class ServiceRegistrations
         services.AddSingleton<Localizer>();
         AddPlatform(services);
 
-        // Probes use this client; the rewrite panel has its own with a longer timeout.
+        // Probes use this client and selector; rewrites have their own with a longer timeout.
         services.AddSingleton(_ => new HttpClient { Timeout = TimeSpan.FromSeconds(30) });
         services.AddSingleton<IProcessRunner, ProcessRunner>();
         services.AddSingleton(sp =>
@@ -46,11 +46,16 @@ public static class ServiceRegistrations
 
         // Rewrites get a longer idle limit than probes: a local model can take minutes to load.
         services.AddKeyedSingleton(RewriteHttpClientKey, (_, _) => new HttpClient { Timeout = s_rewriteTimeout });
+        services.AddKeyedSingleton(
+            RewriteHttpClientKey,
+            (sp, _) =>
+                ProviderSelector.CreateDefault(
+                    sp.GetRequiredKeyedService<HttpClient>(RewriteHttpClientKey),
+                    sp.GetRequiredService<IProcessRunner>()
+                )
+        );
         services.AddSingleton(sp => new RewritePanelViewModel(
-            ProviderSelector.CreateDefault(
-                sp.GetRequiredKeyedService<HttpClient>(RewriteHttpClientKey),
-                sp.GetRequiredService<IProcessRunner>()
-            ),
+            sp.GetRequiredKeyedService<ProviderSelector>(RewriteHttpClientKey),
             sp.GetRequiredService<ISettingsService>(),
             sp.GetRequiredService<IHistoryService>(),
             sp.GetRequiredService<Localizer>(),
@@ -58,9 +63,17 @@ public static class ServiceRegistrations
         ));
         services.AddSingleton<RewritePanelWindow>();
         services.AddSingleton(sp => new RewritePanelService(
-            sp.GetRequiredService<ConnectorService>(),
             sp.GetRequiredService<RewritePanelViewModel>(),
             sp.GetRequiredService<RewritePanelWindow>(),
+            action => Dispatcher.UIThread.Post(action)
+        ));
+        services.AddSingleton(sp => new ActionMenuService(
+            sp.GetRequiredService<ConnectorService>(),
+            sp.GetRequiredService<RewritePanelService>(),
+            sp.GetRequiredKeyedService<ProviderSelector>(RewriteHttpClientKey),
+            sp.GetRequiredService<ISettingsService>(),
+            sp.GetRequiredService<IHistoryService>(),
+            sp.GetRequiredService<Localizer>(),
             action => Dispatcher.UIThread.Post(action)
         ));
 

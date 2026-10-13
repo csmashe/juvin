@@ -92,6 +92,12 @@ public sealed class ConnectorService
     /// </summary>
     public event Action<long, ContextResult>? TriggerFailed;
 
+    /// <summary>Relays <see cref="ConnectorSession.MenuChosen" /> from every connected extension.</summary>
+    public event Action<ConnectorSession, MenuChooseMessage>? MenuChosen;
+
+    /// <summary>Relays <see cref="ConnectorSession.MenuClosed" /> from every connected extension.</summary>
+    public event Action<ConnectorSession, MenuCloseMessage>? MenuClosed;
+
     public async Task StartAsync(CancellationToken ct)
     {
         await _server.StartAsync(HandleConnectionAsync, ct);
@@ -268,6 +274,8 @@ public sealed class ConnectorService
             ClientsChanged?.Invoke();
         };
         session.ShortcutPressed += pressed => _ = CaptureAsync(pressed);
+        session.MenuChosen += (sender, choose) => MenuChosen?.Invoke(sender, choose);
+        session.MenuClosed += (sender, close) => MenuClosed?.Invoke(sender, close);
         lock (_gate)
         {
             _sessions.Add(session);

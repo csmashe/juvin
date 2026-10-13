@@ -20,15 +20,30 @@ public sealed class RewritePanelViewModelTests
     private FakeModelProvider _local = new(ProcessingMode.Local);
 
     [Fact]
-    public async Task ACapture_RunsTheDefaultActionAndStreamsIntoThePreview()
+    public async Task ACapture_LoadsIdleUntilAnActionIsPicked()
     {
-        _settings.Update(s => s with { DefaultRewriteAction = "soften" });
+        var vm = Create();
+
+        await vm.LoadAsync(_target, Capture());
+
+        Assert.Equal(RewritePanelState.Idle, vm.State);
+        Assert.True(vm.IsIdle);
+        Assert.True(vm.HasCapture);
+        Assert.Empty(_local.Requests);
+        Assert.DoesNotContain(vm.Actions, chip => chip.IsSelected);
+        Assert.False(vm.CanApply);
+    }
+
+    [Fact]
+    public async Task PickingAnAction_StreamsIntoThePreview()
+    {
         _local.CompletionGate = new TaskCompletionSource();
         var vm = Create();
 
-        var run = vm.LoadAsync(_target, Capture());
+        var run = LoadAndRunAsync(vm, Capture(), "soften");
 
         Assert.True(vm.IsRunning);
+        Assert.False(vm.IsIdle);
         Assert.Equal("rep", vm.ResultText);
         Assert.Equal("soften", vm.Actions.Single(chip => chip.IsSelected).Action.Id);
         Assert.Contains(RewriteAction.Soften.Instruction, _local.Requests[0].Messages[^1].Content);
@@ -44,15 +59,15 @@ public sealed class RewritePanelViewModelTests
     }
 
     [Fact]
-    public async Task AnUnknownDefaultAction_FallsBackToClearer()
+    public async Task Retry_WithNoActionPicked_DoesNothing()
     {
-        _settings.Update(s => s with { DefaultRewriteAction = "no-such-action" });
         var vm = Create();
-
         await vm.LoadAsync(_target, Capture());
 
-        Assert.Contains(RewriteAction.Clearer.Instruction, _local.Requests[0].Messages[^1].Content);
-        Assert.Equal("clearer", vm.Actions.Single(chip => chip.IsSelected).Action.Id);
+        await vm.RetryCommand.ExecuteAsync(null);
+
+        Assert.True(vm.IsIdle);
+        Assert.Empty(_local.Requests);
     }
 
     [Fact]
@@ -70,7 +85,7 @@ public sealed class RewritePanelViewModelTests
     public async Task PickingAChip_StartsANewSession()
     {
         var vm = Create();
-        await vm.LoadAsync(_target, Capture());
+        await LoadAndRunAsync(vm, Capture());
 
         await vm.SelectActionCommand.ExecuteAsync(vm.Actions.Single(chip => chip.Action == RewriteAction.Shorter));
 
@@ -85,7 +100,7 @@ public sealed class RewritePanelViewModelTests
     public async Task AFollowUp_KeepsTheEarlierTurns()
     {
         var vm = Create();
-        await vm.LoadAsync(_target, Capture());
+        await LoadAndRunAsync(vm, Capture());
 
         vm.FollowUpText = "  keep the deadline but sound less annoyed ";
         await vm.SendFollowUpCommand.ExecuteAsync(null);
@@ -104,7 +119,7 @@ public sealed class RewritePanelViewModelTests
     {
         _settings.Update(s => s with { RewriteInstructionOverrides = new Dictionary<string, string> { ["missing"] = "List what is unanswered." } });
         var vm = Create();
-        await vm.LoadAsync(_target, Capture());
+        await LoadAndRunAsync(vm, Capture());
 
         await vm.SelectActionCommand.ExecuteAsync(vm.Actions.Single(chip => chip.Action.Id == "missing"));
 
@@ -115,14 +130,10 @@ public sealed class RewritePanelViewModelTests
     [Fact]
     public async Task AnEditedInstruction_ReachesTheModel()
     {
-        _settings.Update(s => s with
-        {
-            DefaultRewriteAction = "soften",
-            RewriteInstructionOverrides = new Dictionary<string, string> { ["soften"] = "Be extra gentle." },
-        });
+        _settings.Update(s => s with { RewriteInstructionOverrides = new Dictionary<string, string> { ["soften"] = "Be extra gentle." } });
         var vm = Create();
 
-        await vm.LoadAsync(_target, Capture());
+        await LoadAndRunAsync(vm, Capture(), "soften");
 
         var prompt = _local.Requests[0].Messages[^1].Content;
         Assert.Contains("Be extra gentle.", prompt);
@@ -131,16 +142,12 @@ public sealed class RewritePanelViewModelTests
     }
 
     [Fact]
-    public async Task AUserAction_IsAChipAndCanBeTheDefault()
+    public async Task AUserAction_IsAChipThatRuns()
     {
-        _settings.Update(s => s with
-        {
-            CustomRewriteActions = [new CustomRewriteAction("custom-1", "Formal", "Make it formal.")],
-            DefaultRewriteAction = "custom-1",
-        });
+        _settings.Update(s => s with { CustomRewriteActions = [new CustomRewriteAction("custom-1", "Formal", "Make it formal.")] });
         var vm = Create();
 
-        await vm.LoadAsync(_target, Capture());
+        await LoadAndRunAsync(vm, Capture(), "custom-1");
 
         Assert.Equal("Formal", vm.Actions[^1].Title);
         Assert.True(vm.Actions[^1].IsSelected);
@@ -153,7 +160,7 @@ public sealed class RewritePanelViewModelTests
     {
         _settings.Update(s => s with { CustomRewriteActions = [new CustomRewriteAction("custom-1", "Formal", "Make it formal.")] });
         var vm = Create();
-        await vm.LoadAsync(_target, Capture());
+        await LoadAndRunAsync(vm, Capture());
         await vm.SelectActionCommand.ExecuteAsync(vm.Actions.Single(chip => chip.Action.Id == "custom-1"));
 
         _settings.Update(s => s with { CustomRewriteActions = [new CustomRewriteAction("custom-1", "Very formal", "Make it very formal.")] });
@@ -176,7 +183,7 @@ public sealed class RewritePanelViewModelTests
     {
         _local.CompletionGate = new TaskCompletionSource();
         var vm = Create();
-        var run = vm.LoadAsync(_target, Capture());
+        var run = LoadAndRunAsync(vm, Capture());
 
         _settings.Update(s => s with { RewriteInstructionOverrides = new Dictionary<string, string> { ["clearer"] = "Changed." } });
         _local.CompletionGate.SetResult();
@@ -191,7 +198,7 @@ public sealed class RewritePanelViewModelTests
     public async Task WhatAmIMissing_CannotBeApplied()
     {
         var vm = Create();
-        await vm.LoadAsync(_target, Capture());
+        await LoadAndRunAsync(vm, Capture());
 
         await vm.SelectActionCommand.ExecuteAsync(vm.Actions.Single(chip => chip.Action == RewriteAction.Missing));
 
@@ -208,7 +215,7 @@ public sealed class RewritePanelViewModelTests
         var vm = Create();
         var hides = 0;
         vm.HideRequested += () => hides++;
-        await vm.LoadAsync(_target, Capture());
+        await LoadAndRunAsync(vm, Capture());
 
         await vm.ApplyCommand.ExecuteAsync(null);
 
@@ -225,7 +232,7 @@ public sealed class RewritePanelViewModelTests
         var vm = Create();
         var hides = 0;
         vm.HideRequested += () => hides++;
-        await vm.LoadAsync(_target, Capture());
+        await LoadAndRunAsync(vm, Capture());
 
         await vm.ApplyCommand.ExecuteAsync(null);
 
@@ -243,7 +250,7 @@ public sealed class RewritePanelViewModelTests
     {
         _target.ApplyError = new ConnectorError("draft-changed", "The draft changed since it was captured.");
         var vm = Create();
-        await vm.LoadAsync(_target, Capture());
+        await LoadAndRunAsync(vm, Capture());
         await vm.ApplyCommand.ExecuteAsync(null);
 
         await vm.SelectActionCommand.ExecuteAsync(vm.Actions.Single(chip => chip.Action == RewriteAction.Shorter));
@@ -259,7 +266,7 @@ public sealed class RewritePanelViewModelTests
     {
         _target.ApplyError = new ConnectorError(ConnectorErrorCodes.Disconnected, "The connector connection closed.");
         var vm = Create();
-        await vm.LoadAsync(_target, Capture());
+        await LoadAndRunAsync(vm, Capture());
 
         await vm.ApplyCommand.ExecuteAsync(null);
 
@@ -273,7 +280,7 @@ public sealed class RewritePanelViewModelTests
         _local.Failure = new ProviderException(ProviderFailureKind.Unreachable, "The local model server did not respond in time.");
         var vm = Create();
 
-        await vm.LoadAsync(_target, Capture());
+        await LoadAndRunAsync(vm, Capture());
 
         Assert.True(vm.HasError);
         Assert.Equal("The local model server did not respond in time.", vm.ErrorMessage);
@@ -303,7 +310,7 @@ public sealed class RewritePanelViewModelTests
             _localizer,
             action => action()
         );
-        await vm.LoadAsync(_target, Capture());
+        await LoadAndRunAsync(vm, Capture());
         Assert.True(vm.HasError);
 
         _settings.Update(s => s with { LocalModel = "fixed" });
@@ -319,7 +326,7 @@ public sealed class RewritePanelViewModelTests
     public async Task RetryAfterAFailedFollowUp_KeepsTheEarlierTurns()
     {
         var vm = Create();
-        await vm.LoadAsync(_target, Capture());
+        await LoadAndRunAsync(vm, Capture());
         _local.Failure = new ProviderException(ProviderFailureKind.Unreachable, "The local model server did not respond in time.");
         vm.FollowUpText = "shorter please";
         await vm.SendFollowUpCommand.ExecuteAsync(null);
@@ -341,7 +348,7 @@ public sealed class RewritePanelViewModelTests
     {
         _local.Failure = new ProviderException(ProviderFailureKind.Unreachable, "The local model server did not respond in time.");
         var vm = Create();
-        await vm.LoadAsync(_target, Capture());
+        await LoadAndRunAsync(vm, Capture());
         vm.FollowUpText = "shorter please";
         await vm.SendFollowUpCommand.ExecuteAsync(null);
         Assert.True(vm.HasError);
@@ -363,7 +370,7 @@ public sealed class RewritePanelViewModelTests
     {
         _local.CompletionGate = new TaskCompletionSource();
         var vm = Create();
-        var run = vm.LoadAsync(_target, Capture());
+        var run = LoadAndRunAsync(vm, Capture());
 
         vm.CancelCommand.Execute(null);
         await run;
@@ -380,7 +387,7 @@ public sealed class RewritePanelViewModelTests
         var vm = Create();
         var hides = 0;
         vm.HideRequested += () => hides++;
-        var run = vm.LoadAsync(_target, Capture());
+        var run = LoadAndRunAsync(vm, Capture());
 
         vm.CloseCommand.Execute(null);
         await run;
@@ -390,19 +397,20 @@ public sealed class RewritePanelViewModelTests
     }
 
     [Fact]
-    public async Task ANewCapture_ReplacesTheOneRunning()
+    public async Task ANewCapture_ReplacesTheOneRunningAndLoadsIdle()
     {
         _local.CompletionGate = new TaskCompletionSource();
         var vm = Create();
-        var first = vm.LoadAsync(_target, Capture(adapter: "generic"));
+        var first = LoadAndRunAsync(vm, Capture(adapter: "generic"));
         var second = vm.LoadAsync(new FakeRewriteTarget(), Capture(adapter: "gmail"));
 
         _local.CompletionGate.SetResult();
         await Task.WhenAll(first, second);
 
-        Assert.Equal(RewritePanelState.Done, vm.State);
+        Assert.True(vm.IsIdle);
+        Assert.Equal("", vm.ResultText);
         Assert.Equal("Gmail", vm.AdapterLabel);
-        Assert.Equal(2, _local.Requests.Count);
+        Assert.Single(_local.Requests);
     }
 
     [Fact]
@@ -421,10 +429,10 @@ public sealed class RewritePanelViewModelTests
     }
 
     [Fact]
-    public async Task Recapture_ReplacesTheCaptureAndRerunsTheCurrentAction()
+    public async Task Recapture_ReplacesTheCaptureAndRerunsThePickedAction()
     {
         var vm = Create();
-        await vm.LoadAsync(_target, Capture());
+        await LoadAndRunAsync(vm, Capture());
         await vm.SelectActionCommand.ExecuteAsync(vm.Actions.Single(chip => chip.Action == RewriteAction.Grammar));
         _target.NextCapture = Capture(adapter: "test-page");
 
@@ -439,10 +447,38 @@ public sealed class RewritePanelViewModelTests
     }
 
     [Fact]
-    public async Task Recapture_IsAvailableAgainWhileTheNewRewriteRuns()
+    public async Task Recapture_WithNoActionPicked_LoadsTheNewCaptureIdle()
     {
         var vm = Create();
         await vm.LoadAsync(_target, Capture());
+        _target.NextCapture = Capture(adapter: "test-page");
+
+        await vm.RecaptureCommand.ExecuteAsync(null);
+
+        Assert.Equal("Test page", vm.AdapterLabel);
+        Assert.True(vm.IsIdle);
+        Assert.Empty(_local.Requests);
+    }
+
+    [Fact]
+    public async Task ANewCapture_ForgetsTheActionPickedForTheLastOne()
+    {
+        var vm = Create();
+        await LoadAndRunAsync(vm, Capture(), "grammar");
+        await vm.LoadAsync(_target, Capture(editorId: "e-2"));
+        _target.NextCapture = Capture(editorId: "e-3");
+
+        await vm.RecaptureCommand.ExecuteAsync(null);
+
+        Assert.True(vm.IsIdle);
+        Assert.Single(_local.Requests);
+    }
+
+    [Fact]
+    public async Task Recapture_IsAvailableAgainWhileTheNewRewriteRuns()
+    {
+        var vm = Create();
+        await LoadAndRunAsync(vm, Capture());
         _local.CompletionGate = new TaskCompletionSource();
         _target.NextCapture = Capture(editorId: "e-2");
 
@@ -458,7 +494,7 @@ public sealed class RewritePanelViewModelTests
     public async Task Recapture_AsksForTheEditorOfTheLatestCapture()
     {
         var vm = Create();
-        await vm.LoadAsync(_target, Capture(editorId: "e-1"));
+        await LoadAndRunAsync(vm, Capture(editorId: "e-1"));
         _target.NextCapture = Capture(editorId: "e-2");
         await vm.RecaptureCommand.ExecuteAsync(null);
 
@@ -475,7 +511,7 @@ public sealed class RewritePanelViewModelTests
     public async Task AFailedRecapture_KeepsTheResultAndShowsANotice()
     {
         var vm = Create();
-        await vm.LoadAsync(_target, Capture());
+        await LoadAndRunAsync(vm, Capture());
         _target.NextCapture = new ContextResult(null, new ConnectorError("editor-gone", "The editor is no longer open."));
 
         await vm.RecaptureCommand.ExecuteAsync(null);
@@ -497,7 +533,7 @@ public sealed class RewritePanelViewModelTests
     {
         var vm = Create(BuilderKeeping(included));
 
-        await vm.LoadAsync(_target, Capture());
+        await LoadAndRunAsync(vm, Capture());
 
         Assert.Equal(included, vm.ContextMessages.Count);
         Assert.Equal("Me <me@example.com>", vm.ContextMessages[^1].From);
@@ -511,7 +547,7 @@ public sealed class RewritePanelViewModelTests
         _local.CompletionGate = new TaskCompletionSource();
         var vm = Create(BuilderKeeping(1));
 
-        var run = vm.LoadAsync(_target, Capture());
+        var run = LoadAndRunAsync(vm, Capture());
 
         Assert.Equal(2, vm.ContextMessages.Count);
         Assert.False(vm.HasOlderMessagesHint);
@@ -526,7 +562,7 @@ public sealed class RewritePanelViewModelTests
     public async Task ARecaptureAnsweredAfterClose_IsCancelledAndDiscarded()
     {
         var vm = Create();
-        await vm.LoadAsync(_target, Capture());
+        await LoadAndRunAsync(vm, Capture());
         _target.RecaptureGate = new TaskCompletionSource<ContextResult>();
 
         var recapture = vm.RecaptureCommand.ExecuteAsync(null);
@@ -546,7 +582,7 @@ public sealed class RewritePanelViewModelTests
     public async Task AFollowUpAfterWhatAmIMissing_CannotBeApplied()
     {
         var vm = Create();
-        await vm.LoadAsync(_target, Capture());
+        await LoadAndRunAsync(vm, Capture());
         await vm.SelectActionCommand.ExecuteAsync(vm.Actions.Single(chip => chip.Action == RewriteAction.Missing));
 
         vm.FollowUpText = "what about the budget?";
@@ -561,7 +597,7 @@ public sealed class RewritePanelViewModelTests
     public async Task AFollowUpAfterClearer_CanBeApplied()
     {
         var vm = Create();
-        await vm.LoadAsync(_target, Capture());
+        await LoadAndRunAsync(vm, Capture());
         await vm.SelectActionCommand.ExecuteAsync(vm.Actions.Single(chip => chip.Action == RewriteAction.Clearer));
 
         vm.FollowUpText = "shorter please";
@@ -578,7 +614,7 @@ public sealed class RewritePanelViewModelTests
         _local = new FakeModelProvider(ProcessingMode.Local) { SupportsStreaming = false, CompletionGate = new TaskCompletionSource() };
         var vm = Create();
 
-        var run = vm.LoadAsync(_target, Capture());
+        var run = LoadAndRunAsync(vm, Capture());
 
         Assert.True(vm.IsWorking);
         Assert.Equal("Working with Fake Local...", vm.WorkingText);
@@ -602,7 +638,7 @@ public sealed class RewritePanelViewModelTests
     {
         var vm = Create();
 
-        await vm.LoadAsync(_target, Capture(completeness, collapsed));
+        await LoadAndRunAsync(vm, Capture(completeness, collapsed));
 
         Assert.Equal(expected, vm.CompletenessLabel);
         Assert.Equal("Gmail", vm.AdapterLabel);
@@ -618,7 +654,7 @@ public sealed class RewritePanelViewModelTests
         _settings.Update(s => s with { ProcessingMode = ProcessingMode.Codex });
         var vm = Create();
 
-        await vm.LoadAsync(_target, Capture());
+        await LoadAndRunAsync(vm, Capture());
 
         Assert.Equal("Codex: cloud", vm.ProviderLabel);
         Assert.Single(_codex.Requests);
@@ -630,7 +666,7 @@ public sealed class RewritePanelViewModelTests
     {
         _local.Reply = _ => "hi Dana, I can send it Friday";
         var vm = Create();
-        await vm.LoadAsync(_target, Capture());
+        await LoadAndRunAsync(vm, Capture());
 
         Assert.Empty(vm.Changes);
         vm.ShowChangesViewCommand.Execute(null);
@@ -650,7 +686,7 @@ public sealed class RewritePanelViewModelTests
             copied.Add(text);
             return Task.CompletedTask;
         };
-        await vm.LoadAsync(_target, Capture());
+        await LoadAndRunAsync(vm, Capture());
 
         await vm.CopyCommand.ExecuteAsync(null);
 
@@ -664,7 +700,7 @@ public sealed class RewritePanelViewModelTests
         _settings.Update(s => s with { HistoryEnabled = true, HistoryRetentionDays = 7 });
         var vm = Create();
 
-        await vm.LoadAsync(_target, Capture());
+        await LoadAndRunAsync(vm, Capture());
         vm.FollowUpText = "shorter please";
         await vm.SendFollowUpCommand.ExecuteAsync(null);
 
@@ -698,7 +734,7 @@ public sealed class RewritePanelViewModelTests
         _settings.Update(s => s with { HistoryEnabled = true, ProvenanceCaptureEnabled = true });
         var vm = Create();
 
-        await vm.LoadAsync(_target, Capture());
+        await LoadAndRunAsync(vm, Capture());
         vm.FollowUpText = "shorter please";
         await vm.SendFollowUpCommand.ExecuteAsync(null);
 
@@ -714,7 +750,7 @@ public sealed class RewritePanelViewModelTests
     {
         _settings.Update(s => s with { HistoryEnabled = true });
         var vm = Create();
-        await vm.LoadAsync(_target, Capture());
+        await LoadAndRunAsync(vm, Capture());
         _settings.Update(s => s with { ProvenanceCaptureEnabled = true });
 
         vm.FollowUpText = "shorter please";
@@ -729,7 +765,7 @@ public sealed class RewritePanelViewModelTests
     {
         _settings.Update(s => s with { HistoryEnabled = true, ProvenanceCaptureEnabled = true });
         var vm = Create();
-        await vm.LoadAsync(_target, Capture());
+        await LoadAndRunAsync(vm, Capture());
         _settings.Update(s => s with { ProvenanceCaptureEnabled = false });
 
         vm.FollowUpText = "shorter please";
@@ -745,7 +781,7 @@ public sealed class RewritePanelViewModelTests
     {
         var vm = Create();
 
-        await vm.LoadAsync(_target, Capture());
+        await LoadAndRunAsync(vm, Capture());
         await vm.ApplyCommand.ExecuteAsync(null);
 
         Assert.Empty(_history.Entries);
@@ -757,7 +793,7 @@ public sealed class RewritePanelViewModelTests
     {
         _settings.Update(s => s with { HistoryEnabled = true });
         var vm = Create();
-        await vm.LoadAsync(_target, Capture());
+        await LoadAndRunAsync(vm, Capture());
         await vm.SelectActionCommand.ExecuteAsync(vm.Actions.Single(chip => chip.Action == RewriteAction.Shorter));
 
         await vm.ApplyCommand.ExecuteAsync(null);
@@ -772,7 +808,7 @@ public sealed class RewritePanelViewModelTests
         _settings.Update(s => s with { HistoryEnabled = true });
         _target.ApplyError = new ConnectorError("draft-changed", "The draft changed since it was captured.");
         var vm = Create();
-        await vm.LoadAsync(_target, Capture());
+        await LoadAndRunAsync(vm, Capture());
 
         await vm.ApplyCommand.ExecuteAsync(null);
 
@@ -786,7 +822,7 @@ public sealed class RewritePanelViewModelTests
         _local.Failure = new ProviderException(ProviderFailureKind.Unreachable, "The local model server did not respond in time.");
         var vm = Create();
 
-        await vm.LoadAsync(_target, Capture());
+        await LoadAndRunAsync(vm, Capture());
 
         Assert.True(vm.HasError);
         Assert.Empty(_history.Entries);
@@ -799,12 +835,19 @@ public sealed class RewritePanelViewModelTests
         _history.Failure = new IOException("disk full");
         var vm = Create();
 
-        await vm.LoadAsync(_target, Capture());
+        await LoadAndRunAsync(vm, Capture());
         await vm.ApplyCommand.ExecuteAsync(null);
 
         Assert.Equal(RewritePanelState.Done, vm.State);
         Assert.Equal("reply 1", vm.ResultText);
         Assert.Single(_target.Applied);
+    }
+
+    /// <summary>Loads a capture, which leaves the panel idle, then picks the action as the user would.</summary>
+    private Task LoadAndRunAsync(RewritePanelViewModel vm, ContextResult capture, string actionId = "clearer")
+    {
+        _ = vm.LoadAsync(_target, capture);
+        return vm.SelectActionCommand.ExecuteAsync(vm.Actions.Single(chip => chip.Action.Id == actionId));
     }
 
     private RewritePanelViewModel Create(RewritePromptBuilder? builder = null) =>

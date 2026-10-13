@@ -108,7 +108,6 @@ internal sealed class FakeProviders
                 ),
                 _ => new FakeModelProvider(ProcessingMode.Codex, Codex)
             ),
-            new HttpClient(),
             localizer
         );
 }

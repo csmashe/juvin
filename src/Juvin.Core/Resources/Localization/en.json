@@ -130,9 +130,6 @@
   "Wizard.Shortcut.Body": "This shortcut captures the draft you are writing and opens the rewrite panel. Press it once to make sure Juvin hears it.",
   "RewriteActions.Title": "Rewrite actions",
   "RewriteActions.Subtitle": "What Juvin can do to a draft.",
-  "RewriteActions.DefaultLabel": "DEFAULT ACTION",
-  "RewriteActions.Default": "Default action",
-  "RewriteActions.DefaultHint": "Runs as soon as a capture arrives. Pick a different action in the panel at any time.",
   "RewriteActions.BuiltInLabel": "BUILT-IN ACTIONS",
   "RewriteActions.BuiltInHint": "Edit what each action asks the model to do. Reset brings back the original.",
   "RewriteActions.MissingHint": "Returns advice, not a rewrite, so Apply is disabled for it.",
@@ -140,7 +137,7 @@
   "RewriteActions.Reset": "Reset",
   "RewriteActions.InstructionInvalid": "Enter an instruction of up to 2,000 characters. It is saved once it fits.",
   "RewriteActions.CustomLabel": "CUSTOM ACTIONS",
-  "RewriteActions.CustomHint": "Your own instructions. They appear as chips in the panel and can be the default.",
+  "RewriteActions.CustomHint": "Your own instructions. They appear as chips in the panel.",
   "RewriteActions.TitlePlaceholder": "Name, for example Make it formal",
   "RewriteActions.InstructionPlaceholder": "What the model should do with the draft",
   "RewriteActions.TitleInvalid": "Enter a name of up to 40 characters. The action is saved once it has a name and an instruction.",
@@ -341,6 +338,7 @@
   "Panel.Retry": "Try again",
   "Panel.Cancelled": "The rewrite was cancelled.",
   "Panel.Working": "Working with {0}...",
+  "Panel.PickAction": "Pick an action above to rewrite the draft.",
   "Panel.View.Rewrite": "Rewrite",
   "Panel.View.Changes": "Changes",
   "Panel.Context": "Context sent to the model",
@@ -381,5 +379,6 @@
   "Panel.Error.Disconnected": "The browser disconnected. Copy the rewrite, or press the shortcut again in the browser.",
   "Panel.Error.Timeout": "The browser did not answer in time. Try again.",
   "Panel.Error.TooLarge": "The rewrite is too large to send to the browser. Copy it instead.",
-  "Panel.Error.Unknown": "The browser could not complete the request."
+  "Panel.Error.Unknown": "The browser could not complete the request.",
+  "Menu.Error.UnknownAction": "That action is no longer available. Press the shortcut again to see the current actions."
 }

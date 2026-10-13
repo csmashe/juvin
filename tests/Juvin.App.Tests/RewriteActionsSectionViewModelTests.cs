@@ -105,7 +105,6 @@ public sealed class RewriteActionsSectionViewModelTests
         Assert.Equal(new CustomRewriteAction(row.Id, "Formal", "Make it formal."), Assert.Single(_settings.Current.CustomRewriteActions));
         Assert.StartsWith("custom-", row.Id);
         Assert.Same(row, Assert.Single(vm.CustomActions));
-        Assert.Contains(vm.DefaultOptions, option => option.Id == row.Id && option.Title == "Formal");
     }
 
     [Fact]
@@ -147,19 +146,6 @@ public sealed class RewriteActionsSectionViewModelTests
 
         Assert.Empty(vm.CustomActions);
         Assert.Empty(_settings.Current.CustomRewriteActions);
-        Assert.DoesNotContain(vm.DefaultOptions, option => option.Id == "custom-1");
-    }
-
-    [Fact]
-    public void RemovingTheDefaultAction_ResetsTheDefaultToClearer()
-    {
-        var vm = CreateWithFormal();
-        vm.SelectedDefault = vm.DefaultOptions.Single(option => option.Id == "custom-1");
-
-        vm.CustomActions[0].RemoveCommand.Execute(null);
-
-        Assert.Equal("clearer", _settings.Current.DefaultRewriteAction);
-        Assert.Equal("clearer", vm.SelectedDefault?.Id);
     }
 
     [Fact]
@@ -175,30 +161,6 @@ public sealed class RewriteActionsSectionViewModelTests
     }
 
     [Fact]
-    public void TheDefaultPicker_ListsEveryActionButCustomAndSaves()
-    {
-        var vm = CreateWithFormal();
-
-        Assert.Equal(
-            ["Soften", "Make clearer", "Make shorter", "Fix grammar", "What am I missing?", "Formal"],
-            vm.DefaultOptions.Select(option => option.Title)
-        );
-        Assert.Equal("clearer", vm.SelectedDefault?.Id);
-
-        vm.SelectedDefault = vm.DefaultOptions[^1];
-
-        Assert.Equal("custom-1", _settings.Current.DefaultRewriteAction);
-    }
-
-    [Fact]
-    public void AnUnknownDefault_ShowsClearer()
-    {
-        _settings.Update(s => s with { DefaultRewriteAction = "gone" });
-
-        Assert.Equal("clearer", Create().SelectedDefault?.Id);
-    }
-
-    [Fact]
     public void AnExternalChange_RefreshesTheRows()
     {
         var vm = Create();
@@ -209,14 +171,12 @@ public sealed class RewriteActionsSectionViewModelTests
         {
             RewriteInstructionOverrides = new Dictionary<string, string> { ["shorter"] = "Halve it." },
             CustomRewriteActions = [new CustomRewriteAction("custom-1", "Formal", "Make it formal.")],
-            DefaultRewriteAction = "custom-1",
         });
 
         Assert.Equal("Halve it.", Row(vm, "shorter").Instruction);
         Assert.True(Row(vm, "shorter").IsEdited);
         Assert.Equal([unfinished.Id, "custom-1"], vm.CustomActions.Select(row => row.Id));
         Assert.Equal("Formal", vm.CustomActions[1].Title);
-        Assert.Equal("custom-1", vm.SelectedDefault?.Id);
     }
 
     [Fact]
@@ -259,41 +219,10 @@ public sealed class RewriteActionsSectionViewModelTests
         _settings.UpdateFailure = null;
 
         _settings.Update(s => s with { CloseToTray = false });
-        vm.SelectedDefault = vm.DefaultOptions[0];
 
         Assert.True(vm.HasSaveError);
         Assert.Equal("Be gentle.", Row(vm, "soften").Instruction);
         Assert.Equal(["Renamed", "Brief"], vm.CustomActions.Select(row => row.Title));
-        Assert.Equal("soften", _settings.Current.DefaultRewriteAction);
-    }
-
-    [Fact]
-    public void AFailedDefaultChange_DoesNotBlockRowRefreshes()
-    {
-        var vm = Create();
-        _settings.UpdateFailure = new IOException("disk full");
-        vm.SelectedDefault = vm.DefaultOptions[0];
-        _settings.UpdateFailure = null;
-
-        _settings.Update(s => s with { RewriteInstructionOverrides = new Dictionary<string, string> { ["soften"] = "Be gentle." } });
-        Assert.Equal("Be gentle.", Row(vm, "soften").Instruction);
-
-        vm.SelectedDefault = vm.DefaultOptions[0];
-        Assert.False(vm.HasSaveError);
-        Assert.Equal("soften", _settings.Current.DefaultRewriteAction);
-    }
-
-    [Fact]
-    public void AFailedDefaultChange_ShowsTheSavedDefault()
-    {
-        var vm = Create();
-        _settings.UpdateFailure = new IOException("disk full");
-
-        vm.SelectedDefault = vm.DefaultOptions[0];
-
-        Assert.True(vm.HasSaveError);
-        Assert.Equal("clearer", vm.SelectedDefault?.Id);
-        Assert.Equal("clearer", _settings.Current.DefaultRewriteAction);
     }
 
     private static BuiltInActionRow Row(RewriteActionsSectionViewModel vm, string id) =>

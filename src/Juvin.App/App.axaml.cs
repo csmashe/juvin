@@ -86,9 +86,11 @@ public class App : Application
         commands.ShowRequested += () => Dispatcher.UIThread.Post(() => ShowMainWindow(main));
         _ = StartControlSocketAsync(services.GetRequiredService<ILocalSocketServer>(), commands);
 
-        // The panel subscribes before the connector starts so no capture goes unanswered.
+        // The menu subscribes before the connector starts so no capture goes unanswered.
         var panel = services.GetRequiredService<RewritePanelService>();
         panel.Start();
+        var menu = services.GetRequiredService<ActionMenuService>();
+        menu.Start();
         var connector = services.GetRequiredService<ConnectorService>();
         _ = StartConnectorAsync(connector);
 
@@ -100,6 +102,7 @@ public class App : Application
         desktop.Exit += (_, _) =>
         {
             _exiting = true;
+            menu.Stop();
             panel.Stop();
             // Bounded: a backend may be mid-way through a desktop command, and shutdown must not hang on it.
             if (!hotkeys.StopAsync().Wait(s_hotkeyStopTimeout))

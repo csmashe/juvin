@@ -6,6 +6,10 @@ import {
   contextOk,
   errorMessage,
   hello,
+  menuChoose,
+  menuClose,
+  menuError,
+  menuOk,
   parseIncoming,
   ping,
   pong,
@@ -50,6 +54,21 @@ const spec = {
   testPageRequest: `{"v":1,"type":"testpage.request","id":"t1"}`,
   testPageOk: `{"v":1,"type":"testpage.response","id":"t1","ok":true}`,
   testPageError: `{"v":1,"type":"testpage.response","id":"t1","ok":false,"error":{"code":"internal","message":"The sample page could not be opened."}}`,
+  menuShow: `{"v":1,"type":"menu.show","id":"m1","menuId":"menu-4","editorId":"e-7f3a",
+ "slots":[{"id":"missing","title":"What am I missing?"},{"id":"soften","title":"Soften"},{"id":"clearer","title":"Make clearer"},{"id":"shorter","title":"Make shorter"},{"id":"grammar","title":"Fix grammar"}],
+ "more":[{"id":"custom-3f2a9b","title":"Pirate voice"}],
+ "status":["6 messages","Entire thread","Private server: qwen3.5:27b"]}`,
+  menuOk: `{"v":1,"type":"menu.response","id":"m1","ok":true}`,
+  menuError: `{"v":1,"type":"menu.response","id":"m1","ok":false,"error":{"code":"unsupported","message":"This page cannot show the menu."}}`,
+  menuChoose: `{"v":1,"type":"menu.choose","menuId":"menu-4","action":"soften"}`,
+  menuChooseCustom: `{"v":1,"type":"menu.choose","menuId":"menu-4","action":"custom","instruction":"Make it sound less formal."}`,
+  menuRunning: `{"v":1,"type":"menu.update","menuId":"menu-4","state":"running","action":"soften"}`,
+  menuApplied: `{"v":1,"type":"menu.update","menuId":"menu-4","state":"applied"}`,
+  menuAnswer: `{"v":1,"type":"menu.update","menuId":"menu-4","state":"answer","text":"- The draft does not answer the question about the deadline."}`,
+  menuDraftChanged: `{"v":1,"type":"menu.update","menuId":"menu-4","state":"draft-changed","text":"Hi team, thank you for the update..."}`,
+  menuFailed: `{"v":1,"type":"menu.update","menuId":"menu-4","state":"error","text":"The model did not answer in time.","canRetry":true}`,
+  menuUnapplied: `{"v":1,"type":"menu.update","menuId":"menu-4","state":"error","text":"Copy the rewrite instead.","canRetry":false,"result":"Hi team, thank you for the update..."}`,
+  menuClose: `{"v":1,"type":"menu.close","menuId":"menu-4"}`,
   error: `{"v":1,"type":"error","id":"c1","error":{"code":"unknown-type","message":"Unknown message type."}}`,
 };
 
@@ -82,6 +101,20 @@ describe("messages the extension sends", () => {
     expect(testPageError("t1", { code: "internal", message: "The sample page could not be opened." })).toEqual(json(spec.testPageError));
   });
 
+  it("builds both menu.response shapes", () => {
+    expect(menuOk("m1")).toEqual(json(spec.menuOk));
+    expect(menuError("m1", { code: "unsupported", message: "This page cannot show the menu." })).toEqual(json(spec.menuError));
+  });
+
+  it("builds menu.choose with an instruction only when given one", () => {
+    expect(menuChoose("menu-4", "soften")).toEqual(json(spec.menuChoose));
+    expect(menuChoose("menu-4", "custom", "Make it sound less formal.")).toEqual(json(spec.menuChooseCustom));
+  });
+
+  it("builds menu.close", () => {
+    expect(menuClose("menu-4")).toEqual(json(spec.menuClose));
+  });
+
   it("builds error with and without an id", () => {
     expect(errorMessage("c1", "unknown-type", "Unknown message type.")).toEqual(json(spec.error));
     expect(errorMessage(undefined, "bad-message", "x")).not.toHaveProperty("id");
@@ -99,6 +132,14 @@ describe("parseIncoming", () => {
     ["apply.request", spec.applyRequest],
     ["apply.request with Markdown", spec.markdownApplyRequest],
     ["testpage.request", spec.testPageRequest],
+    ["menu.show", spec.menuShow],
+    ["menu.update running", spec.menuRunning],
+    ["menu.update applied", spec.menuApplied],
+    ["menu.update answer", spec.menuAnswer],
+    ["menu.update draft-changed", spec.menuDraftChanged],
+    ["menu.update error", spec.menuFailed],
+    ["menu.update error with the unapplied result", spec.menuUnapplied],
+    ["menu.close", spec.menuClose],
     ["error", spec.error],
   ])("accepts the spec example for %s", (_, text) => {
     const result = parseIncoming(json(text));
@@ -155,5 +196,50 @@ describe("parseIncoming", () => {
     expect(parseIncoming({ v: 1, type: "apply.request", id: "a1", editorId: "e-1", expectedHash: "sha256:00", start: 0, end: 1, text: "t", format: "html" }).ok).toBe(false);
     expect(parseIncoming({ v: 1, type: "apply.request", id: "a1", editorId: "e-1", expectedHash: "sha256:00", start: 0, end: 1, text: "t", format: "markdown" }).ok).toBe(false);
     expect(parseIncoming({ v: 1, type: "config", actions: [], adapters: [], shortcut: "x", health: { mode: "cloud", modelReachable: null } }).ok).toBe(false);
+  });
+});
+
+describe("parseIncoming for the action menu", () => {
+  const menu = (): Record<string, unknown> => json(spec.menuShow) as Record<string, unknown>;
+  const slots = (): unknown[] => menu().slots as unknown[];
+
+  it("drops unknown properties from menu.show and its actions", () => {
+    const raw = { ...menu(), extra: 1, slots: slots().map((slot) => ({ ...(slot as object), icon: "x" })) };
+    expect(parseIncoming(raw)).toEqual({ ok: true, message: json(spec.menuShow) });
+  });
+
+  it.each([
+    ["no id", { id: undefined }],
+    ["no menuId", { menuId: undefined }],
+    ["a numeric menuId", { menuId: 4 }],
+    ["no editorId", { editorId: undefined }],
+    ["four slots", { slots: slots().slice(0, 4) }],
+    ["six slots", { slots: [...slots(), { id: "extra", title: "Extra" }] }],
+    ["a slot without a title", { slots: [...slots().slice(0, 4), { id: "grammar" }] }],
+    ["a slot that is not an action", { slots: [...slots().slice(0, 4), "grammar"] }],
+    ["no more list", { more: undefined }],
+    ["a more entry that is not an action", { more: [{ id: 7, title: "Pirate voice" }] }],
+    ["no status", { status: undefined }],
+    ["a status that is not text", { status: ["6 messages", 6] }],
+  ])("rejects menu.show with %s", (_, change) => {
+    expect(parseIncoming({ ...menu(), ...change })).toMatchObject({ ok: false, reply: { error: { code: "bad-message" } } });
+  });
+
+  it.each([
+    ["no menuId", { v: 1, type: "menu.update", state: "applied" }],
+    ["an unknown state", { v: 1, type: "menu.update", menuId: "menu-4", state: "done" }],
+    ["running without an action", { v: 1, type: "menu.update", menuId: "menu-4", state: "running" }],
+    ["an answer without text", { v: 1, type: "menu.update", menuId: "menu-4", state: "answer" }],
+    ["draft-changed without text", { v: 1, type: "menu.update", menuId: "menu-4", state: "draft-changed" }],
+    ["an error without canRetry", { v: 1, type: "menu.update", menuId: "menu-4", state: "error", text: "Failed." }],
+    ["an error without text", { v: 1, type: "menu.update", menuId: "menu-4", state: "error", canRetry: false }],
+    ["menu.close without a menuId", { v: 1, type: "menu.close" }],
+  ])("rejects %s", (_, raw) => {
+    expect(parseIncoming(raw)).toMatchObject({ ok: false, reply: { error: { code: "bad-message" } } });
+  });
+
+  it("keeps only the fields each menu.update state carries", () => {
+    const result = parseIncoming({ v: 1, type: "menu.update", menuId: "menu-4", state: "applied", text: "stray", canRetry: true });
+    expect(result).toEqual({ ok: true, message: json(spec.menuApplied) });
   });
 });
