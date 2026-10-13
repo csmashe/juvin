@@ -260,6 +260,71 @@
             </TabItem>
 
             <TabItem>
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Spacing="14" Margin="0,0,14,0">
+                        <TextBlock Classes="page-title" Text="{loc:Str Wizard.TryIt.Title}" />
+                        <TextBlock Classes="page-subtitle" Text="{Binding TryItBody}" />
+                        <Border Classes="panel">
+                            <StackPanel>
+                                <Border Classes="section-row">
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                                        <TextBlock Classes="row-hint"
+                                                   Margin="0"
+                                                   VerticalAlignment="Center"
+                                                   Text="{loc:Str Wizard.TryIt.Hint}"
+                                                   IsVisible="{Binding IsBrowserConnected}" />
+                                        <TextBlock Grid.Column="0"
+                                                   Classes="row-hint"
+                                                   Margin="0"
+                                                   VerticalAlignment="Center"
+                                                   Text="{loc:Str Wizard.TryIt.NoBrowser}"
+                                                   IsVisible="{Binding !IsBrowserConnected}" />
+                                        <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
+                                            <Button Content="{loc:Str Wizard.TryIt.OpenSample}"
+                                                    HorizontalAlignment="Stretch"
+                                                    Command="{Binding OpenSampleCommand}"
+                                                    IsEnabled="{Binding CanOpenSample}" />
+                                            <ProgressBar IsIndeterminate="True" Height="4" IsVisible="{Binding IsOpeningSample}" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                                <Border Classes="section-row divided">
+                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                                        <ic:SymbolIcon Classes="status"
+                                                       Classes.satisfied="{Binding IsSampleOpened}"
+                                                       Symbol="{Binding SampleOpenedSymbol}"
+                                                       VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Classes="row-title" Text="{loc:Str Wizard.TryIt.SampleOpened}" VerticalAlignment="Center" />
+                                    </Grid>
+                                </Border>
+                                <Border Classes="section-row divided">
+                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                                        <ic:SymbolIcon Classes="status"
+                                                       Classes.satisfied="{Binding IsCaptured}"
+                                                       Symbol="{Binding CapturedSymbol}"
+                                                       VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Classes="row-title" Text="{loc:Str Wizard.TryIt.Captured}" VerticalAlignment="Center" />
+                                    </Grid>
+                                </Border>
+                                <Border Classes="section-row divided">
+                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                                        <ic:SymbolIcon Classes="status"
+                                                       Classes.satisfied="{Binding IsRewriteShown}"
+                                                       Symbol="{Binding RewriteShownSymbol}"
+                                                       VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Classes="row-title" Text="{loc:Str Wizard.TryIt.RewriteShown}" VerticalAlignment="Center" />
+                                    </Grid>
+                                </Border>
+                                <Border Classes="section-row divided" IsVisible="{Binding HasTryItStatus}">
+                                    <TextBlock Classes="row-hint" Margin="0" Text="{Binding TryItStatus}" />
+                                </Border>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem>
                 <StackPanel Spacing="14">
                     <TextBlock Classes="page-title" Text="{loc:Str Wizard.Done.Title}" />
                     <TextBlock Classes="page-subtitle" Text="{Binding DoneBody}" />

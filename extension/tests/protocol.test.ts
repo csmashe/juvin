@@ -10,6 +10,8 @@ import {
   ping,
   pong,
   shortcutPressed,
+  testPageError,
+  testPageOk,
   type Capture,
 } from "../src/shared/protocol";
 
@@ -44,6 +46,9 @@ const spec = {
   applyRequest: `{"v":1,"type":"apply.request","id":"a1","editorId":"e-7f3a","expectedHash":"sha256:9f86d0...","start":0,"end":118,"text":"Hi team, thank you for the update..."}`,
   applyOk: `{"v":1,"type":"apply.response","id":"a1","ok":true}`,
   applyError: `{"v":1,"type":"apply.response","id":"a1","ok":false,"error":{"code":"draft-changed","message":"The draft changed since it was captured."}}`,
+  testPageRequest: `{"v":1,"type":"testpage.request","id":"t1"}`,
+  testPageOk: `{"v":1,"type":"testpage.response","id":"t1","ok":true}`,
+  testPageError: `{"v":1,"type":"testpage.response","id":"t1","ok":false,"error":{"code":"internal","message":"The sample page could not be opened."}}`,
   error: `{"v":1,"type":"error","id":"c1","error":{"code":"unknown-type","message":"Unknown message type."}}`,
 };
 
@@ -71,6 +76,11 @@ describe("messages the extension sends", () => {
     expect(applyError("a1", { code: "draft-changed", message: "The draft changed since it was captured." })).toEqual(json(spec.applyError));
   });
 
+  it("builds both testpage.response shapes", () => {
+    expect(testPageOk("t1")).toEqual(json(spec.testPageOk));
+    expect(testPageError("t1", { code: "internal", message: "The sample page could not be opened." })).toEqual(json(spec.testPageError));
+  });
+
   it("builds error with and without an id", () => {
     expect(errorMessage("c1", "unknown-type", "Unknown message type.")).toEqual(json(spec.error));
     expect(errorMessage(undefined, "bad-message", "x")).not.toHaveProperty("id");
@@ -86,6 +96,7 @@ describe("parseIncoming", () => {
     ["context.request with an editor", spec.recaptureRequest],
     ["context.request from the desktop hotkey", spec.hotkeyRequest],
     ["apply.request", spec.applyRequest],
+    ["testpage.request", spec.testPageRequest],
     ["error", spec.error],
   ])("accepts the spec example for %s", (_, text) => {
     const result = parseIncoming(json(text));
@@ -129,6 +140,7 @@ describe("parseIncoming", () => {
 
   it("rejects requests with missing fields", () => {
     expect(parseIncoming({ v: 1, type: "context.request" }).ok).toBe(false);
+    expect(parseIncoming({ v: 1, type: "testpage.request" })).toMatchObject({ ok: false, reply: { error: { code: "bad-message" } } });
     expect(parseIncoming({ v: 1, type: "context.request", id: "c1", editorId: 7 }).ok).toBe(false);
     expect(parseIncoming({ v: 1, type: "context.request", id: "c1", requireFocus: "yes" }).ok).toBe(false);
     expect(parseIncoming({ v: 1, type: "apply.request", id: "a1", editorId: "e-1", expectedHash: "sha256:00", text: "t" }).ok).toBe(false);

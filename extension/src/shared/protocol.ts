@@ -105,6 +105,12 @@ export interface ApplyRequestMessage {
   text: string;
 }
 
+export interface TestPageRequestMessage {
+  v: 1;
+  type: "testpage.request";
+  id: string;
+}
+
 export interface ErrorMessage {
   v: 1;
   type: "error";
@@ -118,6 +124,7 @@ export type IncomingMessage =
   | PongMessage
   | ContextRequestMessage
   | ApplyRequestMessage
+  | TestPageRequestMessage
   | ErrorMessage;
 
 export interface HelloMessage {
@@ -140,6 +147,10 @@ export type ApplyResponseMessage =
   | { v: 1; type: "apply.response"; id: string; ok: true }
   | { v: 1; type: "apply.response"; id: string; ok: false; error: ErrorPayload<ApplyErrorCode> };
 
+export type TestPageResponseMessage =
+  | { v: 1; type: "testpage.response"; id: string; ok: true }
+  | { v: 1; type: "testpage.response"; id: string; ok: false; error: ErrorPayload<"internal"> };
+
 export type OutgoingMessage =
   | HelloMessage
   | ShortcutPressedMessage
@@ -147,6 +158,7 @@ export type OutgoingMessage =
   | PongMessage
   | ContextResponseMessage
   | ApplyResponseMessage
+  | TestPageResponseMessage
   | ErrorMessage;
 
 export function hello(
@@ -182,6 +194,14 @@ export function applyOk(id: string): ApplyResponseMessage {
 
 export function applyError(id: string, error: ErrorPayload<ApplyErrorCode>): ApplyResponseMessage {
   return { v: 1, type: "apply.response", id, ok: false, error };
+}
+
+export function testPageOk(id: string): TestPageResponseMessage {
+  return { v: 1, type: "testpage.response", id, ok: true };
+}
+
+export function testPageError(id: string, error: ErrorPayload<"internal">): TestPageResponseMessage {
+  return { v: 1, type: "testpage.response", id, ok: false, error };
 }
 
 export function errorMessage(id: string | undefined, code: string, message: string): ErrorMessage {
@@ -287,6 +307,12 @@ export function parseIncoming(raw: unknown): ParseResult {
         ok: true,
         message: { v: 1, type: "apply.request", id, editorId: raw.editorId, expectedHash: raw.expectedHash, start: raw.start as number, end: raw.end as number, text: raw.text },
       };
+    case "testpage.request":
+      if (id === undefined) {
+        return bad("testpage.request");
+      }
+
+      return { ok: true, message: { v: 1, type: "testpage.request", id } };
     case "error":
       if (!isErrorPayload(raw.error)) {
         return bad("error");

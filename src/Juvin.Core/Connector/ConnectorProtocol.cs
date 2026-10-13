@@ -15,6 +15,8 @@ public static class ConnectorMessageTypes
     public const string ContextResponse = "context.response";
     public const string ApplyRequest = "apply.request";
     public const string ApplyResponse = "apply.response";
+    public const string TestPageRequest = "testpage.request";
+    public const string TestPageResponse = "testpage.response";
     public const string Error = "error";
 }
 
@@ -167,6 +169,8 @@ public static class ConnectorProtocol
             ConnectorMessageTypes.ContextResponse => typeof(ContextResponseMessage),
             ConnectorMessageTypes.ApplyRequest => typeof(ApplyRequestMessage),
             ConnectorMessageTypes.ApplyResponse => typeof(ApplyResponseMessage),
+            ConnectorMessageTypes.TestPageRequest => typeof(TestPageRequestMessage),
+            ConnectorMessageTypes.TestPageResponse => typeof(TestPageResponseMessage),
             ConnectorMessageTypes.Error => typeof(ErrorMessage),
             _ => null,
         };

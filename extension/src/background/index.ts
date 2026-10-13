@@ -5,9 +5,12 @@ import {
   applyOk,
   contextError,
   shortcutPressed,
+  testPageError,
+  testPageOk,
   type ApplyRequestMessage,
   type ContextRequestMessage,
   type IncomingMessage,
+  type TestPageRequestMessage,
 } from "../shared/protocol";
 import {
   isPopupRequest,
@@ -165,20 +168,50 @@ async function handleApplyRequest({ id, editorId, expectedHash, start, end, text
   reply(result.ok ? applyOk(id) : applyError(id, result.error));
 }
 
+async function handleTestPageRequest({ id }: TestPageRequestMessage, reply: Reply): Promise<void> {
+  // Without windowId the tab lands in the "current" window, not the last-used one; popups are skipped by hand because Firefox ignores windowTypes.
+  const window = await browser.windows.getLastFocused().catch(() => undefined);
+  const windowId = window?.type === "normal" ? window.id : undefined;
+  const tab = await browser.tabs.create({
+    url: browser.runtime.getURL("test-page.html"),
+    active: true,
+    ...(typeof windowId === "number" ? { windowId } : {}),
+  });
+  if (typeof tab.windowId === "number") {
+    await browser.windows.update(tab.windowId, { focused: true }).catch(() => undefined);
+  }
+
+  log("testpage.opened", { id });
+  reply(testPageOk(id));
+}
+
+function handleAppRequest(message: IncomingMessage, reply: Reply): Promise<void> {
+  switch (message.type) {
+    case "context.request":
+      return handleContextRequest(message, reply);
+    case "apply.request":
+      return handleApplyRequest(message, reply);
+    case "testpage.request":
+      return handleTestPageRequest(message, reply);
+    default:
+      return Promise.resolve();
+  }
+}
+
 function onAppRequest(message: IncomingMessage, reply: Reply): void {
   log("request", { type: message.type, id: "id" in message ? message.id : undefined });
-  const handled =
-    message.type === "context.request"
-      ? handleContextRequest(message, reply)
-      : message.type === "apply.request"
-        ? handleApplyRequest(message, reply)
-        : Promise.resolve();
-  handled.catch((e: unknown) => {
+  handleAppRequest(message, reply).catch((e: unknown) => {
     warn("request.failed", { type: message.type, error: errorName(e) });
-    if (message.type === "context.request") {
-      reply(contextError(message.id, { code: "internal", message: "The capture failed." }));
-    } else if (message.type === "apply.request") {
-      reply(applyError(message.id, { code: "internal", message: "The apply failed." }));
+    switch (message.type) {
+      case "context.request":
+        reply(contextError(message.id, { code: "internal", message: "The capture failed." }));
+        break;
+      case "apply.request":
+        reply(applyError(message.id, { code: "internal", message: "The apply failed." }));
+        break;
+      case "testpage.request":
+        reply(testPageError(message.id, { code: "internal", message: "The sample page could not be opened." }));
+        break;
     }
   });
 }

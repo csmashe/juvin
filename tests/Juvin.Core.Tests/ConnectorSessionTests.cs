@@ -85,6 +85,7 @@ public sealed class ConnectorSessionTests : IAsyncDisposable
     [Theory]
     [InlineData("""{"v":1,"type":"teleport","id":"t1"}""", "t1")]
     [InlineData("""{"v":1,"type":"context.request","id":"c1"}""", "c1")]
+    [InlineData("""{"v":1,"type":"testpage.request","id":"t1"}""", "t1")]
     public async Task UnknownOrWrongDirectionTypes_GetUnknownType(string json, string id)
     {
         await SayHelloAsync();
@@ -248,6 +249,27 @@ public sealed class ConnectorSessionTests : IAsyncDisposable
         _channel.Deliver($$"""{"v":1,"type":"apply.response","id":"{{id}}","ok":true}""");
 
         Assert.Null(await apply);
+    }
+
+    [Fact]
+    public async Task OpenTestPage_ReturnsNullOnOkAndTheErrorOtherwise()
+    {
+        await SayHelloAsync();
+
+        var opened = _session.OpenTestPageAsync(s_timeout, CancellationToken.None);
+        var request = await _channel.NextSentAsync();
+        Assert.Equal("testpage.request", request.GetProperty("type").GetString());
+        _channel.Deliver($$"""{"v":1,"type":"testpage.response","id":"{{request.GetProperty("id").GetString()}}","ok":true}""");
+
+        Assert.Null(await opened);
+
+        var failed = _session.OpenTestPageAsync(s_timeout, CancellationToken.None);
+        var id = (await _channel.NextSentAsync()).GetProperty("id").GetString();
+        _channel.Deliver(
+            $$$"""{"v":1,"type":"testpage.response","id":"{{{id}}}","ok":false,"error":{"code":"internal","message":"Could not open."}}"""
+        );
+
+        Assert.Equal("internal", (await failed)?.Code);
     }
 
     [Fact]
