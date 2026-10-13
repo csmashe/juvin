@@ -169,7 +169,14 @@ async function handleApplyRequest({ id, editorId, expectedHash, start, end, text
 }
 
 async function handleTestPageRequest({ id }: TestPageRequestMessage, reply: Reply): Promise<void> {
-  const tab = await browser.tabs.create({ url: browser.runtime.getURL("test-page.html"), active: true });
+  // Without windowId the tab lands in the "current" window, not the last-used one; popups are skipped by hand because Firefox ignores windowTypes.
+  const window = await browser.windows.getLastFocused().catch(() => undefined);
+  const windowId = window?.type === "normal" ? window.id : undefined;
+  const tab = await browser.tabs.create({
+    url: browser.runtime.getURL("test-page.html"),
+    active: true,
+    ...(typeof windowId === "number" ? { windowId } : {}),
+  });
   if (typeof tab.windowId === "number") {
     await browser.windows.update(tab.windowId, { focused: true }).catch(() => undefined);
   }
