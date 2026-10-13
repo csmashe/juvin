@@ -61,7 +61,7 @@ public sealed class RewriteSession
         string userPrompt;
         if (_history.Count == 0)
         {
-            var built = _builder.Build(_context, instruction);
+            var built = _builder.Build(_context, instruction, _settings.SenderName);
             _systemPrompt = built.SystemPrompt;
             userPrompt = built.UserPrompt;
             _completeness = built.Truncated ? ThreadCompleteness.TruncatedForModelLimit : _context.Completeness;
@@ -87,7 +87,7 @@ public sealed class RewriteSession
         var progress = new InlineProgress<string>(text =>
         {
             latest = text;
-            preview?.Report(text);
+            preview?.Report(PlaceholderFiller.FillStreaming(text, _settings.SenderName));
         });
 
         try
@@ -105,7 +105,7 @@ public sealed class RewriteSession
                 InputTokens = result.InputTokens,
                 OutputTokens = result.OutputTokens,
             };
-            return new RewriteResult(result.Text, LastProvenance);
+            return new RewriteResult(PlaceholderFiller.Fill(result.Text, _settings.SenderName), LastProvenance);
         }
         catch
         {

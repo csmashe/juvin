@@ -12,6 +12,33 @@
             </StackPanel>
 
             <StackPanel Spacing="8">
+                <TextBlock Classes="section-label" Text="{loc:Str General.AboutYouLabel}" />
+                <Border Classes="panel">
+                    <StackPanel>
+                        <Border Classes="section-row">
+                            <Grid ColumnDefinitions="*,320" ColumnSpacing="16">
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Classes="row-title" Text="{loc:Str General.SenderName}" />
+                                    <TextBlock Classes="row-hint" Text="{loc:Str General.SenderNameHint}" />
+                                </StackPanel>
+                                <TextBox x:Name="SenderNameBox"
+                                         Grid.Column="1"
+                                         VerticalAlignment="Center"
+                                         PlaceholderText="{loc:Str General.SenderNamePlaceholder}"
+                                         Text="{Binding SenderName, UpdateSourceTrigger=LostFocus}">
+                                    <TextBox.KeyBindings>
+                                        <KeyBinding Gesture="Enter"
+                                                    Command="{Binding CommitSenderNameCommand}"
+                                                    CommandParameter="{Binding #SenderNameBox.Text}" />
+                                    </TextBox.KeyBindings>
+                                </TextBox>
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+            <StackPanel Spacing="8">
                 <TextBlock Classes="section-label" Text="{loc:Str General.StartupLabel}" />
                 <Border Classes="panel">
                     <StackPanel>

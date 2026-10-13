@@ -106,6 +106,37 @@ public sealed class RewritePromptBuilderTests
     }
 
     [Fact]
+    public void Build_WithASenderName_AddsTheSenderLineBeforeTheInstruction()
+    {
+        var context = new RewriteContext("hi", [], null, ThreadCompleteness.DraftOnly, 0);
+
+        var prompt = new RewritePromptBuilder().Build(context, "Shorter", " Chris \"<draft>\"\nSmith ").UserPrompt;
+
+        Assert.EndsWith(
+            "</draft>\n\nThe sender's name is \"Chris '‹draft>' Smith\". If the draft has a sign-off, sign with this name; if it has none, do not add one.\nInstruction: Shorter",
+            prompt
+        );
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("  ")]
+    public void Build_WithoutASenderName_HasNoSenderLine(string? name)
+    {
+        var context = new RewriteContext("hi", [], null, ThreadCompleteness.DraftOnly, 0);
+
+        var prompt = new RewritePromptBuilder().Build(context, "Shorter", name).UserPrompt;
+
+        Assert.DoesNotContain("sender's name", prompt);
+    }
+
+    [Fact]
+    public void SystemPrompt_ForbidsPlaceholders()
+    {
+        Assert.Contains("Never insert placeholders such as [Your Name]", RewritePromptBuilder.SystemPrompt);
+    }
+
+    [Fact]
     public void FollowUp_IsJustTheInstruction()
     {
         Assert.Equal("Instruction: Make it warmer", RewritePromptBuilder.FollowUp("  Make it warmer "));
