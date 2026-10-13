@@ -93,6 +93,7 @@ public class App : Application
         var hotkeys = services.GetRequiredService<HotkeyService>();
         commands.TriggerRequested += hotkeys.HandleTrigger;
         _ = StartHotkeysAsync(hotkeys);
+        _ = InstallLauncherAsync(services.GetRequiredService<ILauncherIntegration>());
 
         desktop.Exit += (_, _) =>
         {
@@ -172,6 +173,18 @@ public class App : Application
         catch (OperationCanceledException)
         {
             Trace.WriteLine("[App] Hotkey start was cancelled.");
+        }
+    }
+
+    private async Task InstallLauncherAsync(ILauncherIntegration launcher)
+    {
+        try
+        {
+            await launcher.EnsureInstalledAsync(_socketLifetime.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            Trace.WriteLine("[App] Launcher entry install was cancelled.");
         }
     }
 
