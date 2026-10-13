@@ -20,6 +20,11 @@ public static class ConnectorMessageTypes
     public const string Error = "error";
 }
 
+public static class ApplyFormats
+{
+    public const string Markdown = "markdown";
+}
+
 public static class ConnectorErrorCodes
 {
     public const string BadMessage = "bad-message";

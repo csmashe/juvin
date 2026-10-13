@@ -18,10 +18,12 @@ public enum ThreadCompleteness
 
 /// <param name="Thread">Messages oldest first.</param>
 /// <param name="CollapsedCount">Messages the page showed as collapsed and that were not captured.</param>
+/// <param name="IsMarkdown">The draft is in the connector's Markdown subset, and the rewrite may use it too.</param>
 public sealed record RewriteContext(
     string Draft,
     IReadOnlyList<ThreadMessage> Thread,
     string? Subject,
     ThreadCompleteness Completeness,
-    int CollapsedCount
+    int CollapsedCount,
+    bool IsMarkdown = false
 );

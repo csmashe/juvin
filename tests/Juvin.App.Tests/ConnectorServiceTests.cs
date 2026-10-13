@@ -154,6 +154,40 @@ public sealed class ConnectorServiceTests : IAsyncDisposable
         Assert.Equal(ThreadCompleteness.DraftOnly, result.Capture?.Context.Completeness);
     }
 
+    [Theory]
+    [InlineData(",\"markdown\":\"**Draft**\",\"formatHash\":\"sha256:ab12\"", "markdown", "sha256:ab12")]
+    [InlineData("", null, null)]
+    public async Task Apply_SendsTheMarkdownFormatExactlyWhenTheCaptureHadMarkdown(string markdown, string? format, string? expected)
+    {
+        await _service.StartAsync(CancellationToken.None);
+        var completed = new TaskCompletionSource<(ConnectorSession Session, ContextResult Result)>();
+        _service.CaptureCompleted += (captured, _, capture) => completed.TrySetResult((captured, capture));
+        await using var stream = await ConnectAndSayHelloAsync();
+
+        await WriteAsync(stream, """{"v":1,"type":"shortcut.pressed"}""");
+        var id = (await ReadAsync(stream)).GetProperty("id").GetString();
+        await WriteAsync(
+            stream,
+            $$$"""
+            {"v":1,"type":"context.response","id":"{{{id}}}","ok":true,"capture":{
+              "adapter":"test-page","editor":{"id":"e-1","hash":"sha256:ab"},
+              "selection":{"text":"Draft","start":0,"end":5{{{markdown}}}},
+              "thread":{"completeness":"draft-only","messages":[]}}
+            }
+            """
+        );
+        var (session, result) = await completed.Task.WaitAsync(s_timeout);
+
+        var apply = new ConnectorRewriteTarget(session).ApplyAsync(result.Capture!, "**New**", CancellationToken.None);
+        var request = await ReadAsync(stream);
+        await WriteAsync(stream, $$"""{"v":1,"type":"apply.response","id":"{{request.GetProperty("id").GetString()}}","ok":true}""");
+
+        Assert.Null(await apply);
+        Assert.Equal("apply.request", request.GetProperty("type").GetString());
+        Assert.Equal(format, request.TryGetProperty("format", out var value) ? value.GetString() : null);
+        Assert.Equal(expected, request.TryGetProperty("expectedFormatHash", out var hashValue) ? hashValue.GetString() : null);
+    }
+
     [Fact]
     public async Task ShortcutPressed_DiscardsACaptureThatFinishesAfterANewerOne()
     {

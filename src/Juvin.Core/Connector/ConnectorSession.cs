@@ -119,7 +119,11 @@ public sealed class ConnectorSession : IAsyncDisposable
         };
     }
 
-    /// <summary>Asks the extension to replace the captured selection. Returns null on success.</summary>
+    /// <summary>
+    ///     Asks the extension to replace the captured selection. Returns null on success. With the capture's
+    ///     <paramref name="expectedFormatHash" /> the extension renders <paramref name="text" /> from the Markdown
+    ///     subset, and only when the selection's formatting still matches.
+    /// </summary>
     /// <exception cref="TimeoutException">No response within <paramref name="timeout" />.</exception>
     /// <exception cref="ConnectorException">The connection closed first.</exception>
     public async Task<ConnectorError?> ApplyAsync(
@@ -128,6 +132,7 @@ public sealed class ConnectorSession : IAsyncDisposable
         int start,
         int end,
         string text,
+        string? expectedFormatHash,
         TimeSpan timeout,
         CancellationToken ct
     )
@@ -140,6 +145,8 @@ public sealed class ConnectorSession : IAsyncDisposable
             Start = start,
             End = end,
             Text = text,
+            Format = expectedFormatHash is null ? null : ApplyFormats.Markdown,
+            ExpectedFormatHash = expectedFormatHash,
         };
         var response = await RequestAsync(request, timeout, ct).ConfigureAwait(false);
         return response switch

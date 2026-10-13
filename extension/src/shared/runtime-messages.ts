@@ -18,6 +18,8 @@ export interface ApplyRequest {
   start: number;
   end: number;
   text: string;
+  format?: "markdown";
+  expectedFormatHash?: string;
 }
 
 export type ContentRequest = CaptureRequest | ApplyRequest;
