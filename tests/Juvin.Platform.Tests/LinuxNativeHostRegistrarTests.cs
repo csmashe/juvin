@@ -11,6 +11,7 @@ public sealed class LinuxNativeHostRegistrarTests : IDisposable
 
     private readonly TempDirectory _temp = new();
     private readonly FakeProcessRunner _runner = new();
+    private bool _runsFromAppImage;
 
     public LinuxNativeHostRegistrarTests()
     {
@@ -37,10 +38,14 @@ public sealed class LinuxNativeHostRegistrarTests : IDisposable
 
     private string SnapBin => Path.Join(Snap, "bin");
 
+    private string DataPath => _temp.File("data");
+
+    private string StableHost => Path.Join(DataPath, "juvin-host");
+
     private LinuxNativeHostRegistrar CreateRegistrar(string? hostPath = null, string? runtimeDirectory = null)
     {
         var paths = new LinuxBrowserPaths(Home, Path.Join(Home, ".config"), runtimeDirectory, [Bin, SnapBin], [FlatpakApps], Snap);
-        return new LinuxNativeHostRegistrar(() => hostPath ?? HostPath, paths, _runner);
+        return new LinuxNativeHostRegistrar(() => hostPath ?? HostPath, paths, _runner, _runsFromAppImage, DataPath);
     }
 
     private void CreateHomeDirectory(string relative) => Directory.CreateDirectory(Path.Join(Home, relative));
@@ -286,9 +291,60 @@ public sealed class LinuxNativeHostRegistrarTests : IDisposable
     public async Task Register_ThrowsWhenTheHostWasNotFound()
     {
         var paths = new LinuxBrowserPaths(Home, Path.Join(Home, ".config"), null, [Bin], [FlatpakApps]);
-        var registrar = new LinuxNativeHostRegistrar(() => null, paths, _runner);
+        var registrar = new LinuxNativeHostRegistrar(() => null, paths, _runner, _runsFromAppImage, DataPath);
         var chrome = new BrowserTarget("chrome", "Google Chrome", BrowserFamily.Chromium, BrowserPackaging.Native);
 
         await Assert.ThrowsAsync<NativeHostRegistrationException>(() => registrar.RegisterAsync(chrome, CancellationToken.None));
+    }
+
+    [LinuxFact]
+    public async Task Register_FromAnAppImageCopiesTheHostOutOfTheMount()
+    {
+        _runsFromAppImage = true;
+        var registrar = CreateRegistrar();
+        var chrome = new BrowserTarget("chrome", "Google Chrome", BrowserFamily.Chromium, BrowserPackaging.Native);
+
+        await registrar.RegisterAsync(chrome, CancellationToken.None);
+
+        var manifestPath = Path.Join(Home, ".config/google-chrome/NativeMessagingHosts", NativeHostManifest.FileName);
+        Assert.Equal(StableHost, NativeHostManifest.ReadHostPath(manifestPath));
+        Assert.Equal("self-contained host", await File.ReadAllTextAsync(StableHost));
+        Assert.Equal(Executable, File.GetUnixFileMode(StableHost));
+        Assert.Equal(HostRegistration.Registered, registrar.CheckRegistration(chrome));
+
+        await File.WriteAllTextAsync(HostPath, "a newer self-contained host");
+        Assert.Equal(HostRegistration.Stale, registrar.CheckRegistration(chrome));
+
+        _runsFromAppImage = false;
+        Assert.Equal(HostRegistration.Stale, CreateRegistrar().CheckRegistration(chrome));
+    }
+
+    [LinuxFact]
+    public async Task Unregister_FromAnAppImageKeepsTheCopyUntilNoManifestUsesIt()
+    {
+        _runsFromAppImage = true;
+        var registrar = CreateRegistrar();
+        var chrome = new BrowserTarget("chrome", "Google Chrome", BrowserFamily.Chromium, BrowserPackaging.Native);
+        var firefox = new BrowserTarget("firefox", "Firefox", BrowserFamily.Firefox, BrowserPackaging.Native);
+        await registrar.RegisterAsync(chrome, CancellationToken.None);
+        await registrar.RegisterAsync(firefox, CancellationToken.None);
+
+        await registrar.UnregisterAsync(chrome, CancellationToken.None);
+        Assert.True(File.Exists(StableHost));
+
+        await registrar.UnregisterAsync(firefox, CancellationToken.None);
+        Assert.False(File.Exists(StableHost));
+    }
+
+    [LinuxFact]
+    public async Task Register_FlatpakFromAnAppImageStillUsesTheSandboxCopy()
+    {
+        _runsFromAppImage = true;
+        var flatpak = new BrowserTarget("firefox-flatpak", "Firefox", BrowserFamily.Firefox, BrowserPackaging.Flatpak);
+
+        await CreateRegistrar().RegisterAsync(flatpak, CancellationToken.None);
+
+        Assert.True(File.Exists(Path.Join(Home, ".var/app/org.mozilla.firefox/data/juvin/juvin-host")));
+        Assert.False(File.Exists(StableHost));
     }
 }
