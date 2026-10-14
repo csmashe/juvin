@@ -23,7 +23,7 @@ scripts/build-linux-packages.sh <version>
 scripts/smoke-test-linux-packages.sh <version>
 ```
 
-To build the Windows installer yourself (needs Inno Setup 6):
+To build the Windows installer yourself (needs Inno Setup 6.3 or later):
 
 ```
 scripts\build-windows-installer.ps1 <version>

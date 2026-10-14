@@ -1,4 +1,4 @@
-; Inno Setup 6 script for the per-user Juvin installer; scripts\build-windows-installer.ps1 builds it
+; Inno Setup 6.3+ script for the per-user Juvin installer; scripts\build-windows-installer.ps1 builds it
 ; and passes AppVersion, NumericVersion, PayloadDir, OutputDir, and IconFile with /D.
 ;
 ; The installer only lays files down under %LOCALAPPDATA%\Programs\Juvin. The app writes the

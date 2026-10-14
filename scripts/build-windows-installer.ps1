@@ -4,7 +4,7 @@
 # Usage: scripts\build-windows-installer.ps1 <version> [output-dir]
 #   version     MAJOR.MINOR.PATCH, optionally followed by -word or -word.number (alpha, beta.2, rc.1)
 #   output-dir  where the installer goes (default dist\)
-# Runs on Windows PowerShell 5.1 and PowerShell 7. Needs the .NET 10 SDK and Inno Setup 6 (ISCC).
+# Runs on Windows PowerShell 5.1 and PowerShell 7. Needs the .NET 10 SDK and Inno Setup 6.3 or later (ISCC).
 
 $ErrorActionPreference = 'Stop'
 
@@ -52,7 +52,7 @@ function Find-Iscc {
         return $default
     }
 
-    Fail 'Inno Setup 6 was not found (ISCC.exe is not on PATH or in Program Files (x86)\Inno Setup 6). Install it from https://jrsoftware.org/isdl.php'
+    Fail 'Inno Setup 6.3 or later was not found (ISCC.exe is not on PATH or in Program Files (x86)\Inno Setup 6). Install it from https://jrsoftware.org/isdl.php'
 }
 
 function Invoke-Publish([string]$project, [string]$output, [string[]]$extra) {
@@ -76,6 +76,11 @@ if (-not (Get-Command 'dotnet' -ErrorAction SilentlyContinue)) {
     Fail 'dotnet is required'
 }
 $iscc = Find-Iscc
+# x64compatible in the [Setup] section needs 6.3.
+$isccVersion = [version](Get-Item $iscc).VersionInfo.FileVersion
+if ($isccVersion -lt [version]'6.3') {
+    Fail "Inno Setup $isccVersion is too old; 6.3 or later is required"
+}
 
 $stage = Join-Path ([System.IO.Path]::GetTempPath()) ('juvin-installer-' + [guid]::NewGuid().ToString('N'))
 $payload = Join-Path $stage 'payload'

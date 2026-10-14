@@ -81,9 +81,11 @@ jobs:
     if: github.ref_type == 'tag'
     needs: package
     runs-on: ubuntu-24.04
-    # Shared with the other release workflow so only one creates the draft.
+    # Shared with the other release workflow so only one creates the draft; queue: max keeps a rerun
+    # from cancelling the other platform's waiting job.
     concurrency:
       group: release-${{ github.ref_name }}
+      queue: max
     permissions:
       contents: write
 
