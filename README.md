@@ -14,13 +14,20 @@ Built with .NET 10 and Avalonia, plus a browser extension for Firefox and Chrome
 
 ## Installing
 
-Linux packages (deb, rpm, and AppImage, each with the browser connector bundled) are attached to every release on the [Releases](https://github.com/csmashe/juvin/releases) page. The deb and rpm install under `/opt/juvin` and add a menu entry; the AppImage runs from wherever you put it. macOS and Windows installers are not built yet. The browser extension is not in the stores yet; see [extension/README.md](extension/README.md) for loading it.
+Linux packages (deb, rpm, and AppImage, each with the browser connector bundled) are attached to every release on the [Releases](https://github.com/csmashe/juvin/releases) page. The deb and rpm install under `/opt/juvin` and add a menu entry; the AppImage runs from wherever you put it. The Windows installer is attached to releases too; it installs for the current user under `%LOCALAPPDATA%\Programs\Juvin` without asking for administrator rights. A macOS build is still to come. The browser extension is not in the stores yet; see [extension/README.md](extension/README.md) for loading it.
 
 To build the Linux packages yourself:
 
 ```
 scripts/build-linux-packages.sh <version>
 scripts/smoke-test-linux-packages.sh <version>
+```
+
+To build the Windows installer yourself (needs Inno Setup 6):
+
+```
+scripts\build-windows-installer.ps1 <version>
+scripts\smoke-test-windows-installer.ps1 <version>
 ```
 
 ## Building
