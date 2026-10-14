@@ -49,6 +49,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
     private readonly ProbeGate _detection = new();
     private readonly CancellationTokenSource _lifetime = new();
     private readonly Localizer _localizer;
+    private readonly ActionMenuService _menus;
     private readonly RewritePanelViewModel _panel;
     private readonly Action<Action> _post;
     private readonly ModelProbeService _probes;
@@ -131,6 +132,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         ShortcutPanelViewModel shortcut,
         ConnectorService connectorService,
         RewritePanelViewModel panel,
+        ActionMenuService menus,
         IEnumerable<ISetupTask> setupTasks,
         Action<Action> post
     )
@@ -138,6 +140,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         _settings = settings;
         _connector = connectorService;
         _panel = panel;
+        _menus = menus;
         _post = post;
         Connector = connector;
         Shortcut = shortcut;
@@ -157,11 +160,13 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         StepDots = [.. Enumerable.Range(0, StepCount).Select(index => new StepDot(index))];
         RefreshStepState();
 
-        // The connector and the panel outlive the wizard, so Dispose unsubscribes.
+        // The connector, the menu, and the panel outlive the wizard, so Dispose unsubscribes.
         _connector.ClientsChanged += OnClientsChanged;
         _connector.CaptureCompleted += OnCaptureCompleted;
         _connector.TriggerFailed += OnTriggerFailed;
-        _panel.CaptureLoaded += OnPanelCaptureLoaded;
+        _menus.MenuShown += MarkCaptured;
+        _menus.RewriteApplied += MarkRewriteShown;
+        _panel.CaptureLoaded += MarkCaptured;
         _panel.PropertyChanged += OnPanelPropertyChanged;
         RefreshBrowserConnection();
     }
@@ -211,7 +216,9 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         _connector.ClientsChanged -= OnClientsChanged;
         _connector.CaptureCompleted -= OnCaptureCompleted;
         _connector.TriggerFailed -= OnTriggerFailed;
-        _panel.CaptureLoaded -= OnPanelCaptureLoaded;
+        _menus.MenuShown -= MarkCaptured;
+        _menus.RewriteApplied -= MarkRewriteShown;
+        _panel.CaptureLoaded -= MarkCaptured;
         _panel.PropertyChanged -= OnPanelPropertyChanged;
         if (!_lifetime.IsCancellationRequested)
         {
@@ -618,10 +625,10 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    ///     The panel also moves the rows forward, because a Recapture from the panel goes straight to
-    ///     the session and never raises <see cref="ConnectorService.CaptureCompleted" />.
+    ///     The menu and the panel also move the rows forward, because a Recapture from either goes straight
+    ///     to the session and never raises <see cref="ConnectorService.CaptureCompleted" />.
     /// </summary>
-    private void OnPanelCaptureLoaded()
+    private void MarkCaptured()
     {
         if (IsClosed)
         {
@@ -637,9 +644,18 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         TryItStatus = null;
     }
 
+    /// <summary>Review hands the capture to the panel, so a rewrite it shows counts as well as one the menu applied.</summary>
     private void OnPanelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (IsClosed || e.PropertyName != nameof(RewritePanelViewModel.State) || _panel.State != RewritePanelState.Done)
+        if (e.PropertyName == nameof(RewritePanelViewModel.State) && _panel.State == RewritePanelState.Done)
+        {
+            MarkRewriteShown();
+        }
+    }
+
+    private void MarkRewriteShown()
+    {
+        if (IsClosed)
         {
             return;
         }

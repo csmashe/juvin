@@ -10,7 +10,7 @@ Run after any change to `juvin-host`, the connector socket, `ConnectorService`, 
 4. Load the extension: `npx web-ext run --source-dir dist/firefox` for Firefox; `dist/chrome` as an unpacked extension in Chrome or Edge. The app log must show `<browser> <version> connected`.
 5. Open the popup and press Test connection. It must report a round trip in milliseconds.
 6. Open the test page from the popup, select the draft, press the shortcut. The app log must show `Captured 161 draft chars, 3 messages, EntireThread, adapter test-page` and nothing from the draft or thread text.
-7. Open the setup wizard from Settings and go to step 6, Try it. Press Open sample email: the test page must open in a new tab of the browser and the window must come to the front, and "Sample email opened" must tick. Select the draft and press the shortcut: "Draft captured" must tick, then "Rewrite shown" once the panel has the rewrite.
+7. Open the setup wizard from Settings and go to step 6, Try it. Press Open sample email: the test page must open in a new tab of the browser and the window must come to the front, and "Sample email opened" must tick. Select the draft and press the shortcut: the action menu must appear beside the draft and "Draft captured" must tick. Pick an action: the draft must change and "Rewrite done" must tick. Review from the right-click list, with an action picked in the panel, must tick it too.
 8. Quit the browser. The app log must show `<browser> disconnected` and no `juvin-host` process may remain.
 
 ## Gmail steps (any OS)
@@ -43,6 +43,17 @@ Run with the test page or Gmail. Hide and show: close the panel with Escape or i
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | October 11, 2026 | Fedora 44, GNOME Wayland | Firefox 156 (RPM, XWayland) | yes, qwen3.5:27b on the LAN server | yes | yes, turn 2 of the same session | yes | yes | yes, Draft changed with Apply disabled | yes, three cycles, above and sticky re-asserted |
 | October 11, 2026 | Windows 11 | Chrome 155 | yes, real Ctrl+Shift+F, topmost above maximized Chrome at (804,16) | yes | yes | yes | yes, real Ctrl+Z restored the draft | yes, Draft changed with Apply disabled | yes, real Escape, reopened at the same place and still topmost |
+
+### Action menu results
+
+The in-page menu (section 2.8 of `mvp-scope.md`) replaces the panel for a capture from the shortcut. Both rows below ran with qwen3.5:27b on the LAN server and a custom "Pirate voice" action in the settings; keys were real presses (ydotool on Ubuntu through the GNOME desktop-shortcut route, SendKeys on Windows through the SharpHook hook), clicks on the mark and bubbles went through the browser's own input path (Marionette pointer actions, CDP mouse events), and the app log was checked for draft words after each run.
+
+| Date | OS | Browser | Page | Key and click actions apply, Ctrl+Z restores | What am I missing? and follow-up | Ask for a change | Right-click list, custom action by keyboard | Review opens the panel | Edited draft refused, Recapture | Escape and click outside | Try it step |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| October 14, 2026 | Ubuntu 25.04, GNOME Wayland | Zen 1.23.2b (Flatpak, Gecko 157) | test page and Gmail reply (3 messages, EntireThread) | yes | yes | yes | yes, facts chips then the catalog and Review | yes, idle | yes | yes | driven through AT-SPI; ticks checked by eye |
+| October 14, 2026 | Windows 11 | Chrome 155 | test page | yes, one coalesced duplicate per press | yes | yes | yes | yes, idle | yes | yes | not run |
+
+Gmail on Windows was not run: the Chrome profile there was signed out again, and a copy of it under a scratch user data directory (remote debugging is refused on the default one) was signed out too.
 
 ## Results
 

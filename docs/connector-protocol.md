@@ -184,7 +184,7 @@ Codes: `internal`.
  "status":["6 messages","Entire thread","Private server: qwen3.5:27b"]}
 ```
 
-Sent after every successful capture from the shortcut or the desktop hotkey (section 2.8 of `mvp-scope.md`). The app owns the menu; the extension only draws what this message carries and reports what the user does. `menuId` names this menu in every later `menu.*` message. `slots` are the five bubbles in key order, 1 to 5; `more` is the right-click list, possibly empty; `status` is the status line, already localized, in display order. Titles and status strings are display text and contain no email content.
+Sent after every successful capture from the shortcut or the desktop hotkey (section 2.8 of `mvp-scope.md`). The app owns the menu; the extension only draws what this message carries and reports what the user does. `menuId` names this menu in every later `menu.*` message. `slots` are the five bubbles in key order, 1 to 5; `more` is the right-click list: the whole catalog in key order, then any custom actions, so it is never empty; `status` is the status line, already localized, in display order. Titles and status strings are display text and contain no email content.
 
 The extension finds the editor's tab by `editorId` the way `apply.request` does, has that tab's content script draw the menu beside the editor without taking focus from it, and answers `menu.response`. The extension shows one menu at a time: a new `menu.show` replaces whatever menu is open, in any tab, without reporting the old one closed. The app sends `menu.close` for the old menu first anyway, and before a `menu.show` it also cancels any action the old menu was running.
 

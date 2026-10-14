@@ -16,7 +16,7 @@ const CHIP_COLORS: Record<string, { icon: string; background: string }> = {
 };
 
 const CHIP_CSS = Object.entries(CHIP_COLORS)
-  .map(([id, { icon, background }]) => `.bubble[data-action="${id}"] .icon { color: ${icon}; background: ${background}; }`)
+  .map(([id, { icon, background }]) => `.bubble[data-action="${id}"] .icon, .row[data-action="${id}"] .icon { color: ${icon}; background: ${background}; }`)
   .join("\n");
 
 const FONT = `system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, Cantarell, "Noto Sans", "Helvetica Neue", Arial, sans-serif`;
@@ -43,13 +43,16 @@ export const MENU_CSS = `
   text-transform: none;
   direction: ltr;
   width: ${RING_SIZE.width + 40}px;
+  max-width: calc(100vw - 16px);
   max-height: calc(100vh - 16px);
   overflow-x: hidden;
+  scrollbar-width: thin;
   overflow-y: auto;
   padding: 14px 20px 20px 20px;
   pointer-events: none;
   background: radial-gradient(ellipse 250px 230px at 50% ${RING_CENTER.y + 14}px, rgba(255, 255, 255, 0.92) 0%, rgba(240, 245, 252, 0.7) 55%, rgba(240, 245, 252, 0) 100%);
 }
+@media (max-width: 520px) { .root { overflow-x: auto; } }
 .ring { position: relative; isolation: isolate; width: ${RING_SIZE.width}px; height: ${RING_SIZE.height}px; }
 .spokes { position: absolute; left: 0; top: 0; width: ${RING_SIZE.width}px; height: ${RING_SIZE.height}px; overflow: visible; pointer-events: none; }
 .spokes line { stroke: rgba(15, 45, 91, 0.12); stroke-width: 1; }
@@ -74,8 +77,8 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: default;
 }
+.ring.running .mark, .ring.gone .mark { cursor: default; }
 .mark::before {
   content: "";
   position: absolute;
@@ -102,6 +105,7 @@ button {
   transition: transform 120ms ease, box-shadow 120ms ease;
 }
 .bubble:hover, .bubble.focused { transform: translateY(-2px); box-shadow: ${SHADOW_RAISED}, 0 0 0 2px #0F2D5B; }
+.mark.focused { box-shadow: ${SHADOW_RAISED}, 0 0 0 2px #0F2D5B; }
 .bubble .icon {
   position: relative;
   flex: none;
@@ -215,6 +219,60 @@ ${CHIP_CSS}
 .actions button:hover { background: #F6F8FB; }
 .actions button.primary { background: #0F2D5B; border-color: #0F2D5B; color: #FFFFFF; }
 .actions button.primary:hover { background: #163C75; }
+.card button.focused { box-shadow: 0 0 0 2px #FFFFFF, 0 0 0 4px #0F2D5B; }
+.ask { align-items: center; }
+.card .close + .ask { margin-top: 0; }
+.ask input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 15px;
+  line-height: 20px;
+  color: #1F2A37;
+  background: #FFFFFF;
+  border: 1px solid rgba(15, 45, 91, 0.14);
+  border-radius: 10px;
+  padding: 11px 14px;
+  outline: none;
+  pointer-events: auto;
+  user-select: text;
+}
+.ask input::placeholder { color: #8A97A8; opacity: 1; }
+.ask input:focus { border-color: #0F2D5B; box-shadow: 0 0 0 3px rgba(15, 45, 91, 0.15); }
+.facts { display: flex; flex-wrap: wrap; gap: 6px; }
+.fact { font-size: 13px; line-height: 18px; font-weight: 500; color: #3B4858; background: #F1F4F8; border-radius: 999px; padding: 4px 10px; }
+.divider { height: 1px; background: rgba(15, 45, 91, 0.08); margin: 12px 0; }
+.list { max-height: 240px; overflow-y: auto; scrollbar-width: thin; display: flex; flex-direction: column; gap: 2px; padding: 2px; }
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  text-align: left;
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 600;
+  color: #1F2A37;
+}
+.row:hover { background: #F1F4F8; }
+.row .icon {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6B7A90;
+  background: #F1F4F8;
+}
+.row .icon svg { width: 18px; height: 18px; display: block; }
+.row .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .note {
   font-family: ${FONT};
   font-size: 13px;

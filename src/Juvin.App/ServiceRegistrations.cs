@@ -111,6 +111,7 @@ public static class ServiceRegistrations
             sp.GetRequiredService<ShortcutPanelViewModel>(),
             sp.GetRequiredService<ConnectorService>(),
             sp.GetRequiredService<RewritePanelViewModel>(),
+            sp.GetRequiredService<ActionMenuService>(),
             sp.GetServices<ISetupTask>(),
             action => Dispatcher.UIThread.Post(action)
         ));

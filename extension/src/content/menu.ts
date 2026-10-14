@@ -17,12 +17,21 @@ export const MENU_STRINGS = {
   copyFailed: "Copy failed",
   recapture: "Recapture",
   tryAgain: "Try again",
+  askPlaceholder: "Ask for a change",
+  run: "Run",
+  followUpPlaceholder: "Ask a follow-up",
+  ask: "Ask",
+  context: "About this draft",
+  moreActions: "All actions",
+  review: "Review",
   undoKey: "Ctrl+Z",
   undoKeyMac: "Cmd+Z",
   appliedNote: (undoKey: string) => `Draft rewritten. Press ${undoKey} to undo.`,
 };
 
 const MAX_SLOTS = 5;
+/** The mark's place in the drawn focus, where no bubble is. */
+const MARK = -1;
 const GAP = 12;
 const MARGIN = 8;
 const EDITOR_POLL_MS = 500;
@@ -103,10 +112,16 @@ interface OpenMenu {
   editor: Editor;
   host: HTMLElement;
   slots: Action[];
+  more: Action[];
+  status: string[];
   ring: HTMLElement;
+  mark: HTMLButtonElement;
   bubbles: HTMLButtonElement[];
   card: HTMLElement;
+  /** The bubble with the drawn focus; at most one of this and cardFocused is set. */
   focused: number | null;
+  /** Index into cardControls(). */
+  cardFocused: number | null;
   running: boolean;
   /** A choice the app has not answered yet; it would ignore a second one meanwhile. */
   pending: boolean;
@@ -115,6 +130,10 @@ interface OpenMenu {
   /** Where the editor last was, so a retained card stays in the viewport after the editor is gone. */
   anchor?: Box;
   lastChoice?: Choice;
+  /** The standing What am I missing? answer; Ask continues it until another action runs. */
+  answer?: string;
+  /** A rewrite the editor refused, kept on the Ask and list cards until another action runs. */
+  result?: string;
   frame?: number;
   timers: Set<ReturnType<typeof setTimeout>>;
   listeners: AbortController;
@@ -161,6 +180,11 @@ export class MenuRenderer {
     mark.tabIndex = -1;
     mark.setAttribute("aria-label", MENU_STRINGS.markLabel);
     mark.append(juvinMark(doc));
+    mark.addEventListener("click", () => this.showAsk());
+    mark.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      this.showList();
+    });
     ring.append(mark);
 
     const bubbles = slots.map((slot, index) => {
@@ -170,28 +194,32 @@ export class MenuRenderer {
       return bubble;
     });
 
-
     const card = doc.createElement("div");
     card.className = "card";
     card.hidden = true;
 
     panel.append(ring, card);
     root.append(panel);
-    // Clicks in the menu leave focus and the selection in the editor; only a result block may be selected by hand.
+    // Clicks in the menu leave focus and the selection in the editor; only a result block may be selected by hand, and only a text box focused.
     panel.addEventListener("mousedown", (event) => {
-      if (!(event.target instanceof Element && event.target.closest(".result"))) {
+      if (!(event.target instanceof Element && event.target.closest(".result, input"))) {
         event.preventDefault();
       }
     });
     mountPoint(editor).append(host);
 
     const listeners = new AbortController();
-    const menu: OpenMenu = { menuId: request.menuId, editor, host, slots, ring, bubbles, card, focused: null, running: false, pending: false, keepsResult: false, timers: new Set(), listeners };
+    const menu: OpenMenu = { menuId: request.menuId, editor, host, slots, more: request.more, status: request.status, ring, mark, bubbles, card, focused: null, cardFocused: null, running: false, pending: false, keepsResult: false, timers: new Set(), listeners };
     this.menu = menu;
 
     const win = doc.defaultView ?? window;
     const { signal } = listeners;
     win.addEventListener("keydown", (event) => this.onKeyDown(event), { capture: true, signal });
+    // Keys typed in the menu's text box never reach the page, whose shortcuts would otherwise act on them.
+    for (const type of ["keypress", "keyup"]) {
+      win.addEventListener(type, (event) => event.composedPath().includes(host) && event.stopImmediatePropagation(), { capture: true, signal });
+    }
+
     win.addEventListener("pointerdown", (event) => this.onPointerDown(event), { capture: true, signal });
     win.addEventListener("scroll", () => this.scheduleReposition(), { capture: true, passive: true, signal });
     win.addEventListener("resize", () => this.scheduleReposition(), { passive: true, signal });
@@ -274,21 +302,43 @@ export class MenuRenderer {
 
   private onKeyDown(event: KeyboardEvent): void {
     const menu = this.menu;
-    if (!menu || event.ctrlKey || event.altKey || event.metaKey || event.isComposing) {
+    if (!menu) {
       return;
     }
 
     const key = event.key;
+    // Keys typed in the menu's text box are stopped before the page's capture listeners see them; the browser still types them.
+    if (event.composedPath().includes(menu.host)) {
+      event.stopImmediatePropagation();
+      if (event.ctrlKey || event.altKey || event.metaKey || event.isComposing) {
+        return;
+      }
+
+      if (key === "Escape") {
+        event.preventDefault();
+        this.dismiss();
+      } else if (key === "Enter") {
+        event.preventDefault();
+        this.submitInstruction(menu);
+      }
+
+      return;
+    }
+
+    if (event.ctrlKey || event.altKey || event.metaKey || event.isComposing) {
+      return;
+    }
+
     const digit = key.length === 1 && key >= "1" && key <= "9" ? Number(key) : 0;
     if (key === "Escape") {
       this.dismiss();
+    } else if (key === "ContextMenu" || (key === "F10" && event.shiftKey)) {
+      this.showList();
     } else if (digit > 0 && digit <= menu.slots.length) {
       this.pick(digit - 1);
     } else if (key === "ArrowLeft" || key === "ArrowRight" || key === "ArrowUp" || key === "ArrowDown") {
       this.moveFocus(menu, key);
-    } else if (key === "Enter" && menu.focused !== null) {
-      this.pick(menu.focused);
-    } else {
+    } else if (key !== "Enter" || !this.activateFocused(menu)) {
       return;
     }
 
@@ -303,38 +353,67 @@ export class MenuRenderer {
     }
   }
 
-  /** Moves the drawn focus to the nearest bubble in the arrow's direction, without moving DOM focus. */
+  /** Moves the drawn focus without moving DOM focus: between bubbles toward the arrow, through the card's buttons in order, and between the two. */
   private moveFocus(menu: OpenMenu, key: string): void {
     if (menu.running) {
       return;
     }
 
-    const [dx, dy] = key === "ArrowLeft" ? [-1, 0] : key === "ArrowRight" ? [1, 0] : key === "ArrowUp" ? [0, -1] : [0, 1];
-    const origin = menu.focused === null ? { x: 0, y: 0 } : slotPoint(menu.focused);
-    let best: number | null = null;
-    let bestScore = Infinity;
-    for (let index = 0; index < menu.slots.length; index++) {
-      const point = slotPoint(index);
-      const along = (point.x - origin.x) * dx + (point.y - origin.y) * dy;
-      if (index === menu.focused || along <= 0.05) {
-        continue;
+    const controls = cardControls(menu);
+    const bubblesLive = menu.editor.isConnected;
+    if (menu.cardFocused !== null) {
+      const next = menu.cardFocused + (key === "ArrowDown" || key === "ArrowRight" ? 1 : -1);
+      if (next < controls.length && next >= 0) {
+        this.drawFocus(menu, null, next);
+      } else if (next < 0 && key === "ArrowUp" && bubblesLive) {
+        this.drawFocus(menu, lowestBubble(menu), null);
       }
 
-      const across = Math.abs((point.x - origin.x) * dy - (point.y - origin.y) * dx);
-      const score = along + 2 * across;
-      if (score < bestScore) {
-        bestScore = score;
-        best = index;
-      }
-    }
-
-    if (best === null) {
       return;
     }
 
+    const [dx, dy] = key === "ArrowLeft" ? [-1, 0] : key === "ArrowRight" ? [1, 0] : key === "ArrowUp" ? [0, -1] : [0, 1];
+    const origin = menu.focused === null ? { x: 0, y: 0 } : slotPoint(menu.focused);
+    const best = bubblesLive ? nearestBubble(menu, origin, dx, dy, menu.focused) : null;
+    if (best !== null) {
+      this.drawFocus(menu, best, null);
+    } else if ((key === "ArrowDown" || !bubblesLive) && controls.length > 0) {
+      this.drawFocus(menu, null, 0);
+    } else if (bubblesLive && menu.focused !== null && menu.focused !== MARK) {
+      // Past the outermost bubble the arrow lands on the mark, so Ask is reachable without the mouse.
+      this.drawFocus(menu, MARK, null);
+    }
+  }
+
+  private drawFocus(menu: OpenMenu, bubble: number | null, card: number | null): void {
     menu.bubbles[menu.focused ?? -1]?.classList.remove("focused");
-    menu.bubbles[best]?.classList.add("focused");
-    menu.focused = best;
+    cardControls(menu)[menu.cardFocused ?? -1]?.classList.remove("focused");
+    menu.focused = bubble;
+    menu.cardFocused = card;
+    menu.bubbles[bubble ?? -1]?.classList.add("focused");
+    menu.mark.classList.toggle("focused", bubble === MARK);
+    const control = cardControls(menu)[card ?? -1];
+    control?.classList.add("focused");
+    control?.scrollIntoView?.({ block: "nearest" });
+  }
+
+  private activateFocused(menu: OpenMenu): boolean {
+    if (menu.cardFocused !== null) {
+      cardControls(menu)[menu.cardFocused]?.click();
+      return true;
+    }
+
+    if (menu.focused === MARK) {
+      this.showAsk();
+      return true;
+    }
+
+    if (menu.focused !== null) {
+      this.pick(menu.focused);
+      return true;
+    }
+
+    return false;
   }
 
   private pick(index: number): void {
@@ -344,10 +423,10 @@ export class MenuRenderer {
     }
   }
 
-  private choose(action: string, instruction?: string): void {
+  private choose(action: string, instruction?: string): boolean {
     const menu = this.menu;
     if (!menu || menu.running || menu.pending || !menu.editor.isConnected) {
-      return;
+      return false;
     }
 
     menu.pending = true;
@@ -359,6 +438,14 @@ export class MenuRenderer {
         menu.pending = false;
       }
     });
+    return true;
+  }
+
+  /** The app opens the desktop panel and sends no close for this menu. */
+  private review(): void {
+    if (this.choose("review")) {
+      this.teardown();
+    }
   }
 
   private dismiss(): void {
@@ -372,11 +459,15 @@ export class MenuRenderer {
   }
 
   private setRunning(menu: OpenMenu, action: string): void {
+    this.drawFocus(menu, null, null);
     this.hideCard(menu);
+    if (action !== "custom") {
+      menu.answer = undefined;
+    }
+
+    menu.result = undefined;
     menu.running = true;
     menu.ring.classList.add("running");
-    menu.bubbles[menu.focused ?? -1]?.classList.remove("focused");
-    menu.focused = null;
     const bubble = menu.bubbles.find((b) => b.dataset.action === action);
     if (bubble) {
       bubble.classList.add("active");
@@ -396,17 +487,21 @@ export class MenuRenderer {
   }
 
   private hideCard(menu: OpenMenu): void {
+    menu.cardFocused = null;
     menu.card.hidden = true;
+    this.releaseFocus(menu);
     menu.card.replaceChildren();
     menu.keepsResult = false;
   }
 
   private openCard(menu: OpenMenu): HTMLElement {
     this.clearRunning(menu);
+    this.drawFocus(menu, menu.focused, null);
     const close = this.button(menu, "", false, () => this.dismiss());
     close.className = "close";
     close.setAttribute("aria-label", MENU_STRINGS.close);
     close.append(closeIcon(menu.host.ownerDocument));
+    this.releaseFocus(menu);
     menu.card.replaceChildren(close);
     menu.card.hidden = false;
     menu.keepsResult = false;
@@ -414,10 +509,118 @@ export class MenuRenderer {
   }
 
   private showAnswer(menu: OpenMenu, text: string): void {
+    menu.answer = text;
     const card = this.openCard(menu);
-    card.append(this.block(menu, "message", text), this.buttons(menu, [this.copyButton(menu, text)]));
+    const followUp = this.askRow(menu, MENU_STRINGS.followUpPlaceholder, MENU_STRINGS.ask);
+    card.append(this.block(menu, "message", text), this.buttons(menu, [this.copyButton(menu, text)]), followUp.row);
     menu.keepsResult = true;
-    // Slice C adds the follow-up box here.
+    // The user was typing a follow-up, so the next one goes in the same place.
+    if (menu.lastChoice?.action === "custom") {
+      followUp.input.focus();
+    }
+  }
+
+  /** The mark opens Ask for a change; a card that already has a text box keeps it and focuses it. */
+  private showAsk(): void {
+    const menu = this.menu;
+    if (!menu || menu.running || !menu.editor.isConnected) {
+      return;
+    }
+
+    const existing = menu.card.hidden ? null : menu.card.querySelector("input");
+    if (existing) {
+      existing.focus();
+      return;
+    }
+
+    // The app treats Ask as a follow-up while an answer stands, so the answer card comes back rather than a fresh Ask card.
+    if (menu.answer !== undefined) {
+      this.showAnswer(menu, menu.answer);
+      this.reposition();
+      menu.card.querySelector("input")?.focus();
+      return;
+    }
+
+    const ask = this.askRow(menu, MENU_STRINGS.askPlaceholder, MENU_STRINGS.run);
+    this.openCard(menu).append(...this.retainedResult(menu), ask.row);
+    this.reposition();
+    ask.input.focus();
+  }
+
+  private askRow(menu: OpenMenu, placeholder: string, label: string): { row: HTMLElement; input: HTMLInputElement } {
+    const input = menu.host.ownerDocument.createElement("input");
+    input.type = "text";
+    input.placeholder = placeholder;
+    input.autocomplete = "off";
+    input.setAttribute("aria-label", placeholder);
+    const row = this.buttons(menu, [this.button(menu, label, true, () => this.submitInstruction(menu))]);
+    row.classList.add("ask");
+    row.prepend(input);
+    return { row, input };
+  }
+
+  private submitInstruction(menu: OpenMenu): void {
+    const instruction = menu.card.querySelector("input")?.value.trim();
+    if (instruction) {
+      this.choose("custom", instruction);
+    }
+  }
+
+  private showList(): void {
+    const menu = this.menu;
+    if (!menu || menu.running || !menu.editor.isConnected) {
+      return;
+    }
+
+    const doc = menu.host.ownerDocument;
+    const facts = doc.createElement("div");
+    facts.className = "facts";
+    facts.setAttribute("aria-label", MENU_STRINGS.context);
+    facts.append(...menu.status.map((line) => this.block(menu, "fact", line)));
+
+    const card = this.openCard(menu);
+    card.append(...this.retainedResult(menu), facts, this.block(menu, "divider", ""));
+    if (menu.more.length > 0) {
+      const list = doc.createElement("div");
+      list.className = "list";
+      list.setAttribute("aria-label", MENU_STRINGS.moreActions);
+      list.append(...menu.more.map((action) => this.row(menu, action.title, action.id, () => this.choose(action.id))));
+      card.append(list, this.block(menu, "divider", ""));
+    }
+
+    card.append(this.row(menu, MENU_STRINGS.review, undefined, () => this.review()));
+    this.reposition();
+  }
+
+  /** The refused rewrite or the standing answer with its Copy, so browsing the list or asking does not lose it. */
+  private retainedResult(menu: OpenMenu): HTMLElement[] {
+    const kept = menu.result ?? menu.answer;
+    if (kept === undefined) {
+      return [];
+    }
+
+    menu.keepsResult = true;
+    return [this.block(menu, menu.result === undefined ? "message" : "result", kept), this.buttons(menu, [this.copyButton(menu, kept)]), this.block(menu, "divider", "")];
+  }
+
+  private row(menu: OpenMenu, title: string, actionId: string | undefined, onClick: () => void): HTMLButtonElement {
+    const doc = menu.host.ownerDocument;
+    const row = this.button(menu, "", false, onClick);
+    row.className = "row";
+    row.setAttribute("role", "menuitem");
+    if (actionId !== undefined) {
+      row.dataset.action = actionId;
+      const icon = doc.createElement("span");
+      icon.className = "icon";
+      icon.append(actionIcon(doc, actionId));
+      row.append(icon);
+    }
+
+    const label = doc.createElement("span");
+    label.className = "title";
+    label.textContent = title;
+    row.append(label);
+    return row;
   }
 
   private showDraftChanged(menu: OpenMenu, text: string): void {
@@ -430,6 +633,7 @@ export class MenuRenderer {
       this.buttons(menu, [this.copyButton(menu, text), recapture]),
     );
     menu.keepsResult = true;
+    menu.result = text;
   }
 
   private showError(menu: OpenMenu, text: string, canRetry: boolean, result: string | undefined): void {
@@ -440,6 +644,7 @@ export class MenuRenderer {
       card.append(this.block(menu, "result", result));
       buttons.push(this.copyButton(menu, result));
       menu.keepsResult = true;
+      menu.result = result;
     }
 
     const retry = menu.lastChoice;
@@ -503,6 +708,11 @@ export class MenuRenderer {
       this.dismiss();
     } else {
       this.menu.ring.classList.add("gone");
+      // A modal dialog the menu was mounted in may have closed or left with the editor.
+      const host = this.menu.host;
+      if (!host.isConnected || host.closest("dialog:not([open])")) {
+        host.ownerDocument.body.append(host);
+      }
     }
 
     return false;
@@ -553,7 +763,15 @@ export class MenuRenderer {
       clearTimeout(timer);
     }
 
+    this.releaseFocus(menu);
     menu.host.remove();
+  }
+
+  /** Gives focus back to the editor before the menu's text box goes away. */
+  private releaseFocus(menu: OpenMenu): void {
+    if (menu.host.ownerDocument.activeElement === menu.host && menu.editor.isConnected) {
+      menu.editor.focus({ preventScroll: true });
+    }
   }
 
   private showNote(editor: Editor): void {
@@ -616,6 +834,49 @@ function spokes(doc: Document, count: number): SVGSVGElement {
   return svg;
 }
 
+function nearestBubble(menu: OpenMenu, origin: { x: number; y: number }, dx: number, dy: number, skip: number | null): number | null {
+  let best: number | null = null;
+  let bestScore = Infinity;
+  for (let index = 0; index < menu.slots.length; index++) {
+    const point = slotPoint(index);
+    const along = (point.x - origin.x) * dx + (point.y - origin.y) * dy;
+    if (index === skip || along <= 0.05) {
+      continue;
+    }
+
+    const across = Math.abs((point.x - origin.x) * dy - (point.y - origin.y) * dx);
+    const score = along + 2 * across;
+    if (score < bestScore) {
+      bestScore = score;
+      best = index;
+    }
+  }
+
+  return best;
+}
+
+/** The first of the bubbles nearest the card. */
+function lowestBubble(menu: OpenMenu): number | null {
+  let lowest: number | null = null;
+  for (let index = 0; index < menu.slots.length; index++) {
+    if (lowest === null || slotPoint(index).y > slotPoint(lowest).y) {
+      lowest = index;
+    }
+  }
+
+  return lowest;
+}
+
+/** The card's buttons in reading order, with its close control last. */
+function cardControls(menu: OpenMenu): HTMLButtonElement[] {
+  if (menu.card.hidden) {
+    return [];
+  }
+
+  const close = menu.card.querySelector<HTMLButtonElement>(".close");
+  return [...menu.card.querySelectorAll<HTMLButtonElement>("button:not(.close)"), ...(close ? [close] : [])];
+}
+
 function slotPoint(index: number): { x: number; y: number } {
   const offset = SLOT_OFFSETS[index] ?? { x: 0, y: 0 };
   return { x: offset.x / RING_RADIUS, y: offset.y / RING_RADIUS };
@@ -652,7 +913,8 @@ async function copyText(parent: HTMLElement, text: string): Promise<boolean> {
   scratch.style.position = "fixed";
   scratch.style.opacity = "0";
   parent.append(scratch);
-  const focused = doc.activeElement;
+  const root = parent.getRootNode();
+  const focused = (root instanceof ShadowRoot ? root.activeElement : null) ?? doc.activeElement;
   const selection = doc.getSelection();
   const ranges = selection ? Array.from({ length: selection.rangeCount }, (_, i) => selection.getRangeAt(i).cloneRange()) : [];
   try {

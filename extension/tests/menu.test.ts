@@ -431,6 +431,349 @@ describe("MenuRenderer", () => {
     expect(hosts()).toHaveLength(1);
     expect(h.root().querySelector(".note")).toBeNull();
   });
+
+  describe("Ask for a change", () => {
+    const mark = () => h.root().querySelector<HTMLButtonElement>("button.mark")!;
+    const input = () => h.root().querySelector<HTMLInputElement>(".card input")!;
+    const typeKey = (target: Element, key: string) => {
+      const event = new KeyboardEvent("keydown", { key, bubbles: true, composed: true, cancelable: true });
+      target.dispatchEvent(event);
+      return event;
+    };
+
+    it("opens a text box on the mark and focuses it", () => {
+      h.renderer.show(request(h));
+      mark().click();
+      expect(h.root().querySelector(".card")!.hasAttribute("hidden")).toBe(false);
+      expect(input().placeholder).toBe(MENU_STRINGS.askPlaceholder);
+      expect(input().getAttribute("aria-label")).toBe(MENU_STRINGS.askPlaceholder);
+      expect(h.root().activeElement).toBe(input());
+      expect(buttonByText(h.root(), MENU_STRINGS.run)!.className).toBe("primary");
+    });
+
+    it("keeps the typed text when the mark is clicked again", () => {
+      h.renderer.show(request(h));
+      mark().click();
+      input().value = "less formal";
+      mark().click();
+      expect(h.root().querySelectorAll(".card input")).toHaveLength(1);
+      expect(input().value).toBe("less formal");
+    });
+
+    it("leaves digits, arrows, and Enter to the box and still closes on Escape", () => {
+      h.renderer.show(request(h));
+      mark().click();
+      expect(typeKey(input(), "1").defaultPrevented).toBe(false);
+      expect(typeKey(input(), "ArrowDown").defaultPrevented).toBe(false);
+      expect(h.root().querySelector(".focused")).toBeNull();
+      typeKey(input(), "Enter");
+      expect(h.notices).toEqual([]);
+      expect(typeKey(input(), "Escape").defaultPrevented).toBe(true);
+      expect(h.notices).toEqual([{ kind: "juvin.menu.closed", menuId: "menu-1" }]);
+      expect(hosts()).toHaveLength(0);
+    });
+
+    it("runs the trimmed instruction from Enter or Run and ignores an empty one", () => {
+      h.renderer.show(request(h));
+      mark().click();
+      input().value = "   ";
+      buttonByText(h.root(), MENU_STRINGS.run)!.click();
+      expect(h.notices).toEqual([]);
+      input().value = "  Make it less formal.  ";
+      typeKey(input(), "Enter");
+      expect(h.notices).toEqual([{ kind: "juvin.menu.choose", menuId: "menu-1", action: "custom", instruction: "Make it less formal." }]);
+    });
+
+    it("keeps typed keys from the page's capture-phase shortcuts", () => {
+      const seen: string[] = [];
+      const shortcut = (event: Event) => seen.push(`${event.type}:${(event as KeyboardEvent).key}`);
+      for (const type of ["keydown", "keypress", "keyup"]) {
+        document.addEventListener(type, shortcut, { capture: true });
+      }
+
+      try {
+        h.renderer.show(request(h));
+        mark().click();
+        for (const type of ["keydown", "keypress", "keyup"]) {
+          input().dispatchEvent(new KeyboardEvent(type, { key: "e", bubbles: true, composed: true, cancelable: true }));
+        }
+
+        input().value = "Shorter.";
+        typeKey(input(), "Enter");
+        expect(seen).toEqual([]);
+        expect(h.notices).toEqual([{ kind: "juvin.menu.choose", menuId: "menu-1", action: "custom", instruction: "Shorter." }]);
+        expect(key("2").defaultPrevented).toBe(true);
+        expect(seen).toEqual([]);
+      } finally {
+        for (const type of ["keydown", "keypress", "keyup"]) {
+          document.removeEventListener(type, shortcut, { capture: true });
+        }
+      }
+    });
+
+    it("replaces another card with the Ask card", () => {
+      h.renderer.show(request(h));
+      h.renderer.update(update({ state: "error", text: "Failed.", canRetry: false }));
+      mark().click();
+      expect(h.root().querySelector(".card .message")).toBeNull();
+      expect(input()).not.toBeNull();
+    });
+
+    it("does nothing while a run is in progress", () => {
+      h.renderer.show(request(h));
+      h.renderer.update(update({ state: "running", action: "soften" }));
+      mark().click();
+      expect(h.root().querySelector(".card")!.hasAttribute("hidden")).toBe(true);
+    });
+
+    it("asks follow-ups under an answer and replaces it with the next answer", () => {
+      h.renderer.show(request(h));
+      key("1");
+      h.renderer.update(update({ state: "running", action: "missing" }));
+      h.renderer.update(update({ state: "answer", text: "- The deadline.\n- The budget." }));
+      const root = h.root();
+      expect(root.querySelector(".card .message")!.textContent).toBe("- The deadline.\n- The budget.");
+      expect(input().placeholder).toBe(MENU_STRINGS.followUpPlaceholder);
+      expect(root.activeElement).toBeNull();
+
+      mark().click();
+      expect(root.activeElement).toBe(input());
+      expect(root.querySelector(".card .message")).not.toBeNull();
+
+      input().value = " What about tone? ";
+      buttonByText(root, MENU_STRINGS.ask)!.click();
+      expect(h.notices.at(-1)).toEqual({ kind: "juvin.menu.choose", menuId: "menu-1", action: "custom", instruction: "What about tone?" });
+      h.renderer.update(update({ state: "running", action: "custom" }));
+      h.renderer.update(update({ state: "answer", text: "- The tone is fine." }));
+      expect(root.querySelectorAll(".card .message")).toHaveLength(1);
+      expect(root.querySelector(".card .message")!.textContent).toBe("- The tone is fine.");
+      expect(input().value).toBe("");
+      expect(root.activeElement).toBe(input());
+    });
+
+    it("brings the answer card back from the mark while an answer stands", () => {
+      h.renderer.show({ ...request(h), more: SLOTS });
+      key("1");
+      h.renderer.update(update({ state: "running", action: "missing" }));
+      h.renderer.update(update({ state: "answer", text: "- The deadline." }));
+      mark().dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, composed: true }));
+      expect(h.root().querySelector(".card .row")).not.toBeNull();
+
+      mark().click();
+      expect(h.root().querySelector(".card .message")!.textContent).toBe("- The deadline.");
+      expect(input().placeholder).toBe(MENU_STRINGS.followUpPlaceholder);
+      expect(h.root().activeElement).toBe(input());
+
+      h.renderer.update(update({ state: "running", action: "soften" }));
+      h.renderer.update(update({ state: "error", text: "Failed.", canRetry: true }));
+      mark().click();
+      expect(input().placeholder).toBe(MENU_STRINGS.askPlaceholder);
+    });
+
+    it("gives focus back to the editor when the menu closes from the box", () => {
+      h.editor.focus();
+      h.renderer.show(request(h));
+      mark().click();
+      expect(document.activeElement).toBe(hosts()[0]);
+      typeKey(input(), "Escape");
+      expect(document.activeElement).toBe(h.editor);
+    });
+
+    it("keeps the follow-up box focused after Copy", () => {
+      h.renderer.show(request(h));
+      key("1");
+      h.renderer.update(update({ state: "running", action: "missing" }));
+      h.renderer.update(update({ state: "answer", text: "- A point" }));
+      mark().click();
+      expect(h.root().activeElement).toBe(input());
+      buttonByText(h.root(), MENU_STRINGS.copy)!.click();
+      expect(h.root().activeElement).toBe(input());
+      expect(typeKey(input(), "1").defaultPrevented).toBe(false);
+    });
+
+    it("gives focus back to the editor when a run removes the box", () => {
+      h.editor.focus();
+      h.renderer.show(request(h));
+      mark().click();
+      input().value = "Shorter.";
+      typeKey(input(), "Enter");
+      h.renderer.update(update({ state: "running", action: "custom" }));
+      expect(document.activeElement).toBe(h.editor);
+    });
+  });
+
+  describe("right-click list", () => {
+    const MORE = [...SLOTS, { id: "custom-3f2a9b", title: "Pirate voice" }];
+    const openList = (more = MORE) => {
+      h.renderer.show({ ...request(h), more });
+      const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, composed: true });
+      h.root().querySelector("button.mark")!.dispatchEvent(event);
+      return event;
+    };
+    const rows = () => Array.from(h.root().querySelectorAll<HTMLButtonElement>(".card .row"));
+
+    it("shows the context facts, every action, and Review", () => {
+      expect(openList().defaultPrevented).toBe(true);
+      const root = h.root();
+      expect(Array.from(root.querySelectorAll(".facts .fact"), (f) => f.textContent)).toEqual(["6 messages", "Entire thread", "Local: qwen3"]);
+      expect(rows().map((r) => r.textContent)).toEqual([...MORE.map((a) => a.title), MENU_STRINGS.review]);
+      expect(rows()[5]!.dataset.action).toBe("custom-3f2a9b");
+      expect(rows()[5]!.querySelector(".icon svg")).not.toBeNull();
+      expect(root.querySelectorAll(".card .divider")).toHaveLength(2);
+    });
+
+    it("sends the chosen action like a bubble", () => {
+      openList();
+      rows()[5]!.click();
+      expect(h.notices).toEqual([{ kind: "juvin.menu.choose", menuId: "menu-1", action: "custom-3f2a9b" }]);
+    });
+
+    it("shows only the facts and Review when there is nothing more", () => {
+      openList([]);
+      expect(rows().map((r) => r.textContent)).toEqual([MENU_STRINGS.review]);
+      expect(h.root().querySelector(".list")).toBeNull();
+    });
+
+    it("keeps a refused rewrite with Copy on the list and Ask cards", () => {
+      h.renderer.show({ ...request(h), more: MORE });
+      key("3");
+      h.renderer.update(update({ state: "running", action: "clearer" }));
+      h.renderer.update(update({ state: "draft-changed", text: "the rewrite" }));
+      h.root().querySelector<HTMLButtonElement>("button.mark")!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, composed: true }));
+      expect(h.root().querySelector(".card .result")!.textContent).toBe("the rewrite");
+      expect(buttonByText(h.root(), MENU_STRINGS.copy)).toBeDefined();
+      expect(rows().length).toBe(MORE.length + 1);
+
+      h.root().querySelector<HTMLButtonElement>("button.mark")!.click();
+      expect(h.root().querySelector(".card .result")!.textContent).toBe("the rewrite");
+      expect(h.root().querySelector<HTMLInputElement>(".card input")!.placeholder).toBe(MENU_STRINGS.askPlaceholder);
+
+      h.renderer.update(update({ state: "running", action: "soften" }));
+      h.renderer.update(update({ state: "error", text: "Failed.", canRetry: true }));
+      h.root().querySelector<HTMLButtonElement>("button.mark")!.click();
+      expect(h.root().querySelector(".card .result")).toBeNull();
+    });
+
+    it("keeps a standing answer with Copy on the list card", () => {
+      h.renderer.show({ ...request(h), more: MORE });
+      key("1");
+      h.renderer.update(update({ state: "running", action: "missing" }));
+      h.renderer.update(update({ state: "answer", text: "- A point" }));
+      h.root().querySelector<HTMLButtonElement>("button.mark")!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, composed: true }));
+      expect(h.root().querySelector(".card .message")!.textContent).toBe("- A point");
+      expect(buttonByText(h.root(), MENU_STRINGS.copy)).toBeDefined();
+      h.editor.remove();
+      vi.advanceTimersByTime(600);
+      expect(hosts()).toHaveLength(1);
+    });
+
+    it("sends review and closes without reporting the menu closed", () => {
+      openList();
+      rows().at(-1)!.click();
+      expect(h.notices).toEqual([{ kind: "juvin.menu.choose", menuId: "menu-1", action: "review" }]);
+      expect(hosts()).toHaveLength(0);
+    });
+
+    it("does nothing while a run is in progress", () => {
+      h.renderer.show({ ...request(h), more: MORE });
+      h.renderer.update(update({ state: "running", action: "soften" }));
+      h.root().querySelector("button.mark")!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+      expect(h.root().querySelector(".card")!.hasAttribute("hidden")).toBe(true);
+    });
+
+    it("moves through the rows with the arrow keys and picks with Enter", () => {
+      openList();
+      key("ArrowDown");
+      expect(h.root().querySelector(".bubble.focused")).not.toBeNull();
+      key("ArrowDown");
+      expect(rows()[0]!.classList.contains("focused")).toBe(true);
+      expect(h.root().querySelector(".bubble.focused")).toBeNull();
+      key("ArrowDown");
+      key("ArrowDown");
+      expect(rows()[2]!.classList.contains("focused")).toBe(true);
+      expect(key("Enter").defaultPrevented).toBe(true);
+      expect(h.notices).toEqual([{ kind: "juvin.menu.choose", menuId: "menu-1", action: "clearer" }]);
+    });
+  });
+
+  it("reaches and activates every card control from the keyboard", () => {
+    h.renderer.show(request(h));
+    h.renderer.update(update({ state: "draft-changed", text: "the rewrite" }));
+    const root = h.root();
+    const focused = () => Array.from(root.querySelectorAll(".focused"), (e) => e.getAttribute("aria-label") ?? e.textContent);
+    key("ArrowDown");
+    expect(focused()).toEqual(["What am I missing?"]);
+    key("ArrowDown");
+    expect(focused()).toEqual([MENU_STRINGS.copy]);
+    key("ArrowRight");
+    expect(focused()).toEqual([MENU_STRINGS.recapture]);
+    key("ArrowRight");
+    expect(focused()).toEqual([MENU_STRINGS.close]);
+    key("ArrowRight");
+    expect(focused()).toEqual([MENU_STRINGS.close]);
+    key("ArrowLeft");
+    key("ArrowUp");
+    expect(focused()).toEqual([MENU_STRINGS.copy]);
+    key("ArrowUp");
+    expect(focused()).toEqual(["What am I missing?"]);
+    key("ArrowDown");
+    key("ArrowRight");
+    expect(document.activeElement).not.toBe(root.host);
+    key("Enter");
+    expect(h.notices).toEqual([{ kind: "juvin.menu.choose", menuId: "menu-1", action: "recapture" }]);
+  });
+
+  it("reaches the mark from the keyboard and opens Ask and the list from it", () => {
+    h.renderer.show({ ...request(h), more: SLOTS });
+    key("ArrowUp");
+    expect(h.root().querySelector(".bubble.focused")!.textContent).toBe("Make clearer");
+    key("ArrowUp");
+    expect(h.root().querySelector(".bubble.focused")).toBeNull();
+    expect(h.root().querySelector(".mark.focused")).not.toBeNull();
+    key("ArrowDown");
+    expect(h.root().querySelector(".mark.focused")).toBeNull();
+    expect(h.root().querySelector(".bubble.focused")).not.toBeNull();
+
+    key("ArrowUp");
+    key("ArrowUp");
+    key("ArrowUp");
+    expect(key("Enter").defaultPrevented).toBe(true);
+    expect(h.root().querySelector<HTMLInputElement>(".card input")!.placeholder).toBe(MENU_STRINGS.askPlaceholder);
+
+    expect(key("Escape").defaultPrevented).toBe(true);
+    h.renderer.show({ ...request(h), more: SLOTS });
+    expect(key("F10", { shiftKey: true }).defaultPrevented).toBe(true);
+    expect(h.root().querySelectorAll(".card .row")).toHaveLength(SLOTS.length + 1);
+    h.renderer.show({ ...request(h), more: SLOTS });
+    key("ContextMenu");
+    expect(h.root().querySelectorAll(".card .row")).toHaveLength(SLOTS.length + 1);
+  });
+
+  it("reaches the card from the keyboard after the editor is gone", () => {
+    h.renderer.show(request(h));
+    h.renderer.update(update({ state: "answer", text: "- A point" }));
+    h.editor.remove();
+    vi.advanceTimersByTime(600);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
+    expect(h.root().querySelector(".bubble.focused")).toBeNull();
+    expect(h.root().querySelector(".card button.focused")!.textContent).toBe(MENU_STRINGS.copy);
+  });
+
+  it("moves a retained card out of a modal dialog that was removed", () => {
+    const dialog = document.createElement("dialog");
+    dialog.append(h.editor);
+    document.body.append(dialog);
+    vi.spyOn(h.editor, "closest").mockImplementation(((selector: string) => (selector === "dialog:modal" ? dialog : null)) as typeof h.editor.closest);
+    h.renderer.show(request(h));
+    h.renderer.update(update({ state: "error", text: "Editor gone.", canRetry: false, result: "the rewrite" }));
+    dialog.remove();
+    vi.advanceTimersByTime(600);
+    const host = h.root().host;
+    expect(host.isConnected).toBe(true);
+    expect(host.parentElement).toBe(document.body);
+    expect(h.root().querySelector(".card .result")!.textContent).toBe("the rewrite");
+    expect(h.notices).toEqual([]);
+  });
 });
 
 describe("placeBeside", () => {

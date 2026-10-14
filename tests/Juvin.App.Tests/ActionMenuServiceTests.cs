@@ -70,8 +70,10 @@ public sealed class ActionMenuServiceTests : IAsyncDisposable
             show.GetProperty("slots").EnumerateArray().Select(slot => slot.GetProperty("id").GetString())
         );
         Assert.Equal("What am I missing?", show.GetProperty("slots")[0].GetProperty("title").GetString());
-        var more = Assert.Single(show.GetProperty("more").EnumerateArray());
-        Assert.Equal(("custom-1", "Formal"), (more.GetProperty("id").GetString(), more.GetProperty("title").GetString()));
+        var more = show.GetProperty("more").EnumerateArray().Select(action => (action.GetProperty("id").GetString(), action.GetProperty("title").GetString())).ToList();
+        Assert.Equal(6, more.Count);
+        Assert.Equal(("missing", "What am I missing?"), more[0]);
+        Assert.Equal(("custom-1", "Formal"), more[^1]);
         Assert.Equal(
             ["2 messages", "Entire thread", _localizer.Format("Panel.Provider.Local", _localizer["Panel.Provider.DefaultModel"])],
             show.GetProperty("status").EnumerateArray().Select(line => line.GetString())
@@ -159,6 +161,153 @@ public sealed class ActionMenuServiceTests : IAsyncDisposable
         Assert.Equal(menuId, applied.GetProperty("menuId").GetString());
         await WaitUntilAsync(() => _history.Entries is [{ Applied: true, ActionId: "soften" }]);
         Assert.Empty(_codex.Requests);
+    }
+
+    [Fact]
+    public async Task AShownMenuAndAnAppliedRewrite_RaiseTheirEvents()
+    {
+        var shown = 0;
+        var applied = 0;
+        _service.MenuShown += () => shown++;
+        _service.RewriteApplied += () => applied++;
+
+        var menuId = await OpenMenuAsync();
+        await WaitUntilAsync(() => shown == 1);
+        Choose(menuId, "soften");
+        await NextAsync("menu.update");
+        var apply = await NextAsync("apply.request");
+        Assert.Equal(0, applied);
+        Reply(apply, """{"ok":true}""", "apply.response");
+
+        await NextAsync("menu.update");
+        Assert.Equal((1, 1), (shown, applied));
+    }
+
+    [Fact]
+    public async Task AMenuTheExtensionCannotShowOrARefusedApply_RaisesNoEvent()
+    {
+        var raised = 0;
+        _service.MenuShown += () => raised++;
+        _service.RewriteApplied += () => raised++;
+        await SayHelloAsync();
+        _service.OnCaptureCompleted(_session, 1, Capture());
+        var show = await NextAsync("menu.show");
+        Reply(show, """{"ok":false,"error":{"code":"unsupported","message":"No menu."}}""", "menu.response");
+        await WaitUntilAsync(() => Volatile.Read(ref _panelShows) == 1);
+
+        _service.OnCaptureCompleted(_session, 2, Capture());
+        var menuId = await ShowAsync();
+        Choose(menuId, "clearer");
+        await NextAsync("menu.update");
+        Reply(await NextAsync("apply.request"), """{"ok":false,"error":{"code":"draft-changed","message":"Changed."}}""", "apply.response");
+        await NextAsync("menu.update");
+
+        // Only the second menu's show.
+        await WaitUntilAsync(() => Volatile.Read(ref raised) == 1);
+        await PingAsync();
+        Assert.Equal(1, raised);
+    }
+
+    [Fact]
+    public async Task AnApplyAcknowledgedAfterTheMenuWasSuperseded_RaisesNoRewriteApplied()
+    {
+        var applied = 0;
+        _service.RewriteApplied += () => applied++;
+        var menuId = await OpenMenuAsync();
+        Choose(menuId, "soften");
+        await NextAsync("menu.update");
+        var apply = await NextAsync("apply.request");
+
+        _service.OnCaptureCompleted(_session, 2, Capture());
+        await NextAsync("menu.close");
+        await ShowAsync();
+        Reply(apply, """{"ok":true}""", "apply.response");
+        await PingAsync();
+
+        Assert.Equal(0, applied);
+    }
+
+    [Fact]
+    public async Task AMenuSupersededBeforeItsReply_RaisesNoMenuShown()
+    {
+        var shown = 0;
+        _service.MenuShown += () => shown++;
+        await SayHelloAsync();
+        _service.OnCaptureCompleted(_session, 1, Capture());
+        var first = await NextAsync("menu.show");
+        _service.OnCaptureCompleted(_session, 2, Capture());
+        await NextAsync("menu.close");
+        var second = await NextAsync("menu.show");
+
+        Reply(first, """{"ok":true}""", "menu.response");
+        await PingAsync();
+        Assert.Equal(0, shown);
+
+        Reply(second, """{"ok":true}""", "menu.response");
+        await WaitUntilAsync(() => Volatile.Read(ref shown) == 1);
+    }
+
+    [Fact]
+    public async Task ARewriteFinishedAfterTheBrowserDisconnects_GoesToThePanelForCopy()
+    {
+        _local.CompletionGate = new TaskCompletionSource();
+        var menuId = await OpenMenuAsync();
+        Choose(menuId, "soften");
+        await NextAsync("menu.update");
+
+        await _session.DisposeAsync();
+        _local.CompletionGate.SetResult();
+
+        await WaitUntilAsync(() => Volatile.Read(ref _panelShows) == 1);
+        Assert.Equal(RewritePanelState.Done, _panel.State);
+        Assert.Equal("reply 1", _panel.ResultText);
+        Assert.True(_panel.CanCopy);
+        Assert.False(_panel.CanApply);
+        Assert.False(_panel.CanRecapture);
+        Assert.Equal(_localizer["Panel.Error.Disconnected"], _panel.Notice);
+        Assert.Empty(_history.Entries);
+    }
+
+    [Fact]
+    public async Task AnAnswerWhoseUpdateStallsPastTheDeadline_GoesToThePanelForCopy()
+    {
+        _local.CompletionGate = new TaskCompletionSource();
+        var menuId = await OpenMenuAsync();
+        Choose(menuId, "missing");
+        await NextAsync("menu.update");
+
+        _channel.SendGate = new TaskCompletionSource();
+        _local.CompletionGate.SetResult();
+
+        // The send deadline is ten seconds; the stalled update is abandoned and the answer handed to the panel.
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(25);
+        while (Volatile.Read(ref _panelShows) == 0)
+        {
+            Assert.True(DateTime.UtcNow < deadline, "The panel never received the stalled answer.");
+            await Task.Delay(100);
+        }
+
+        Assert.Equal(RewritePanelState.Done, _panel.State);
+        Assert.Equal("reply 1", _panel.ResultText);
+        Assert.True(_panel.CanCopy);
+        Assert.False(_panel.CanApply);
+    }
+
+    [Fact]
+    public async Task AnAnswerFinishedAfterTheBrowserDisconnects_GoesToThePanelForCopy()
+    {
+        _local.CompletionGate = new TaskCompletionSource();
+        var menuId = await OpenMenuAsync();
+        Choose(menuId, "missing");
+        await NextAsync("menu.update");
+
+        await _session.DisposeAsync();
+        _local.CompletionGate.SetResult();
+
+        await WaitUntilAsync(() => Volatile.Read(ref _panelShows) == 1);
+        Assert.Equal("reply 1", _panel.ResultText);
+        Assert.True(_panel.CanCopy);
+        Assert.False(_panel.CanShowChanges);
     }
 
     [Fact]
