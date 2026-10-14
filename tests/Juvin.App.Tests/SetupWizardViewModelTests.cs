@@ -22,6 +22,10 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
 
     private readonly ConnectorService _connector;
     private readonly Localizer _localizer = new();
+    private readonly FakeConnectorChannel _menuChannel = new();
+    private readonly Task _menuLoop;
+    private readonly ActionMenuService _menus;
+    private readonly ConnectorSession _menuSession;
     private readonly RewritePanelViewModel _panel;
     private readonly FakeProviders _providers = new();
     private readonly FakeNativeHostRegistrar _registrar = new();
@@ -32,11 +36,20 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
     {
         _connector = new ConnectorService(_socket, _registrar, _settings, _localizer);
         var model = new FakeModelProvider(ProcessingMode.Local);
-        _panel = new RewritePanelViewModel(new ProviderSelector(_ => model, _ => model), _settings, new FakeHistoryService(), _localizer, action => action());
+        var providers = new ProviderSelector(_ => model, _ => model);
+        var history = new FakeHistoryService();
+        _panel = new RewritePanelViewModel(providers, _settings, history, _localizer, action => action());
+        var panelService = new RewritePanelService(_panel, () => { }, () => { }, action => action());
+        _menus = new ActionMenuService(_connector, panelService, providers, _settings, history, _localizer, action => action());
+        _menuSession = new ConnectorSession(_menuChannel, () => _connector.BuildConfig(_settings.Current));
+        _menuSession.MenuChosen += _menus.OnMenuChosen;
+        _menuLoop = _menuSession.RunAsync(CancellationToken.None);
     }
 
     public async ValueTask DisposeAsync()
     {
+        await _menuSession.DisposeAsync();
+        await _menuLoop.WaitAsync(s_timeout);
         await _connector.StopAsync();
     }
 
@@ -209,6 +222,58 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
 
         Assert.True(vm.IsRewriteShown);
         Assert.Equal(TryItPhase.RewriteShown, vm.TryItPhase);
+    }
+
+    [Fact]
+    public async Task TryIt_TicksTheRowsWhenTheMenuShowsAndItsRewriteIsApplied()
+    {
+        var vm = Create();
+
+        var menuId = await ShowMenuAsync();
+
+        Assert.True(vm.IsCaptured);
+        Assert.False(vm.IsRewriteShown);
+        Assert.Null(vm.TryItStatus);
+
+        _menuChannel.Deliver($$"""{"v":1,"type":"menu.choose","menuId":"{{menuId}}","action":"soften"}""");
+        await NextMenuMessageAsync("menu.update");
+        var apply = await NextMenuMessageAsync("apply.request");
+        Assert.False(vm.IsRewriteShown);
+        _menuChannel.Deliver($$"""{"v":1,"type":"apply.response","id":"{{apply.GetProperty("id").GetString()}}","ok":true}""");
+
+        await WaitUntilAsync(() => vm.IsRewriteShown);
+        Assert.Equal(TryItPhase.RewriteShown, vm.TryItPhase);
+    }
+
+    [Fact]
+    public async Task AMenuShownAfterADeclinedCapture_TicksTheCapturedRowAndClearsTheReason()
+    {
+        var vm = Create();
+        await _connector.StartAsync(CancellationToken.None);
+        await using var stream = await ConnectAndSayHelloAsync();
+        await WriteAsync(stream, """{"v":1,"type":"shortcut.pressed"}""");
+        var id = (await ReadAsync(stream)).GetProperty("id").GetString();
+        await WriteAsync(
+            stream,
+            $$$"""{"v":1,"type":"context.response","id":"{{{id}}}","ok":false,"error":{"code":"no-selection","message":"Declined."}}"""
+        );
+        await WaitUntilAsync(() => vm.TryItPhase == TryItPhase.CaptureFailed);
+
+        await ShowMenuAsync();
+
+        Assert.Equal(TryItPhase.Captured, vm.TryItPhase);
+        Assert.Null(vm.TryItStatus);
+    }
+
+    [Fact]
+    public async Task AfterDispose_AMenuShownChangesNothing()
+    {
+        var vm = Create();
+        vm.Dispose();
+
+        await ShowMenuAsync();
+
+        Assert.Equal(TryItPhase.NotStarted, vm.TryItPhase);
     }
 
     [Fact]
@@ -590,6 +655,29 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
         await _panel.SelectActionCommand.ExecuteAsync(_panel.Actions[0]);
     }
 
+    /// <summary>Shows a menu over a capture through the fake extension and waits until it is reported shown; returns its id.</summary>
+    private async Task<string> ShowMenuAsync()
+    {
+        var shown = new TaskCompletionSource();
+        Action onShown = () => shown.TrySetResult();
+        _menus.MenuShown += onShown;
+        _menuChannel.Deliver(Hello);
+        await NextMenuMessageAsync("config");
+        _menus.OnCaptureCompleted(_menuSession, 1, Capture());
+        var show = await NextMenuMessageAsync("menu.show");
+        _menuChannel.Deliver($$"""{"v":1,"type":"menu.response","id":"{{show.GetProperty("id").GetString()}}","ok":true}""");
+        await shown.Task.WaitAsync(s_timeout);
+        _menus.MenuShown -= onShown;
+        return show.GetProperty("menuId").GetString()!;
+    }
+
+    private async Task<JsonElement> NextMenuMessageAsync(string type)
+    {
+        var message = await _menuChannel.NextSentAsync();
+        Assert.Equal(type, message.GetProperty("type").GetString());
+        return message;
+    }
+
     private SetupWizardViewModel Create(params FakeSetupTask[] tasks)
     {
         var connectorPanel = new BrowserConnectorPanelViewModel(_registrar, _connector, _localizer);
@@ -603,6 +691,7 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
             shortcut,
             _connector,
             _panel,
+            _menus,
             tasks,
             action => action()
         );

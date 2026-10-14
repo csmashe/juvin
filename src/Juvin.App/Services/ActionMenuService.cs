@@ -12,7 +12,8 @@ namespace Juvin.App.Services;
 ///     Owns the action menu (section 2.8 of <c>docs/mvp-scope.md</c>): shows it over every capture, runs the
 ///     action the user picks, applies the result through the capture's hash and format checks, and reports each
 ///     state back with <c>menu.update</c>. Review, a declined capture, and a page that cannot draw the menu go to
-///     the rewrite panel instead. Traces carry menu ids, action ids, lengths, and error codes only.
+///     the rewrite panel instead, as does a finished result the browser disconnected before it could take.
+///     Traces carry menu ids, action ids, lengths, and error codes only.
 /// </summary>
 /// <remarks>
 ///     State is read and written on the UI thread only, through the <c>post</c> marshaller; the connector,
@@ -75,6 +76,12 @@ public sealed class ActionMenuService
         _post = post;
         _builder = builder;
     }
+
+    /// <summary>Raised on the UI thread when the extension has drawn a menu.</summary>
+    public event Action? MenuShown;
+
+    /// <summary>Raised on the UI thread when a menu's rewrite has replaced the draft.</summary>
+    public event Action? RewriteApplied;
 
     public void Start()
     {
@@ -228,12 +235,14 @@ public sealed class ActionMenuService
         var settings = _settings.Current;
         var actions = RewriteActionCatalog.Resolve(settings);
         var context = menu.Capture.Context;
+        var slots = s_slots.Select(id => ToConnector(actions.First(action => action.Id == id))).ToList();
         return new MenuShowMessage
         {
             MenuId = menu.Id,
             EditorId = menu.Capture.EditorId,
-            Slots = [.. s_slots.Select(id => ToConnector(actions.First(action => action.Id == id)))],
-            More = [.. actions.Where(action => action.Title is not null).Select(ToConnector)],
+            Slots = slots,
+            // Ask for a change is the mark itself, so it is not listed.
+            More = [.. slots, .. actions.Where(action => action.Title is not null).Select(ToConnector)],
             Status =
             [
                 CaptureLabels.MessageCount(context.Thread.Count, _localizer),
@@ -260,6 +269,13 @@ public sealed class ActionMenuService
         if (error is null)
         {
             Trace.WriteLine($"[ActionMenu] Showing {menu.Id} with {message.More.Count} more actions.");
+            _post(() =>
+            {
+                if (IsCurrent(menu))
+                {
+                    MenuShown?.Invoke();
+                }
+            });
             return;
         }
 
@@ -371,27 +387,34 @@ public sealed class ActionMenuService
             $"[ActionMenu] {action.Id} done on {menu.Id}, {result.Text.Length} chars in {(int)result.Provenance.Duration.TotalMilliseconds} ms."
         );
         var historyEntryId = RecordHistory(action, menu.Capture, result);
-        if (action.IsMissing || session == menu.Advice)
+        var isAdvice = action.IsMissing || session == menu.Advice;
+        // Advice is never applicable, so a follow-up to it keeps the panel from offering the Changes view.
+        var handOver = () => _panel.ShowResult(menu.Number, menu.Result, session, isAdvice ? RewriteAction.Missing : action, result);
+
+        if (isAdvice)
         {
             menu.Advice = session;
             menu.EndBusy(busy);
-            _ = SendUpdateAsync(menu, new MenuUpdateMessage { MenuId = menu.Id, State = MenuStates.Answer, Text = result.Text });
+            _ = SendResultAsync(menu, new MenuUpdateMessage { MenuId = menu.Id, State = MenuStates.Answer, Text = result.Text }, handOver);
             return;
         }
 
-        _ = ApplyAsync(menu, busy, result.Text, historyEntryId);
+        _ = ApplyAsync(menu, busy, result.Text, historyEntryId, handOver);
     }
 
-    private async Task ApplyAsync(OpenMenu menu, CancellationTokenSource busy, string text, string? historyEntryId)
+    private async Task ApplyAsync(OpenMenu menu, CancellationTokenSource busy, string text, string? historyEntryId, Action handOver)
     {
         // Not cancellable: once apply.request is sent the extension may already have written the draft.
         var error = await menu.Target.ApplyAsync(menu.Capture, text, CancellationToken.None);
         _post(() =>
         {
             menu.EndBusy(busy);
-            if (error is null && historyEntryId is not null)
+            if (error is null)
             {
-                WriteHistory(() => _history.MarkApplied(historyEntryId));
+                if (historyEntryId is not null)
+                {
+                    WriteHistory(() => _history.MarkApplied(historyEntryId));
+                }
             }
 
             if (!IsCurrent(menu))
@@ -403,12 +426,13 @@ public sealed class ActionMenuService
             {
                 Trace.WriteLine($"[ActionMenu] Applied {text.Length} chars from {menu.Id}.");
                 _menu = null;
+                RewriteApplied?.Invoke();
                 _ = SendUpdateAsync(menu, new MenuUpdateMessage { MenuId = menu.Id, State = MenuStates.Applied });
                 return;
             }
 
             Trace.WriteLine($"[ActionMenu] Apply from {menu.Id} refused ({error.Code}).");
-            _ = SendUpdateAsync(
+            _ = SendResultAsync(
                 menu,
                 error.Code == DraftChangedCode
                     ? new MenuUpdateMessage { MenuId = menu.Id, State = MenuStates.DraftChanged, Text = text }
@@ -419,7 +443,8 @@ public sealed class ActionMenuService
                         Text = ErrorText(error.Code),
                         CanRetry = error.Code == ConnectorRewriteTarget.TimeoutCode,
                         Result = text,
-                    }
+                    },
+                handOver
             );
         });
     }
@@ -491,26 +516,53 @@ public sealed class ActionMenuService
 
     private string ErrorText(string? code) => _localizer[RewritePanelViewModel.ErrorKeyFor(code)];
 
-    private static Task SendErrorAsync(OpenMenu menu, string text, bool canRetry) =>
+    private static Task<bool> SendErrorAsync(OpenMenu menu, string text, bool canRetry) =>
         SendUpdateAsync(menu, new MenuUpdateMessage { MenuId = menu.Id, State = MenuStates.Error, Text = text, CanRetry = canRetry });
 
-    private static Task SendUpdateAsync(OpenMenu menu, MenuUpdateMessage update) =>
+    private static Task<bool> SendUpdateAsync(OpenMenu menu, MenuUpdateMessage update) =>
         SendAsync(menu, (session, ct) => session.SendMenuUpdateAsync(update, ct));
+
+    /// <summary>
+    ///     Sends an update that carries a finished result. When the browser has disconnected, the result goes
+    ///     to the panel instead, so it can still be copied with history off.
+    /// </summary>
+    private async Task SendResultAsync(OpenMenu menu, MenuUpdateMessage update, Action handOver)
+    {
+        if (await SendUpdateAsync(menu, update))
+        {
+            return;
+        }
+
+        _post(() =>
+        {
+            if (!IsCurrent(menu))
+            {
+                return;
+            }
+
+            Trace.WriteLine($"[ActionMenu] The browser disconnected before {menu.Id} could show its result; opening the panel.");
+            _menu = null;
+            handOver();
+        });
+    }
 
     /// <summary>
     ///     Sends a notification to the menu's extension. A closed connection or a peer that stops reading is
     ///     traced, never thrown, and a stalled write is abandoned after a deadline so it cannot hold the channel.
+    ///     Returns false when the notification was not delivered.
     /// </summary>
-    private static async Task SendAsync(OpenMenu menu, Func<ConnectorSession, CancellationToken, Task> send)
+    private static async Task<bool> SendAsync(OpenMenu menu, Func<ConnectorSession, CancellationToken, Task> send)
     {
         using var deadline = new CancellationTokenSource(s_sendTimeout);
         try
         {
             await send(menu.Session, deadline.Token);
+            return true;
         }
         catch (Exception ex) when (ex is IOException or OperationCanceledException)
         {
             Trace.WriteLine($"[ActionMenu] Could not reach the extension for {menu.Id} ({ex.GetType().Name}).");
+            return false;
         }
     }
 

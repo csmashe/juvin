@@ -26,11 +26,18 @@ internal sealed class FakeConnectorChannel : IConnectorChannel
 
     public bool HasSent => _sent.Reader.TryPeek(out _);
 
-    public Task SendAsync(string json, CancellationToken ct)
+    /// <summary>When set, sends wait on it with the caller's token, so a peer that stops reading can be simulated.</summary>
+    public TaskCompletionSource? SendGate { get; set; }
+
+    public async Task SendAsync(string json, CancellationToken ct)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        if (SendGate is { } gate)
+        {
+            await gate.Task.WaitAsync(ct);
+        }
+
         _sent.Writer.TryWrite(json);
-        return Task.CompletedTask;
     }
 
     public async Task<string?> ReceiveAsync(CancellationToken ct)

@@ -1,10 +1,14 @@
 using Juvin.App.ViewModels;
 using Juvin.App.Views;
 using Juvin.Core.Connector;
+using Juvin.Core.Rewrite;
 
 namespace Juvin.App.Services;
 
-/// <summary>Shows the rewrite panel for the captures the action menu hands it: Review, a declined capture, or a page that cannot draw the menu.</summary>
+/// <summary>
+///     Shows the rewrite panel for the captures the action menu hands it: Review, a declined capture, a page that
+///     cannot draw the menu, or a finished result the browser disconnected before it could take.
+/// </summary>
 public sealed class RewritePanelService
 {
     private readonly Action _hidePanel;
@@ -55,5 +59,22 @@ public sealed class RewritePanelService
             _shownCapture = number;
             _showPanel();
             _ = _viewModel.LoadAsync(target, result);
+        });
+
+    /// <summary>
+    ///     Shows a result the action menu finished for capture <paramref name="number" /> but could not deliver
+    ///     because the browser disconnected, so it can still be copied. Callable from any thread.
+    /// </summary>
+    public void ShowResult(long number, ContextResult capture, RewriteSession session, RewriteAction action, RewriteResult result) =>
+        _post(() =>
+        {
+            if (number < _shownCapture)
+            {
+                return;
+            }
+
+            _shownCapture = number;
+            _showPanel();
+            _viewModel.ShowResult(capture, session, action, result);
         });
 }
