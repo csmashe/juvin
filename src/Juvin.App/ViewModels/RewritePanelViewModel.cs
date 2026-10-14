@@ -173,6 +173,7 @@ public sealed partial class RewritePanelViewModel : ObservableObject
         State == RewritePanelState.Done
         && IsSessionApplicable
         && _capture is not null
+        && _target is not null
         && !IsDraftChanged
         && !IsBusy;
 
@@ -198,6 +199,36 @@ public sealed partial class RewritePanelViewModel : ObservableObject
         _target = target;
         _recaptureEditorId = null;
         return LoadCaptureAsync(result, null);
+    }
+
+    /// <summary>
+    ///     Shows a result the action menu finished but the browser disconnected before it could take. There is
+    ///     no target, so the user can copy it and ask follow-ups but not Apply or Recapture.
+    /// </summary>
+    public void ShowResult(ContextResult capture, RewriteSession session, RewriteAction action, RewriteResult result)
+    {
+        Supersede();
+        _target = null;
+        _recaptureEditorId = null;
+        _capture = capture.Capture;
+        _changes = null;
+        _session = session;
+        _sessionAction = action;
+        _lastAction = action;
+        _lastInstruction = null;
+        _historyEntryId = null;
+        FollowUpText = "";
+        IsDraftChanged = false;
+        ShowChanges = false;
+        ErrorMessage = null;
+        CanRetry = false;
+        SelectChip(action.IsCustom ? null : action);
+        ShowContext(_capture, result.Provenance);
+        ProviderLabel = DescribeProvider(session.Provider, result.Provenance.ModelId);
+        ResultText = result.Text;
+        Notice = _localizer["Panel.Error.Disconnected"];
+        State = RewritePanelState.Done;
+        Trace.WriteLine($"[RewritePanel] Showing a {action.Id} result of {result.Text.Length} chars the browser did not take.");
     }
 
     partial void OnStateChanged(RewritePanelState value) => Refresh();

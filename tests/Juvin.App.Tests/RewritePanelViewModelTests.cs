@@ -677,6 +677,29 @@ public sealed class RewritePanelViewModelTests
     }
 
     [Fact]
+    public async Task ShowResult_DiffsAgainstTheNewDraftEvenWhenTheResultTextIsUnchanged()
+    {
+        const string reply = "hi Dana, I can send it Friday";
+        _local.Reply = _ => reply;
+        var vm = Create();
+        await LoadAndRunAsync(vm, Capture());
+        vm.ShowChangesViewCommand.Execute(null);
+        Assert.Contains(vm.Changes, s => s.Kind == DiffKind.Added);
+
+        var first = Capture().Capture!;
+        var context = first.Context with { Draft = reply };
+        var other = new ContextResult(new CapturedContext(context, first.Adapter, "e-2", "sha256:def", null, 0, reply.Length), null);
+        var session = new RewriteSession(new ProviderSelector(_ => _local, _ => _codex), _settings.Current, context);
+        var result = await session.RunAsync(RewriteAction.Clearer, null, null, CancellationToken.None);
+
+        vm.ShowResult(other, session, RewriteAction.Clearer, result);
+        vm.ShowChangesViewCommand.Execute(null);
+
+        Assert.Equal(reply, vm.ResultText);
+        Assert.All(vm.Changes, s => Assert.Equal(DiffKind.Equal, s.Kind));
+    }
+
+    [Fact]
     public async Task Copy_WritesTheResultAndShowsTheHint()
     {
         var copied = new List<string>();
