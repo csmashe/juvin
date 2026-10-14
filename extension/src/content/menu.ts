@@ -3,12 +3,13 @@
 import type { Action, MenuUpdateMessage } from "../shared/protocol";
 import type { MenuNotice, MenuShowRequest, MenuShowResult } from "../shared/runtime-messages";
 import type { Editor, EditorRegistry } from "./editor-registry";
-import { actionIcon, juvinMark } from "./menu-icons";
+import { actionIcon, closeIcon, juvinMark } from "./menu-icons";
 import { BUBBLE_SIZE, HOST_STYLE, MENU_CSS, RING_CENTER, RING_RADIUS, RING_SIZE } from "./menu-styles";
 
 export const MENU_STRINGS = {
   menuLabel: "Juvin actions",
   markLabel: "Juvin",
+  close: "Close",
   draftChangedHeading: "The draft changed while Juvin was working.",
   draftChangedBody: "Copy the result, or recapture the draft and pick the action again.",
   copy: "Copy",
@@ -31,7 +32,15 @@ const NOTE_REMOVE_MS = 4000;
 const MENU_FALLBACK_SIZE = { width: RING_SIZE.width + 40, height: RING_SIZE.height + 40 };
 const NOTE_FALLBACK_SIZE = { width: 280, height: 34 };
 // Screen angles clockwise from 12 o'clock, starting at the lower left so keys 1 to 5 run clockwise.
-const SLOT_ANGLES = [216, 288, 0, 72, 144];
+// Bubble centres relative to the mark, an arch open at the bottom where the card attaches: keys 1 to 5 run clockwise from the lower left.
+const SLOT_OFFSETS = [
+  { x: -156, y: 56 },
+  { x: -158, y: -62 },
+  { x: 0, y: -142 },
+  { x: 158, y: -62 },
+  { x: 156, y: 56 },
+];
+const SVG_NS = "http://www.w3.org/2000/svg";
 
 export interface Size {
   width: number;
@@ -142,8 +151,10 @@ export class MenuRenderer {
     panel.setAttribute("role", "menu");
     panel.setAttribute("aria-label", MENU_STRINGS.menuLabel);
 
+    const slots = request.slots.slice(0, MAX_SLOTS);
     const ring = doc.createElement("div");
     ring.className = "ring";
+    ring.append(spokes(doc, slots.length));
     const mark = doc.createElement("button");
     mark.className = "mark";
     mark.type = "button";
@@ -152,7 +163,6 @@ export class MenuRenderer {
     mark.append(juvinMark(doc));
     ring.append(mark);
 
-    const slots = request.slots.slice(0, MAX_SLOTS);
     const bubbles = slots.map((slot, index) => {
       const bubble = this.createBubble(doc, slot, index);
       bubble.addEventListener("click", () => this.pick(index));
@@ -160,20 +170,12 @@ export class MenuRenderer {
       return bubble;
     });
 
-    const status = doc.createElement("div");
-    status.className = "status";
-    for (const text of request.status) {
-      const chip = doc.createElement("span");
-      chip.className = "chip";
-      chip.textContent = text;
-      status.append(chip);
-    }
 
     const card = doc.createElement("div");
     card.className = "card";
     card.hidden = true;
 
-    panel.append(ring, status, card);
+    panel.append(ring, card);
     root.append(panel);
     // Clicks in the menu leave focus and the selection in the editor; only a result block may be selected by hand.
     panel.addEventListener("mousedown", (event) => {
@@ -255,19 +257,18 @@ export class MenuRenderer {
     bubble.tabIndex = -1;
     bubble.setAttribute("role", "menuitem");
     bubble.dataset.action = slot.id;
-    const angle = ((SLOT_ANGLES[index] ?? 0) * Math.PI) / 180;
-    const x = RING_CENTER.x + RING_RADIUS * Math.sin(angle) - BUBBLE_SIZE / 2;
-    const y = RING_CENTER.y - RING_RADIUS * Math.cos(angle) - BUBBLE_SIZE / 2;
-    bubble.style.left = `${Math.round(x)}px`;
-    bubble.style.top = `${Math.round(y)}px`;
+    const center = slotCenter(index);
+    bubble.style.left = `${Math.round(center.x - BUBBLE_SIZE.width / 2)}px`;
+    bubble.style.top = `${Math.round(center.y - BUBBLE_SIZE.height / 2)}px`;
+
+    const icon = doc.createElement("span");
+    icon.className = "icon";
+    icon.append(actionIcon(doc, slot.id));
 
     const title = doc.createElement("span");
     title.className = "title";
     title.textContent = slot.title;
-    const key = doc.createElement("span");
-    key.className = "key";
-    key.textContent = String(index + 1);
-    bubble.append(actionIcon(doc, slot.id), title, key);
+    bubble.append(icon, title);
     return bubble;
   }
 
@@ -381,7 +382,7 @@ export class MenuRenderer {
       bubble.classList.add("active");
       const spinner = menu.host.ownerDocument.createElement("span");
       spinner.className = "spinner";
-      bubble.append(spinner);
+      bubble.querySelector(".icon")?.append(spinner);
     }
   }
 
@@ -402,7 +403,11 @@ export class MenuRenderer {
 
   private openCard(menu: OpenMenu): HTMLElement {
     this.clearRunning(menu);
-    menu.card.replaceChildren();
+    const close = this.button(menu, "", false, () => this.dismiss());
+    close.className = "close";
+    close.setAttribute("aria-label", MENU_STRINGS.close);
+    close.append(closeIcon(menu.host.ownerDocument));
+    menu.card.replaceChildren(close);
     menu.card.hidden = false;
     menu.keepsResult = false;
     return menu.card;
@@ -587,9 +592,33 @@ export class MenuRenderer {
   }
 }
 
+function slotCenter(index: number): { x: number; y: number } {
+  const point = slotPoint(index);
+  return { x: RING_CENTER.x + RING_RADIUS * point.x, y: RING_CENTER.y + RING_RADIUS * point.y };
+}
+
+/** One line from the mark to each bubble, drawn behind them. */
+function spokes(doc: Document, count: number): SVGSVGElement {
+  const svg = doc.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("class", "spokes");
+  svg.setAttribute("viewBox", `0 0 ${RING_SIZE.width} ${RING_SIZE.height}`);
+  svg.setAttribute("aria-hidden", "true");
+  for (let index = 0; index < count; index++) {
+    const end = slotCenter(index);
+    const line = doc.createElementNS(SVG_NS, "line");
+    line.setAttribute("x1", String(RING_CENTER.x));
+    line.setAttribute("y1", String(RING_CENTER.y));
+    line.setAttribute("x2", end.x.toFixed(1));
+    line.setAttribute("y2", end.y.toFixed(1));
+    svg.append(line);
+  }
+
+  return svg;
+}
+
 function slotPoint(index: number): { x: number; y: number } {
-  const angle = ((SLOT_ANGLES[index] ?? 0) * Math.PI) / 180;
-  return { x: Math.sin(angle), y: -Math.cos(angle) };
+  const offset = SLOT_OFFSETS[index] ?? { x: 0, y: 0 };
+  return { x: offset.x / RING_RADIUS, y: offset.y / RING_RADIUS };
 }
 
 // Everything outside a modal dialog is inert, so a menu for an editor inside one must live inside it too.

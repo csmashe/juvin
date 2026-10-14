@@ -83,8 +83,8 @@ describe("MenuRenderer", () => {
     const root = h.root();
     expect(root.mode).toBe("closed");
     expect(root.querySelectorAll(".bubble")).toHaveLength(5);
-    expect(Array.from(root.querySelectorAll(".bubble .key"), (k) => k.textContent)).toEqual(["1", "2", "3", "4", "5"]);
-    expect(Array.from(root.querySelectorAll(".chip"), (c) => c.textContent)).toEqual(["6 messages", "Entire thread", "Local: qwen3"]);
+    expect(root.querySelector(".bubble .key")).toBeNull();
+    expect(root.querySelector(".status")).toBeNull();
     expect(root.querySelector("button.mark")).not.toBeNull();
     expect(root.querySelector("style")?.textContent).toContain("#F5A623");
   });
@@ -160,7 +160,7 @@ describe("MenuRenderer", () => {
 
   it("stays open on a click inside", () => {
     h.renderer.show(request(h));
-    h.root().querySelector(".chip")!.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, composed: true }));
+    h.root().querySelector(".bubble .title")!.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, composed: true }));
     expect(h.notices).toEqual([]);
     expect(hosts()).toHaveLength(1);
   });
@@ -273,6 +273,16 @@ describe("MenuRenderer", () => {
     expect(root.querySelector(".card .message")!.textContent).toBe("- Missing the deadline.");
     expect(buttonByText(root, MENU_STRINGS.copy)).toBeDefined();
     expect(hosts()).toHaveLength(1);
+  });
+
+  it("closes from the card's close button and reports it", () => {
+    h.renderer.show(request(h));
+    h.renderer.update(update({ state: "answer", text: "- A point" }));
+    const close = h.root().querySelector<HTMLButtonElement>(".card .close")!;
+    expect(close.getAttribute("aria-label")).toBe(MENU_STRINGS.close);
+    close.click();
+    expect(h.notices).toEqual([{ kind: "juvin.menu.closed", menuId: "menu-1" }]);
+    expect(hosts()).toHaveLength(0);
   });
 
   it("removes the menu and its listeners on close", () => {
