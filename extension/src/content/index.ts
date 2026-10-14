@@ -1,5 +1,5 @@
 import browser from "webextension-polyfill";
-import { isContentRequest, type ApplyResult, type CaptureResult, type ContentRequest, type MenuShowResult } from "../shared/runtime-messages";
+import { isContentRequest, type ApplyResult, type CaptureResult, type ContentRequest, type MenuNotice, type MenuShowResult } from "../shared/runtime-messages";
 import { applyReplacement } from "./apply";
 import { captureContext } from "./capture";
 import { EditorRegistry } from "./editor-registry";
@@ -34,7 +34,7 @@ async function handle(registry: EditorRegistry, menu: MenuRenderer, request: Con
 
 function start(): void {
   const registry = new EditorRegistry();
-  const menu = new MenuRenderer();
+  const menu = new MenuRenderer(registry, (notice: MenuNotice) => browser.runtime.sendMessage(notice));
 
   // On the bundled test page this runs as an extension page, which receives runtime messages addressed by tab id.
   let ownTabId: number | undefined;
