@@ -56,8 +56,8 @@ Run on each OS before publishing a release and after any change to the login ite
 3. Sign out and sign in again. Juvin must start with its tray icon and no window, and the shortcut must open the action menu. On a Linux desktop without a tray host the window opens instead.
 4. Linux AppImage: move the `.AppImage` file, start it from the new place, quit, sign out and in. The entry must name the new path and Juvin must start.
 5. Turn Launch at login off. The entry must be gone, and signing out and in must not start Juvin.
-6. Uninstall with Launch at login on. Windows: the uninstaller must remove the `Juvin` Run value. Linux and macOS: the entry lives in the user's home, which a package removal does not touch; sign out and in and note what the leftover entry does.
+6. Uninstall with Launch at login on. Windows: the uninstaller must remove the `Juvin` Run value, and must leave one that names another executable alone. Linux and macOS: the entry lives in the user's home, which a package removal does not touch; sign out and in and note what the leftover entry does.
 
 ### Results
 
-Not run yet.
+October 15, 2026, Windows 11 Pro 23H2 (VM 500), 0.1.0-dev.4: step 6 only. The smoke test's Run value was gone after the silent uninstall, and a value of `"C:\Other\juvin.exe" --background` planted before a second uninstall was still there afterwards. Steps 1 to 5 and the Linux and macOS runs are still to do.
