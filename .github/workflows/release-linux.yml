@@ -81,6 +81,11 @@ jobs:
     if: github.ref_type == 'tag'
     needs: package
     runs-on: ubuntu-24.04
+    # Shared with the other release workflow so only one creates the draft; queue: max keeps a rerun
+    # from cancelling the other platform's waiting job.
+    concurrency:
+      group: release-${{ github.ref_name }}
+      queue: max
     permissions:
       contents: write
 
@@ -90,9 +95,16 @@ jobs:
           name: juvin-linux-${{ needs.package.outputs.version }}
           path: dist
 
-      - name: Create draft release
+      # Release Windows attaches to the same draft; whichever release job runs first creates it.
+      - name: Attach to the draft release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --draft \
-            --title "Juvin ${{ needs.package.outputs.version }}" --generate-notes
+          if ! is_draft=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null); then
+            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft \
+              --title "Juvin ${{ needs.package.outputs.version }}" --generate-notes
+          elif [ "$is_draft" != true ]; then
+            echo "::error::Release $GITHUB_REF_NAME is already published; refusing to replace its assets"
+            exit 1
+          fi
+          gh release upload "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --clobber

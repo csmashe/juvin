@@ -6,6 +6,7 @@ namespace Juvin.Platform.Windows;
 /// </summary>
 public sealed class WindowsSingleInstanceGuard : ISingleInstanceGuard, IDisposable
 {
+    // Also the AppMutex in scripts/windows/juvin.iss; change both together.
     private const string DefaultMutexName = @"Local\Juvin.SingleInstance";
 
     private readonly Lock _gate = new();
