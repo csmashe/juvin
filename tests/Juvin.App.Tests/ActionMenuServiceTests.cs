@@ -407,6 +407,7 @@ public sealed class ActionMenuServiceTests : IAsyncDisposable
         Assert.Equal("The local model server did not respond in time.", error.GetProperty("text").GetString());
         Assert.True(error.GetProperty("canRetry").GetBoolean());
         Assert.Empty(_codex.Requests);
+        Assert.False(_channel.HasSent);
     }
 
     [Fact]
@@ -452,6 +453,7 @@ public sealed class ActionMenuServiceTests : IAsyncDisposable
 
         await PingAsync();
         Assert.Single(_local.Requests);
+        Assert.False(_channel.HasSent);
     }
 
     [Fact]

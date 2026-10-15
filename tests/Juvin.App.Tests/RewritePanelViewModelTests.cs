@@ -378,6 +378,7 @@ public sealed class RewritePanelViewModelTests
         Assert.Equal(RewritePanelState.Failed, vm.State);
         Assert.Equal(_localizer["Panel.Cancelled"], vm.ErrorMessage);
         Assert.True(vm.CanRetry);
+        Assert.Empty(_target.Applied);
     }
 
     [Fact]
@@ -849,6 +850,7 @@ public sealed class RewritePanelViewModelTests
 
         Assert.True(vm.HasError);
         Assert.Empty(_history.Entries);
+        Assert.Empty(_target.Applied);
     }
 
     [Fact]
