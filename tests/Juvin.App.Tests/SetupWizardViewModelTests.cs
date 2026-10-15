@@ -425,8 +425,42 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
         Assert.Equal(ModelProbeService.LmStudioUrl, _settings.Current.LocalServerUrl);
         Assert.Equal("large", vm.RecommendedModel?.Id);
         Assert.Null(vm.ModelAdvice);
+        Assert.Equal("large", _settings.Current.LocalModel);
+        Assert.True(vm.IsRecommendedModelInUse);
+    }
+
+    [Fact]
+    public async Task ASavedModelTheServerHas_IsKeptOverTheSuggestion()
+    {
+        _settings.Update(s => s with { LocalModel = "small" });
+        _providers.Servers[ModelProbeService.OllamaUrl] = FakeProviders.Reachable(
+            null,
+            FakeProviders.Model("small", "4B", lowQuality: true),
+            FakeProviders.Model("large", "27B")
+        );
+
+        var vm = await CreateOnModeStepAsync();
+
+        Assert.Equal("large", vm.RecommendedModel?.Id);
+        Assert.Equal("small", _settings.Current.LocalModel);
+        Assert.False(vm.IsRecommendedModelInUse);
 
         vm.UseRecommendedModelCommand.Execute(null);
+
+        Assert.Equal("large", _settings.Current.LocalModel);
+        Assert.True(vm.IsRecommendedModelInUse);
+    }
+
+    [Fact]
+    public async Task ASavedModelAnotherServerHad_IsReplacedByTheSuggestion()
+    {
+        const string lan = "http://10.0.3.20:11434";
+        _settings.Update(s => s with { LocalModel = "elsewhere" });
+        _providers.Servers[lan] = FakeProviders.Reachable("0.12.3", FakeProviders.Model("large", "27B"));
+        var vm = await CreateOnModeStepAsync();
+
+        vm.CommitServerUrlCommand.Execute(lan);
+        await WaitUntilAsync(() => vm.Detections.All(row => !row.IsBusy) && vm.Detections.Any(row => row.Url == lan));
 
         Assert.Equal("large", _settings.Current.LocalModel);
         Assert.True(vm.IsRecommendedModelInUse);
@@ -490,6 +524,7 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
         Assert.Equal(_localizer["Wizard.Mode.YourServer"], row.Title);
         Assert.True(row.IsInUse);
         Assert.Equal("large", vm.RecommendedModel?.Id);
+        Assert.Equal("large", _settings.Current.LocalModel);
     }
 
     [Fact]
