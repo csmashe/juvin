@@ -1,6 +1,7 @@
 using Juvin.Core.Localization;
 using Juvin.Core.Providers;
 using Juvin.Platform.Hotkeys;
+using Juvin.Platform.Mac.Launcher;
 using Juvin.Platform.Mac.NativeMessaging;
 using Juvin.Platform.Mac.Panel;
 using Juvin.Platform.Mac.Secrets;
@@ -25,6 +26,7 @@ public static class PlatformServices
         services.AddSingleton<INativeHostRegistrar>(_ => new MacNativeHostRegistrar(NativeHost.Locate));
         // The bundle carries the launcher entry.
         services.AddSingleton<ILauncherIntegration, NoLauncherIntegration>();
+        services.AddSingleton<ILoginItem, LaunchAgentLoginItem>();
         services.AddSingleton<IHotkeyBackend, SharpHookHotkeyBackend>();
         services.AddSingleton<ISetupTask>(sp => new AccessibilityPermissionSetupTask(
             sp.GetRequiredService<Localizer>(),

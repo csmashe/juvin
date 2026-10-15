@@ -6,6 +6,7 @@ using Juvin.Core.Interfaces;
 using Juvin.Core.Localization;
 using Juvin.Core.Models;
 using Juvin.Core.Services;
+using Juvin.Platform;
 
 namespace Juvin.App.ViewModels.Sections;
 
@@ -17,6 +18,7 @@ public sealed partial class PrivacyAndDataSectionViewModel : ObservableObject
 {
     private readonly IHistoryService _history;
     private readonly Localizer _localizer;
+    private readonly ILoginItem _loginItem;
     private readonly ISettingsService _settings;
     private bool _applyingSettings;
 
@@ -39,25 +41,28 @@ public sealed partial class PrivacyAndDataSectionViewModel : ObservableObject
     [ObservableProperty]
     private RetentionOption? _selectedRetention;
 
-    public PrivacyAndDataSectionViewModel(ISettingsService settings, IHistoryService history, Localizer localizer)
-        : this(settings, history, localizer, JuvinEnvironment.DataPath)
+    public PrivacyAndDataSectionViewModel(ISettingsService settings, IHistoryService history, Localizer localizer, ILoginItem loginItem)
+        : this(settings, history, localizer, loginItem, JuvinEnvironment.DataPath)
     {
     }
 
     /// <param name="settings">The settings the toggles read and save.</param>
     /// <param name="history">The history the Storage card counts, exports, and clears.</param>
     /// <param name="localizer">The string table for labels and messages.</param>
+    /// <param name="loginItem">The OS login entry Delete all data removes along with the setting.</param>
     /// <param name="dataPath">The folder whose secrets Delete all data removes; tests pass a temporary one.</param>
     public PrivacyAndDataSectionViewModel(
         ISettingsService settings,
         IHistoryService history,
         Localizer localizer,
+        ILoginItem loginItem,
         string dataPath
     )
     {
         _settings = settings;
         _history = history;
         _localizer = localizer;
+        _loginItem = loginItem;
         DataFolder = dataPath;
         RetentionOptions =
         [
@@ -137,22 +142,47 @@ public sealed partial class PrivacyAndDataSectionViewModel : ObservableObject
     private void CancelDeleteAll() => IsConfirmingDeleteAll = false;
 
     [RelayCommand]
-    private void ConfirmDeleteAll()
+    private async Task ConfirmDeleteAllAsync()
     {
         IsConfirmingDeleteAll = false;
         ErrorMessage = null;
+        var removedLoginItem = false;
         try
         {
+            // First, so a refused removal leaves the setting that still describes the entry.
+            if (_settings.Current.LaunchAtLogin)
+            {
+                await _loginItem.DisableAsync(CancellationToken.None);
+                removedLoginItem = true;
+            }
+
             _history.Clear();
             JuvinEnvironment.DeleteSecretsIn(DataFolder);
             _settings.Reset();
             Trace.WriteLine("[PrivacyAndDataSection] Deleted all data.");
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or LoginItemException)
         {
             Trace.WriteLine($"[PrivacyAndDataSection] Could not delete all data: {ex.GetType().Name}");
             ErrorMessage = _localizer.Format("PrivacyAndData.DeleteAllFailed", ex.Message);
             ApplySettings(_settings.Current);
+            // Reset commits the defaults before its cleanup, so it can fail with the setting already off.
+            if (removedLoginItem && _settings.Current.LaunchAtLogin)
+            {
+                await RestoreLoginItemAsync();
+            }
+        }
+    }
+
+    private async Task RestoreLoginItemAsync()
+    {
+        try
+        {
+            await _loginItem.EnableAsync(CancellationToken.None);
+        }
+        catch (LoginItemException ex)
+        {
+            Trace.WriteLine($"[PrivacyAndDataSection] Could not restore the login item: {ex.GetType().Name}");
         }
     }
 

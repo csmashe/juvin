@@ -34,7 +34,7 @@ public static class Program
 
         if (!services.GetRequiredService<ISingleInstanceGuard>().TryAcquire())
         {
-            return ShowRunningInstance(services.GetRequiredService<ILocalSocketClient>());
+            return args.Contains(ILoginItem.BackgroundArgument) ? 0 : ShowRunningInstance(services.GetRequiredService<ILocalSocketClient>());
         }
 
         s_services = services;

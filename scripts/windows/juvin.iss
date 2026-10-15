@@ -72,3 +72,18 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\juvin.e
 
 [Run]
 Filename: "{app}\juvin.exe"; Description: "{cm:LaunchProgram,Juvin}"; Flags: postinstall nowait skipifsilent
+
+[Code]
+const
+  RunKey = 'Software\Microsoft\Windows\CurrentVersion\Run';
+
+// The app writes this value when Launch at login is on. It is removed only while it still names the
+// installed exe, so a value someone else wrote under the same name is left alone.
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  Value: String;
+begin
+  if (CurUninstallStep = usUninstall) and RegQueryStringValue(HKCU, RunKey, 'Juvin', Value)
+    and (Pos(Lowercase('"' + ExpandConstant('{app}\juvin.exe') + '"'), Lowercase(Value)) = 1) then
+    RegDeleteValue(HKCU, RunKey, 'Juvin');
+end;

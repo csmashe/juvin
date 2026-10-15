@@ -55,7 +55,19 @@ public class App : Application
         // GNOME matches a window to its desktop entry when the window first maps, so the entry must exist by then.
         InstallLauncher(services.GetRequiredService<ILauncherIntegration>());
         var main = services.GetRequiredService<MainWindow>();
-        desktop.MainWindow = main;
+        // A login start stays in the tray. The lifetime shows MainWindow before its loop runs, so it is assigned once the loop starts.
+        var startHidden = desktop.Args?.Contains(ILoginItem.BackgroundArgument) == true
+            && tray.IsTrayAvailable
+            && settings.Current.HasCompletedOnboarding;
+        if (startHidden)
+        {
+            Dispatcher.UIThread.Post(() => desktop.MainWindow = main);
+        }
+        else
+        {
+            desktop.MainWindow = main;
+        }
+
         // The rewrite panel stays open while hidden, so it must not keep the app alive.
         desktop.ShutdownMode = ShutdownMode.OnMainWindowClose;
 
@@ -81,6 +93,11 @@ public class App : Application
             _exiting = true;
             desktop.Shutdown();
         };
+
+        if (settings.Current.LaunchAtLogin)
+        {
+            RefreshLoginItem(services.GetRequiredService<ILoginItem>());
+        }
 
         var commands = services.GetRequiredService<ControlCommandHandler>();
         commands.ShowRequested += () => Dispatcher.UIThread.Post(() => ShowMainWindow(main));
@@ -178,6 +195,22 @@ public class App : Application
         catch (OperationCanceledException)
         {
             Trace.WriteLine("[App] Hotkey start was cancelled.");
+        }
+    }
+
+    // Rewritten on every start so a moved AppImage or a reinstall keeps the entry current, and before the window exists so it cannot overlap a change from General.
+    private static void RefreshLoginItem(ILoginItem loginItem)
+    {
+        try
+        {
+            if (!loginItem.EnableAsync(CancellationToken.None).Wait(s_launcherInstallTimeout))
+            {
+                Trace.WriteLine("[App] Login item refresh did not finish in time.");
+            }
+        }
+        catch (AggregateException ex) when (ex.InnerException is LoginItemException failure)
+        {
+            Trace.WriteLine($"[App] Could not refresh the login item: {failure.InnerException?.GetType().Name ?? failure.GetType().Name}");
         }
     }
 
