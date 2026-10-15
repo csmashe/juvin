@@ -5,6 +5,7 @@
         <RootNamespace>Juvin.App</RootNamespace>
         <AssemblyName>juvin</AssemblyName>
         <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+        <ApplicationIcon>..\..\assets\brand\ico\juvin.ico</ApplicationIcon>
     </PropertyGroup>
 
     <ItemGroup>
