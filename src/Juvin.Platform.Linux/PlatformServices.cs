@@ -31,6 +31,11 @@ public static class PlatformServices
             Environment.ProcessPath,
             DesktopSession.FromEnvironment().DataHome
         ));
+        services.AddSingleton<ILoginItem>(_ => new XdgAutostartLoginItem(
+            Environment.GetEnvironmentVariable,
+            Environment.ProcessPath,
+            DesktopSession.FromEnvironment().ConfigHome
+        ));
 
         // Preference order: evdev on any session with keyboard access, the hook on X11, then the desktop's own shortcut.
         services.AddSingleton<IHotkeyBackend, EvdevHotkeyBackend>();

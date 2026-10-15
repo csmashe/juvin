@@ -1,5 +1,6 @@
 using Juvin.Platform.Hotkeys;
 using Juvin.Platform.Windows.Ipc;
+using Juvin.Platform.Windows.Launcher;
 using Juvin.Platform.Windows.NativeMessaging;
 using Juvin.Platform.Windows.Panel;
 using Juvin.Platform.Windows.Secrets;
@@ -24,6 +25,7 @@ public static class PlatformServices
         services.AddSingleton<INativeHostRegistrar>(_ => new WindowsNativeHostRegistrar(NativeHost.Locate));
         // The installer carries the launcher entry.
         services.AddSingleton<ILauncherIntegration, NoLauncherIntegration>();
+        services.AddSingleton<ILoginItem, RunKeyLoginItem>();
         services.AddSingleton<IHotkeyBackend, SharpHookHotkeyBackend>();
         return services;
     }

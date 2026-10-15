@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Globalization;
-using System.Text;
 using Juvin.Core.Services;
 
 namespace Juvin.Platform.Linux.Launcher;
@@ -61,7 +60,7 @@ public sealed class AppImageLauncherIntegration : ILauncherIntegration
 
             var applications = Path.Join(_dataHome, "applications");
             var entryPath = Path.Join(applications, "juvin-appimage.desktop");
-            var entry = string.Format(CultureInfo.InvariantCulture, EntryTemplate, QuoteExec(appImage));
+            var entry = string.Format(CultureInfo.InvariantCulture, EntryTemplate, DesktopEntryExec.Quote(appImage));
             if (File.Exists(entryPath) && File.ReadAllText(entryPath) == entry)
             {
                 return;
@@ -112,35 +111,5 @@ public sealed class AppImageLauncherIntegration : ILauncherIntegration
         {
             Directory.SetLastWriteTimeUtc(target, DateTime.UtcNow);
         }
-    }
-
-    /// <summary>
-    ///     Quotes a path as one Exec argument: inside quotes, <c>"</c>, <c>`</c>, <c>$</c>, and
-    ///     <c>\</c> take a backslash, then the value's own escaping doubles every backslash again.
-    ///     A literal <c>%</c> is written <c>%%</c>.
-    /// </summary>
-    private static string QuoteExec(string path)
-    {
-        var quoted = new StringBuilder("\"");
-        foreach (var c in path)
-        {
-            switch (c)
-            {
-                case '"' or '`' or '$':
-                    quoted.Append(@"\\").Append(c);
-                    break;
-                case '\\':
-                    quoted.Append(@"\\\\");
-                    break;
-                case '%':
-                    quoted.Append("%%");
-                    break;
-                default:
-                    quoted.Append(c);
-                    break;
-            }
-        }
-
-        return quoted.Append('"').ToString();
     }
 }

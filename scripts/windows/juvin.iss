@@ -69,6 +69,8 @@ Name: "{autodesktop}\Juvin"; Filename: "{app}\juvin.exe"; Tasks: desktopicon
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\juvin.exe"; ValueType: string; ValueName: ""; ValueData: "{app}\juvin.exe"; Flags: uninsdeletekey
+; The app writes this value when Launch at login is on; Setup never creates it, the uninstaller removes it.
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: none; ValueName: "Juvin"; Flags: uninsdeletevalue dontcreatekey
 
 [Run]
 Filename: "{app}\juvin.exe"; Description: "{cm:LaunchProgram,Juvin}"; Flags: postinstall nowait skipifsilent

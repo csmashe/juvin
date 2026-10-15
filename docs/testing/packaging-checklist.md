@@ -44,3 +44,20 @@ Run before publishing a release and after any change to `scripts/build-windows-i
 | Date | Windows | Installer | Install | Start menu and icon | Tray | Connector | Shortcut | Upgrade | Uninstall |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | October 14, 2026 | Windows 11 Pro 23H2 (VM 500) | 0.1.0-dev.2 then 0.1.0-dev.3 | Pass: no UAC prompt, the wizard proposed `%LOCALAPPDATA%\Programs\Juvin` and the mark showed in its title bar; SmartScreen was not shown (the file came over scp, so it carried no mark of the web) | Pass: one `Juvin.lnk` pointing at the installed exe; Installed apps entry with the mark, the version, and Excel on the Web | Pass: the installed exe is listed in `HKCU\Control Panel\NotifyIconSettings` once the app runs | Pass: all three rows (Firefox, Chrome, Edge) showed Needs update from a dev copy and Update pointed the manifests in `%LOCALAPPDATA%\Juvin\NativeHost` at `%LOCALAPPDATA%\Programs\Juvin\juvin-host.exe`; the installed host connected to the running app and exited 0; the extension connection test was not run | Not run: Home shows "Ctrl+Shift+F, listening"; the real press is covered by the Slice C run of the same hook | Pass: with dev.2 running, the dev.3 setup stopped with the close-Juvin prompt (silent run exit 1); after quitting it installed into the same folder, the uninstall entry read 0.1.0-dev.3, and the three rows still read Registered without registering again | Pass: with Juvin running the uninstaller stopped with the same prompt; after quitting, the folder, shortcut, App Paths key, and uninstall entry were gone and `%LOCALAPPDATA%\Juvin` and the browser keys stayed |
+
+## Launch at login
+
+Run on each OS before publishing a release and after any change to the login item implementations or the `--background` start. The entry is checked against the installed build, not a Debug build, because it names the running executable.
+
+### Steps
+
+1. Install the package for the OS, finish the setup wizard, and turn on Launch at login in General. The switch must stay on with no error line.
+2. Check the entry. Linux: `~/.config/autostart/juvin.desktop` exists, carries `X-Juvin-Managed=true`, and its `Exec` names `/opt/juvin/juvin` (deb or rpm) or the `.AppImage` file, followed by `--background`. macOS: `~/Library/LaunchAgents/com.juvin.app.plist` names the executable inside `Juvin.app` and `--background`. Windows: `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` has a `Juvin` value of `"%LOCALAPPDATA%\Programs\Juvin\juvin.exe" --background`; Settings, Apps, Startup lists Juvin as on.
+3. Sign out and sign in again. Juvin must start with its tray icon and no window, and the shortcut must open the action menu. On a Linux desktop without a tray host the window opens instead.
+4. Linux AppImage: move the `.AppImage` file, start it from the new place, quit, sign out and in. The entry must name the new path and Juvin must start.
+5. Turn Launch at login off. The entry must be gone, and signing out and in must not start Juvin.
+6. Uninstall with Launch at login on. Windows: the uninstaller must remove the `Juvin` Run value. Linux and macOS: the entry lives in the user's home, which a package removal does not touch; sign out and in and note what the leftover entry does.
+
+### Results
+
+Not run yet.

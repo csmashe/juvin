@@ -10,6 +10,7 @@ public sealed class PrivacyAndDataSectionViewModelTests : IDisposable
     private readonly string _dataPath = Path.Join(Path.GetTempPath(), "juvin-tests-" + Guid.NewGuid().ToString("N"));
     private readonly FakeHistoryService _history = new();
     private readonly Localizer _localizer = new();
+    private readonly FakeLoginItem _loginItem = new();
     private readonly FakeSettingsService _settings = new();
 
     public void Dispose()
@@ -147,6 +148,63 @@ public sealed class PrivacyAndDataSectionViewModelTests : IDisposable
     }
 
     [Fact]
+    public void DeleteAll_RemovesTheLoginItemWhenItIsOn()
+    {
+        _settings.Update(s => s with { LaunchAtLogin = true });
+        var vm = Create();
+
+        vm.RequestDeleteAllCommand.Execute(null);
+        vm.ConfirmDeleteAllCommand.Execute(null);
+
+        Assert.Equal(1, _loginItem.DisableCount);
+        Assert.False(_settings.Current.LaunchAtLogin);
+        Assert.False(vm.HasError);
+    }
+
+    [Fact]
+    public void DeleteAll_LeavesTheLoginItemAloneWhenItIsOff()
+    {
+        var vm = Create();
+
+        vm.RequestDeleteAllCommand.Execute(null);
+        vm.ConfirmDeleteAllCommand.Execute(null);
+
+        Assert.Equal(0, _loginItem.DisableCount);
+    }
+
+    [Fact]
+    public void ARefusedLoginItemRemoval_StopsDeleteAllAndShowsTheError()
+    {
+        _settings.Update(s => s with { LaunchAtLogin = true, HistoryEnabled = true });
+        _history.Add(Entry("a", DateTimeOffset.UtcNow));
+        _loginItem.Fail = true;
+        var vm = Create();
+
+        vm.RequestDeleteAllCommand.Execute(null);
+        vm.ConfirmDeleteAllCommand.Execute(null);
+
+        Assert.True(vm.HasError);
+        Assert.Single(_history.Entries);
+        Assert.True(_settings.Current.LaunchAtLogin);
+    }
+
+    [Fact]
+    public void AFailedDeleteAllAfterRemovingTheLoginItem_PutsItBack()
+    {
+        _settings.Update(s => s with { LaunchAtLogin = true });
+        var vm = Create();
+        _settings.UpdateFailure = new UnauthorizedAccessException("denied");
+
+        vm.RequestDeleteAllCommand.Execute(null);
+        vm.ConfirmDeleteAllCommand.Execute(null);
+
+        Assert.True(vm.HasError);
+        Assert.True(_settings.Current.LaunchAtLogin);
+        Assert.Equal(1, _loginItem.DisableCount);
+        Assert.True(_loginItem.Enabled);
+    }
+
+    [Fact]
     public void AnUnreadableHistory_IsReported()
     {
         _history.IsAvailable = false;
@@ -166,7 +224,7 @@ public sealed class PrivacyAndDataSectionViewModelTests : IDisposable
         Assert.Contains("\"id\": \"a\"", vm.ExportJson());
     }
 
-    private PrivacyAndDataSectionViewModel Create() => new(_settings, _history, _localizer, _dataPath);
+    private PrivacyAndDataSectionViewModel Create() => new(_settings, _history, _localizer, _loginItem, _dataPath);
 
     private static HistoryEntry Entry(string id, DateTimeOffset createdAt) =>
         new() { Id = id, CreatedAt = createdAt, ActionTitle = "Make clearer", Draft = "draft", Result = "result" };
