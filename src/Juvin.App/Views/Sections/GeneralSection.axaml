@@ -48,10 +48,17 @@
                                     <TextBlock Classes="row-title" Text="{loc:Str General.LaunchAtLogin}" />
                                     <TextBlock Classes="row-hint" Text="{loc:Str General.LaunchAtLoginHint}" />
                                 </StackPanel>
-                                <Border Grid.Column="1" Classes="badge">
-                                    <TextBlock Classes="badge-text" Text="{loc:Str Common.ComingSoon}" />
-                                </Border>
+                                <ToggleSwitch Grid.Column="1"
+                                              VerticalAlignment="Center"
+                                              IsEnabled="{Binding CanChangeLaunchAtLogin}"
+                                              IsChecked="{Binding LaunchAtLogin}" />
                             </Grid>
+                        </Border>
+                        <Border Classes="section-row divided" IsVisible="{Binding !IsLoginItemSupported}">
+                            <TextBlock Classes="row-hint" Margin="0" Text="{loc:Str General.LaunchAtLoginUnsupported}" />
+                        </Border>
+                        <Border Classes="section-row divided" IsVisible="{Binding LaunchAtLoginFailed}">
+                            <TextBlock Classes="row-hint" Margin="0" Text="{loc:Str General.LaunchAtLoginFailed}" />
                         </Border>
                     </StackPanel>
                 </Border>

@@ -237,6 +237,8 @@
   "General.StartupLabel": "STARTUP",
   "General.LaunchAtLogin": "Launch at login",
   "General.LaunchAtLoginHint": "Start Juvin in the background when you sign in.",
+  "General.LaunchAtLoginUnsupported": "Juvin cannot start itself at login on this computer.",
+  "General.LaunchAtLoginFailed": "Juvin could not change the login setting on this computer.",
   "General.WindowLabel": "WINDOW",
   "General.CloseToTray": "Close to tray",
   "General.CloseToTrayHint": "Closing the window keeps Juvin running in the system tray.",

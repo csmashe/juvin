@@ -29,6 +29,7 @@ $dataDir = Join-Path $env:LOCALAPPDATA 'Juvin'
 $startMenuShortcut = Join-Path ([Environment]::GetFolderPath('Programs')) 'Juvin.lnk'
 $appPathsKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\juvin.exe'
 $uninstallKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\${appId}_is1"
+$runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 $hostMessage = 'could not connect to Juvin'
 # Scoped the way Juvin.Platform.Windows.Ipc.PipeNames scopes it.
 $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
@@ -185,6 +186,12 @@ try {
     $app = $null
     Pass 'juvin started and answered --trigger'
 
+    # Stands in for Launch at login being on, which the app writes the same way.
+    if (-not (Test-Path $runKey)) {
+        New-Item -Path $runKey | Out-Null
+    }
+    Set-ItemProperty -Path $runKey -Name 'Juvin' -Value "`"$installDir\juvin.exe`" --background"
+
     # The uninstaller hands over to a copy of itself in %TEMP% and returns at once, so wait for the folder.
     $uninstallRun = Invoke-Program (Join-Path $installDir 'unins000.exe') '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' 120
     if ($uninstallRun.ExitCode -ne 0) {
@@ -201,6 +208,9 @@ try {
     }
     if (Test-Path $uninstallKey) {
         Fail 'the uninstall entry is still there after uninstall'
+    }
+    if ((Get-ItemProperty -Path $runKey -ErrorAction SilentlyContinue).Juvin) {
+        Fail 'the Run value is still there after uninstall'
     }
     if (-not (Test-Path $dataDir)) {
         Fail "uninstall removed the data folder $dataDir"
