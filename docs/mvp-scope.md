@@ -377,6 +377,15 @@ Run the acceptance scenarios from the research document, section 12:
 
 Plus a privacy policy modeled on TypeWhisper's, and crash reporting that never carries email content.
 
+Plan (October 15, 2026), four slices in order. Nothing here waits on a Mac; the macOS slice and the store submissions follow Phase 6 (see the Phase 5 list).
+
+- Slice 1, acceptance scenarios: a new `docs/testing/acceptance-checklist.md` lists the seven scenarios, and for each one the unit tests that already pin the behavior and the manual steps that only a real browser, model, or network shows. Four scenarios already have real-browser evidence in the connector checklist (only the draft changes, the collapsed thread, two drafts, and the edited draft refused); the slice adds unit tests where a scenario has none and runs the three that have never been run: cancel or error leaves the draft untouched, a local failure sends nothing anywhere else (watched with a packet capture), and an offline Local rewrite completes. The Phase 5 items verified by unit tests only (the AppImage desktop entry, the wizard's server address field, the Home status rows, and Linux launch at login) are driven in the same walkthrough on the Ubuntu VM and the Fedora desktop.
+- Slice 2, crash reporter: Sentry, shaped like the reference app's telemetry (consent gate, options factory, scrubber; the files are original to the Linux port and may be copied once `docs/spikes/copy-history.md` records them), behind the existing `CrashReportingEnabled` setting and off by default. Reports carry the app version, OS, runtime, exception type, and stack frames of Juvin's own code; no message text, no draft, thread, prompt, or response, no paths, no user or install identifier, and automatic IP capture off. Unhandled exceptions on the UI thread and unobserved task failures are caught in `Program` and `App` so a crash is reported before the process ends. The DSN is a build-time constant that may be empty, in which case the switch stays disabled with a hint.
+- Slice 3, privacy policy: `docs/PRIVACY.md` modeled on the reference app's, covering the two processing modes, the native host, history and provenance, the secrets store, crash reports, and what leaves the machine in each mode; Privacy and data links to it.
+- Slice 4, carried-forward checks on VM 840: the KDE shortcut writer end to end in one session with a shared data directory, the Sway panel placement (centred today; decide whether to pin it top-right through swaymsg or document it), and the physical-key recording with real presses.
+
+Exit: every acceptance scenario has a dated row with a pass, the privacy policy is in the repository, and crash reporting works end to end once with content-free reports.
+
 ### After the MVP
 
 In rough order: screen conversation with a vision model (the second research workflow), Outlook on the web adapter, non-browser rewriting through AT-SPI, UI Automation, and macOS Accessibility, Thunderbird, Gmail API retrieval for guaranteed completeness, voice input, plugin loader.
