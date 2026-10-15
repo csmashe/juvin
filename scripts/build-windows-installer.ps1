@@ -41,18 +41,19 @@ function Fail([string]$message) {
     exit 1
 }
 
+# The installed compiler first: a package manager's shim on PATH carries no version to check.
 function Find-Iscc {
-    $onPath = Get-Command 'ISCC.exe' -ErrorAction SilentlyContinue
-    if ($onPath) {
-        return $onPath.Source
-    }
-
     $default = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
     if (Test-Path $default) {
         return $default
     }
 
-    Fail 'Inno Setup 6.3 or later was not found (ISCC.exe is not on PATH or in Program Files (x86)\Inno Setup 6). Install it from https://jrsoftware.org/isdl.php'
+    $onPath = Get-Command 'ISCC.exe' -ErrorAction SilentlyContinue
+    if ($onPath) {
+        return $onPath.Source
+    }
+
+    Fail 'Inno Setup 6.3 or later was not found (ISCC.exe is not in Program Files (x86)\Inno Setup 6 or on PATH). Install it from https://jrsoftware.org/isdl.php'
 }
 
 function Invoke-Publish([string]$project, [string]$output, [string[]]$extra) {
@@ -76,9 +77,10 @@ if (-not (Get-Command 'dotnet' -ErrorAction SilentlyContinue)) {
     Fail 'dotnet is required'
 }
 $iscc = Find-Iscc
-# x64compatible in the [Setup] section needs 6.3.
-$isccVersion = [version](Get-Item $iscc).VersionInfo.FileVersion
-if ($isccVersion -lt [version]'6.3') {
+# x64compatible in the [Setup] section needs 6.3; a shim without a version resource is left to the compiler to reject.
+$isccVersion = [version]'0.0'
+[void][version]::TryParse((Get-Item $iscc).VersionInfo.FileVersion, [ref]$isccVersion)
+if ($isccVersion.Major -gt 0 -and $isccVersion -lt [version]'6.3') {
     Fail "Inno Setup $isccVersion is too old; 6.3 or later is required"
 }
 
