@@ -569,6 +569,13 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         }
 
         var recommended = ModelProbeService.RecommendModel(status.Models);
+        if (recommended is not null && !status.Models.Any(model => ModelProbeService.IsSameModel(model.Id, settings.LocalModel)))
+        {
+            // Next must not leave the server without a model.
+            SaveSetting(s => s with { LocalModel = recommended.Id });
+            settings = _settings.Current;
+        }
+
         RecommendedModel = recommended is null ? null : ModelOption.From(recommended);
         IsRecommendedModelInUse = recommended is not null && ModelProbeService.IsSameModel(recommended.Id, settings.LocalModel);
         var needsBetterModel = recommended is null || recommended.IsLowQualityClass;
