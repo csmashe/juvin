@@ -1,7 +1,9 @@
 #!/usr/bin/env bpftrace
 // Prints every connect() and every addressed sendto() or sendmsg() the given process makes, for
 // the acceptance checklist's "no external request" scenario. Data on a connected socket can only
-// reach the peer the connect() named, so these probes cover every destination the process reaches.
+// reach the peer the connect() named, so these probes cover every destination the process reaches
+// after the trace is attached; a socket connected before that, and sendmmsg(), are not seen, so
+// attach right after the process starts and pair the trace with a packet capture that began earlier.
 // Usage: sudo bpftrace scripts/dev/trace-connects.bt $(pgrep -x juvin)
 tracepoint:syscalls:sys_enter_connect /pid == $1/ {
   $sa = (struct sockaddr_in *)args->uservaddr;
