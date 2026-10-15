@@ -3,7 +3,7 @@ using Juvin.Platform.Linux.Launcher;
 
 namespace Juvin.Platform.Tests;
 
-// The entry is plain file I/O, so these run on every OS even though the assembly targets Linux.
+// The entry holds Linux paths and line endings, so the tests run only there, like the AppImage launcher's.
 [SupportedOSPlatform("linux")]
 public sealed class XdgAutostartLoginItemTests : IDisposable
 {
@@ -23,7 +23,7 @@ public sealed class XdgAutostartLoginItemTests : IDisposable
 
     private string ExecLine() => File.ReadAllLines(EntryPath).Single(line => line.StartsWith("Exec=", StringComparison.Ordinal));
 
-    [Fact]
+    [LinuxFact]
     public async Task Enable_WritesAnAutostartEntryThatStartsInTheBackground()
     {
         var item = Create();
@@ -38,7 +38,7 @@ public sealed class XdgAutostartLoginItemTests : IDisposable
         Assert.Contains("StartupWMClass=juvin\n", entry);
     }
 
-    [Fact]
+    [LinuxFact]
     public async Task Enable_FromAnAppImage_NamesTheAppImageFile()
     {
         var appDir = _temp.File("mount");
@@ -50,7 +50,7 @@ public sealed class XdgAutostartLoginItemTests : IDisposable
         Assert.Equal("Exec=\"/home/me/Apps/Juvin \\\\$1.AppImage\" --background", ExecLine());
     }
 
-    [Fact]
+    [LinuxFact]
     public async Task Enable_Twice_LeavesTheEntryUntouched()
     {
         var item = Create();
@@ -63,7 +63,7 @@ public sealed class XdgAutostartLoginItemTests : IDisposable
         Assert.Equal(past, File.GetLastWriteTimeUtc(EntryPath));
     }
 
-    [Fact]
+    [LinuxFact]
     public async Task Disable_RemovesTheEntry_AndIsIdempotent()
     {
         var item = Create();
@@ -75,7 +75,7 @@ public sealed class XdgAutostartLoginItemTests : IDisposable
         Assert.False(File.Exists(EntryPath));
     }
 
-    [Fact]
+    [LinuxFact]
     public async Task AForeignEntry_IsNotEnabledAndNotRemoved()
     {
         Directory.CreateDirectory(Path.GetDirectoryName(EntryPath)!);
@@ -87,7 +87,7 @@ public sealed class XdgAutostartLoginItemTests : IDisposable
         Assert.True(File.Exists(EntryPath));
     }
 
-    [Fact]
+    [LinuxFact]
     public async Task UnknownExecutable_IsUnsupportedAndEnableThrows()
     {
         var item = Create(processPath: null);
@@ -96,7 +96,7 @@ public sealed class XdgAutostartLoginItemTests : IDisposable
         await Assert.ThrowsAsync<LoginItemException>(() => item.EnableAsync(CancellationToken.None));
     }
 
-    [Fact]
+    [LinuxFact]
     public async Task UnwritableConfigHome_Throws()
     {
         await File.WriteAllTextAsync(ConfigHome, "a file, not a directory");
