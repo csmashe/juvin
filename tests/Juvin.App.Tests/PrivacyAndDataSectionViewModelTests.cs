@@ -8,6 +8,7 @@ namespace Juvin.App.Tests;
 public sealed class PrivacyAndDataSectionViewModelTests : IDisposable
 {
     private readonly string _dataPath = Path.Join(Path.GetTempPath(), "juvin-tests-" + Guid.NewGuid().ToString("N"));
+    private readonly FakeCrashReporter _crashReporter = new();
     private readonly FakeHistoryService _history = new();
     private readonly Localizer _localizer = new();
     private readonly FakeLoginItem _loginItem = new();
@@ -28,9 +29,25 @@ public sealed class PrivacyAndDataSectionViewModelTests : IDisposable
 
         vm.HistoryEnabled = true;
         vm.ProvenanceCaptureEnabled = true;
+        vm.CrashReportingEnabled = false;
 
         Assert.True(_settings.Current.HistoryEnabled);
         Assert.True(_settings.Current.ProvenanceCaptureEnabled);
+        Assert.False(_settings.Current.CrashReportingEnabled);
+    }
+
+    [Fact]
+    public void CrashReporting_FollowsTheSavedSettingAndTheBuild()
+    {
+        _settings.Update(s => s with { CrashReportingEnabled = false });
+        _crashReporter.IsAvailable = false;
+
+        var vm = Create();
+
+        Assert.False(vm.CrashReportingEnabled);
+        Assert.False(vm.IsCrashReportingAvailable);
+        _settings.Update(s => s with { CrashReportingEnabled = true });
+        Assert.True(vm.CrashReportingEnabled);
     }
 
     [Fact]
@@ -224,7 +241,7 @@ public sealed class PrivacyAndDataSectionViewModelTests : IDisposable
         Assert.Contains("\"id\": \"a\"", vm.ExportJson());
     }
 
-    private PrivacyAndDataSectionViewModel Create() => new(_settings, _history, _localizer, _loginItem, _dataPath);
+    private PrivacyAndDataSectionViewModel Create() => new(_settings, _history, _localizer, _loginItem, _crashReporter, _dataPath);
 
     private static HistoryEntry Entry(string id, DateTimeOffset createdAt) =>
         new() { Id = id, CreatedAt = createdAt, ActionTitle = "Make clearer", Draft = "draft", Result = "result" };

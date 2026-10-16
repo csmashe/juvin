@@ -12,6 +12,11 @@
         <InternalsVisibleTo Include="Juvin.App.Tests"/>
     </ItemGroup>
 
+    <!-- Crash reports go nowhere unless a build passes -p:JuvinSentryDsn=...; an empty value disables the switch. -->
+    <ItemGroup>
+        <AssemblyMetadata Include="SentryDsn" Value="$(JuvinSentryDsn)"/>
+    </ItemGroup>
+
     <ItemGroup>
         <PackageReference Include="Avalonia"/>
         <PackageReference Include="Avalonia.Desktop"/>
@@ -20,6 +25,7 @@
         <PackageReference Include="FluentIcons.Avalonia"/>
         <PackageReference Include="CommunityToolkit.Mvvm"/>
         <PackageReference Include="Microsoft.Extensions.DependencyInjection"/>
+        <PackageReference Include="Sentry"/>
     </ItemGroup>
 
     <ItemGroup>

@@ -6,6 +6,7 @@ using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
 using Juvin.App.Localization;
 using Juvin.App.Services;
+using Juvin.App.Services.CrashReporting;
 using Juvin.App.ViewModels;
 using Juvin.App.Views;
 using Juvin.Core.Interfaces;
@@ -19,6 +20,7 @@ public class App : Application
 {
     private static readonly TimeSpan s_hotkeyStopTimeout = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan s_launcherInstallTimeout = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan s_crashFlushTimeout = TimeSpan.FromSeconds(2);
     private readonly CancellationTokenSource _socketLifetime = new();
     private bool _exiting;
 
@@ -41,6 +43,8 @@ public class App : Application
     {
         var settings = services.GetRequiredService<ISettingsService>();
         settings.Load();
+        var crashReporting = services.GetRequiredService<CrashReportingService>();
+        StartCrashReporting(crashReporting);
         PruneHistory(services.GetRequiredService<IHistoryService>(), settings.Current.HistoryRetentionDays);
 
         // The language must be set before any view loads, because views read strings once.
@@ -131,6 +135,7 @@ public class App : Application
             services.GetRequiredService<ILocalSocketServer>().StopAsync().GetAwaiter().GetResult();
             connector.StopAsync().GetAwaiter().GetResult();
             tray.Dispose();
+            ShutDownCrashReporting(crashReporting);
         };
 
         if (!settings.Current.HasCompletedOnboarding)
@@ -144,6 +149,51 @@ public class App : Application
         {
             main.Opened -= OpenWizardOnFirstLaunch;
             (main.DataContext as MainWindowViewModel)?.OpenWizardCommand.Execute(null);
+        }
+    }
+
+    // Left unhandled so the crash still ends the process; flushed here because the AppDomain hook may not run for a dispatcher exception.
+    private static void StartCrashReporting(CrashReportingService crashReporting)
+    {
+        try
+        {
+            crashReporting.Start();
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[CrashReporting] Start failed: {ex.GetType().Name}");
+        }
+
+        Dispatcher.UIThread.UnhandledException += (_, e) => Capture(e.Exception, CrashOperations.UiDispatcher, fatal: true);
+        TaskScheduler.UnobservedTaskException += (_, e) => Capture(e.Exception, CrashOperations.UnobservedTask, fatal: false);
+        return;
+
+        void Capture(Exception exception, string operation, bool fatal)
+        {
+            try
+            {
+                crashReporting.CaptureException(exception, operation, fatal);
+                if (fatal)
+                {
+                    crashReporting.Flush(s_crashFlushTimeout);
+                }
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"[CrashReporting] Capture from {operation} failed: {ex.GetType().Name}");
+            }
+        }
+    }
+
+    private static void ShutDownCrashReporting(CrashReportingService crashReporting)
+    {
+        try
+        {
+            crashReporting.Shutdown();
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[CrashReporting] Shutdown failed: {ex.GetType().Name}");
         }
     }
 

@@ -1,5 +1,6 @@
 using Avalonia.Threading;
 using Juvin.App.Services;
+using Juvin.App.Services.CrashReporting;
 using Juvin.App.ViewModels;
 using Juvin.App.ViewModels.Sections;
 using Juvin.App.Views;
@@ -28,6 +29,8 @@ public static class ServiceRegistrations
         services.AddSingleton<ISettingsService, SettingsService>();
         services.AddSingleton<IHistoryService, HistoryService>();
         services.AddSingleton<Localizer>();
+        services.AddSingleton<CrashReportingService>();
+        services.AddSingleton<ICrashReporter>(sp => sp.GetRequiredService<CrashReportingService>());
         AddPlatform(services);
 
         // Probes use this client and selector; rewrites have their own with a longer timeout.
@@ -112,6 +115,7 @@ public static class ServiceRegistrations
             sp.GetRequiredService<ConnectorService>(),
             sp.GetRequiredService<RewritePanelViewModel>(),
             sp.GetRequiredService<ActionMenuService>(),
+            sp.GetRequiredService<ICrashReporter>(),
             sp.GetServices<ISetupTask>(),
             action => Dispatcher.UIThread.Post(action)
         ));

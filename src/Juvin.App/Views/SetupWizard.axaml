@@ -37,9 +37,28 @@
         <TabControl Grid.Row="1" Classes="steps" SelectedIndex="{Binding StepIndex}" Margin="32,0">
 
             <TabItem>
-                <StackPanel Spacing="14">
+                <StackPanel Spacing="14" Margin="0,0,14,0">
                     <TextBlock Classes="page-title" Text="{loc:Str Wizard.Welcome.Title}" />
                     <TextBlock Classes="page-subtitle" Text="{loc:Str Wizard.Welcome.Body}" />
+                    <Border Classes="panel">
+                        <StackPanel>
+                            <Border Classes="section-row">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Classes="row-title" Text="{loc:Str Wizard.Welcome.CrashReports}" />
+                                        <TextBlock Classes="row-hint" Text="{loc:Str Wizard.Welcome.CrashReportsHint}" />
+                                    </StackPanel>
+                                    <ToggleSwitch Grid.Column="1"
+                                                  VerticalAlignment="Center"
+                                                  IsEnabled="{Binding IsCrashReportingAvailable}"
+                                                  IsChecked="{Binding CrashReportingEnabled}" />
+                                </Grid>
+                            </Border>
+                            <Border Classes="section-row divided" IsVisible="{Binding !IsCrashReportingAvailable}">
+                                <TextBlock Classes="row-hint" Margin="0" Text="{loc:Str PrivacyAndData.CrashUnavailable}" />
+                            </Border>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </TabItem>
 

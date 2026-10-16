@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FluentIcons.Common;
 using Juvin.App.Services;
+using Juvin.App.Services.CrashReporting;
 using Juvin.Core.Connector;
 using Juvin.Core.Interfaces;
 using Juvin.Core.Localization;
@@ -54,7 +55,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
     private readonly Action<Action> _post;
     private readonly ModelProbeService _probes;
     private readonly ISettingsService _settings;
-    private bool _applyingMode;
+    private bool _applyingSettings;
     private bool _applyingServerUrl;
     private bool _serverChosenByUser;
 
@@ -67,6 +68,9 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsCodexMode), nameof(ModeHint))]
     private ProcessingModeOption? _selectedMode;
+
+    [ObservableProperty]
+    private bool _crashReportingEnabled;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowModelPanel))]
@@ -133,6 +137,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         ConnectorService connectorService,
         RewritePanelViewModel panel,
         ActionMenuService menus,
+        ICrashReporter crashReporter,
         IEnumerable<ISetupTask> setupTasks,
         Action<Action> post
     )
@@ -147,9 +152,8 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         _localizer = localizer;
         _probes = probes;
         ModeOptions = ProcessingModeOption.All(localizer);
-        _applyingMode = true;
-        SelectedMode = ModeOptions.First(option => option.Mode == settings.Current.ProcessingMode);
-        _applyingMode = false;
+        IsCrashReportingAvailable = crashReporter.IsAvailable;
+        ShowSavedChoices();
         _serverUrl = settings.Current.LocalServerUrl;
         SetupItems =
         [
@@ -179,6 +183,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
     public ShortcutPanelViewModel Shortcut { get; }
     public ObservableCollection<SetupTaskRow> SetupItems { get; }
     public IReadOnlyList<ProcessingModeOption> ModeOptions { get; }
+    public bool IsCrashReportingAvailable { get; }
     public ObservableCollection<DetectionRow> Detections { get; } = [];
     public ObservableCollection<StepDot> StepDots { get; }
     public string DoneBody => _localizer.Format("Wizard.Done.Body", Shortcut.ShortcutText);
@@ -254,9 +259,17 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
 
     partial void OnSelectedModeChanged(ProcessingModeOption? value)
     {
-        if (!_applyingMode && value is not null)
+        if (!_applyingSettings && value is not null)
         {
             SaveSetting(s => s with { ProcessingMode = value.Mode });
+        }
+    }
+
+    partial void OnCrashReportingEnabledChanged(bool value)
+    {
+        if (!_applyingSettings)
+        {
+            SaveSetting(s => s with { CrashReportingEnabled = value });
         }
     }
 
@@ -682,9 +695,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             SaveError = _localizer.Format("Wizard.SaveFailed", ex.Message);
-            _applyingMode = true;
-            SelectedMode = ModeOptions.First(option => option.Mode == _settings.Current.ProcessingMode);
-            _applyingMode = false;
+            ShowSavedChoices();
         }
 
         // Only a server change touches the address field, so saving a model keeps a draft and its error.
@@ -692,6 +703,14 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         {
             ShowConfiguredServer();
         }
+    }
+
+    private void ShowSavedChoices()
+    {
+        _applyingSettings = true;
+        SelectedMode = ModeOptions.First(option => option.Mode == _settings.Current.ProcessingMode);
+        CrashReportingEnabled = _settings.Current.CrashReportingEnabled;
+        _applyingSettings = false;
     }
 
     private void ShowConfiguredServer()
