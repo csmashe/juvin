@@ -88,6 +88,67 @@ function hiddenAfter(state: ThreadState, expectedRows: number): number {
   return state.collapsed + Math.max(state.older, expectedRows - state.rows.length);
 }
 
+interface DraftPlace {
+  top: number;
+  focused: boolean;
+  ranges: Range[];
+}
+
+function draftPlace(editor: HTMLElement): DraftPlace {
+  const doc = editor.ownerDocument;
+  const selection = doc.getSelection();
+  const ranges = selection ? Array.from({ length: selection.rangeCount }, (_, i) => selection.getRangeAt(i).cloneRange()) : [];
+  return { top: editor.getBoundingClientRect().top, focused: doc.activeElement === editor, ranges };
+}
+
+function isScrollable(element: Element): boolean {
+  const style = element.ownerDocument.defaultView?.getComputedStyle(element);
+  return element.scrollHeight > element.clientHeight && /auto|scroll/.test(style?.overflowY ?? "");
+}
+
+/** Gmail's Expand all scrolls to the top and focuses the subject, then the opened messages push the draft down; this puts it back. */
+function keepDraftInPlace(editor: HTMLElement, place: DraftPlace): void {
+  const doc = editor.ownerDocument;
+  if (place.focused && doc.activeElement !== editor) {
+    // Firefox moves the caret to the start of a refocused editor, so the selection goes back afterwards.
+    editor.focus({ preventScroll: true });
+    const selection = doc.getSelection();
+    if (selection && place.ranges.length > 0) {
+      selection.removeAllRanges();
+      for (const range of place.ranges) {
+        selection.addRange(range.cloneRange());
+      }
+    }
+  }
+
+  let delta = editor.getBoundingClientRect().top - place.top;
+  for (let element = editor.parentElement; element && Math.abs(delta) >= 1; element = element.parentElement) {
+    if (isScrollable(element)) {
+      element.scrollTop += delta;
+      delta = editor.getBoundingClientRect().top - place.top;
+    }
+  }
+
+  if (Math.abs(delta) >= 1) {
+    doc.defaultView?.scrollBy(0, delta);
+  }
+}
+
+/** Whether the user has scrolled, clicked, typed, or focused elsewhere since the call; after that the draft stays where they put it. */
+function userInteraction(editor: HTMLElement, signal: AbortSignal): { happened: () => boolean } {
+  let happened = false;
+  const win = editor.ownerDocument.defaultView;
+  const mark = (): void => {
+    happened = true;
+  };
+  for (const type of ["wheel", "touchstart", "pointerdown", "keydown", "input"]) {
+    win?.addEventListener(type, mark, { capture: true, passive: true, signal });
+  }
+
+  win?.addEventListener("focusin", (event) => event.target !== editor && mark(), { capture: true, signal });
+  return { happened: () => happened };
+}
+
 /** Clicks Expand all when messages are hidden and waits for them; returns how many are still hidden. */
 async function expandAll(main: Element, editor: HTMLElement, timing: GmailTiming): Promise<number> {
   const button = Array.from(main.querySelectorAll<HTMLElement>(SELECTORS.expandAll)).find(isRendered);
@@ -96,7 +157,24 @@ async function expandAll(main: Element, editor: HTMLElement, timing: GmailTiming
     return hiddenCount(initial);
   }
 
-  button.click();
+  const listeners = new AbortController();
+  try {
+    const place = draftPlace(editor);
+    button.click();
+    keepDraftInPlace(editor, place);
+    const interaction = userInteraction(editor, listeners.signal);
+    return await waitForExpansion(main, editor, timing, initial, () => {
+      if (!interaction.happened()) {
+        keepDraftInPlace(editor, place);
+      }
+    });
+  } finally {
+    listeners.abort();
+  }
+}
+
+/** Polls until the hidden messages open or the thread settles; `onPoll` runs after each wait. */
+async function waitForExpansion(main: Element, editor: HTMLElement, timing: GmailTiming, initial: ThreadState, onPoll: () => void): Promise<number> {
   // The bundle label can vanish before its rows arrive, so the rows it promised must show up before the thread is whole.
   const expectedRows = initial.rows.length + initial.older;
   const initialKey = stateKey(initial);
@@ -107,6 +185,7 @@ async function expandAll(main: Element, editor: HTMLElement, timing: GmailTiming
   const deadline = timing.now() + timing.deadlineMs;
   while (timing.now() < deadline) {
     await timing.sleep(timing.pollMs);
+    onPoll();
     state = scan(main, editor);
     if (hiddenAfter(state, expectedRows) === 0) {
       break;
