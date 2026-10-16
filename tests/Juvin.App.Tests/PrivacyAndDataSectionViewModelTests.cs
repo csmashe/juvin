@@ -83,10 +83,19 @@ public sealed class PrivacyAndDataSectionViewModelTests : IDisposable
 
         vm.HistoryEnabled = true;
         vm.SelectedRetention = vm.RetentionOptions.Single(o => o.Days == 7);
+        vm.CrashReportingEnabled = false;
 
         Assert.False(vm.HistoryEnabled);
         Assert.Equal(30, vm.SelectedRetention?.Days);
+        Assert.True(vm.CrashReportingEnabled);
+        Assert.Contains("read-only", vm.ErrorMessage);
         Assert.Empty(_history.Prunes);
+
+        _settings.UpdateFailure = null;
+        vm.CrashReportingEnabled = false;
+
+        Assert.False(_settings.Current.CrashReportingEnabled);
+        Assert.Null(vm.ErrorMessage);
     }
 
     [Fact]

@@ -209,6 +209,7 @@ public sealed partial class PrivacyAndDataSectionViewModel : ObservableObject
             return false;
         }
 
+        ErrorMessage = null;
         try
         {
             _settings.Update(update);
@@ -217,6 +218,7 @@ public sealed partial class PrivacyAndDataSectionViewModel : ObservableObject
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             Trace.WriteLine($"[PrivacyAndDataSection] Could not save settings: {ex.GetType().Name}");
+            ErrorMessage = _localizer.Format("PrivacyAndData.SaveFailed", ex.Message);
             ApplySettings(_settings.Current);
             return false;
         }

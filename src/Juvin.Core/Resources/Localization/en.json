@@ -227,6 +227,7 @@
   "PrivacyAndData.ConfirmClear": "Clear all rewrites",
   "PrivacyAndData.Cancel": "Cancel",
   "PrivacyAndData.HistoryFailed": "The history could not be changed: {0}",
+  "PrivacyAndData.SaveFailed": "Your settings could not be saved: {0}",
   "PrivacyAndData.DeleteAll": "Delete all data",
   "PrivacyAndData.DeleteAllHint": "Remove history, settings, and stored keys. Setup runs again the next time Juvin starts.",
   "PrivacyAndData.ConfirmDeleteAll": "Delete everything",
