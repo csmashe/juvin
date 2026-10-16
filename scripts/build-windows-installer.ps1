@@ -88,8 +88,12 @@ $stage = Join-Path ([System.IO.Path]::GetTempPath()) ('juvin-installer-' + [guid
 $payload = Join-Path $stage 'payload'
 try {
     Write-Host '==> Publishing the app'
+    if (-not $env:JUVIN_SENTRY_DSN) {
+        Write-Host '    JUVIN_SENTRY_DSN is not set; crash reporting will be disabled in this build'
+    }
     Invoke-Publish 'src\Juvin.App\Juvin.App.csproj' $payload @(
-        '-p:PublishSingleFile=false', '-p:PublishReadyToRun=true', '-p:DebugType=portable', '-p:DebugSymbols=true'
+        '-p:PublishSingleFile=false', '-p:PublishReadyToRun=true', '-p:DebugType=portable', '-p:DebugSymbols=true',
+        "-p:JuvinSentryDsn=$env:JUVIN_SENTRY_DSN"
     )
 
     $single = @(

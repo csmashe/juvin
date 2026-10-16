@@ -134,3 +134,22 @@ Two files were added by a commit titled "Port plugin loader + core Linux service
 | `PluginSDK/Helpers/SseEventDecoder.cs` | e573f0ca | 2026-08-02 | Linux original |
 | `PluginSDK/Helpers/ThinkingBlockFilter.cs` | 6e3b2c04 | 2026-09-07 | Linux original |
 | `PluginSDK/ILlmProviderRole.cs` | 7e7a8423 | 2026-02-22 | **adapted from the upstream Windows file, do not copy** |
+
+## Crash reporting files (October 16, 2026)
+
+For Phase 6 slice 2 the reference repository's Sentry telemetry files were checked the same way, with `git log --follow --diff-filter=A`. All ten first appear in commit `9e6957e9` of September 12, 2026 ("Add opt-in Sentry crash and performance reporting"), five months into the Linux port, with no rename source, so they are Linux originals and may be copied. Juvin copied the consent gate, the options factory, the error facts, the scrubber, and the service, renamed them, and cut them down to crash reports only: no transactions, spans, startup timing, install kind, or breadcrumbs, and a scrubber that drops every free-text field instead of pattern-matching it. The tests were rewritten for that smaller surface.
+
+| File | Added by | Date | Verdict | Juvin file |
+| --- | --- | --- | --- | --- |
+| `Linux/Services/Telemetry/TelemetryConsentGate.cs` | 9e6957e9 | 2026-09-12 | Linux original | `CrashReportConsentGate.cs` |
+| `Linux/Services/Telemetry/SentryOptionsFactory.cs` | 9e6957e9 | 2026-09-12 | Linux original | `SentryOptionsFactory.cs`, `CrashReportBuildInfo.cs` |
+| `Linux/Services/Telemetry/TelemetryErrorFacts.cs` | 9e6957e9 | 2026-09-12 | Linux original | `CrashReportErrorFacts.cs` |
+| `Linux/Services/Telemetry/TelemetryScrubber.cs` | 9e6957e9 | 2026-09-12 | Linux original | `CrashReportScrubber.cs` |
+| `Linux/Services/Telemetry/SentryTelemetryService.cs` | 9e6957e9 | 2026-09-12 | Linux original | `CrashReportingService.cs` |
+| `Linux.Tests/Telemetry/SentryOptionsFactoryTests.cs` | 9e6957e9 | 2026-09-12 | Linux original | `SentryOptionsFactoryTests.cs` |
+| `Linux.Tests/Telemetry/SentryPipelineTests.cs` | 9e6957e9 | 2026-09-12 | Linux original | folded into `CrashReportingServiceTests.cs` |
+| `Linux.Tests/Telemetry/SentryTelemetryServiceTests.cs` | 9e6957e9 | 2026-09-12 | Linux original | `CrashReportingServiceTests.cs`, `CrashReportConsentGateTests.cs` |
+| `Linux.Tests/Telemetry/TelemetryScrubberTests.cs` | 9e6957e9 | 2026-09-12 | Linux original | `CrashReportScrubberTests.cs` |
+| `Linux.Tests/Telemetry/TelemetryTestSupport.cs` | 9e6957e9 | 2026-09-12 | Linux original | `CrashReportTestSupport.cs` |
+
+The Juvin files live in `src/Juvin.App/Services/CrashReporting/` and `tests/Juvin.App.Tests/CrashReporting/`.

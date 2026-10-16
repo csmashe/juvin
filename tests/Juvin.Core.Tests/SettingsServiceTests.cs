@@ -27,7 +27,7 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.False(settings.HistoryEnabled);
         Assert.Equal(30, settings.HistoryRetentionDays);
         Assert.False(settings.ProvenanceCaptureEnabled);
-        Assert.False(settings.CrashReportingEnabled);
+        Assert.True(settings.CrashReportingEnabled);
         Assert.True(settings.CloseToTray);
         Assert.Null(settings.UiLanguage);
         Assert.Equal(1, settings.SchemaVersion);

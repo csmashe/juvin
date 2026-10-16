@@ -21,6 +21,7 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
     private static readonly TimeSpan s_timeout = TimeSpan.FromSeconds(5);
 
     private readonly ConnectorService _connector;
+    private readonly FakeCrashReporter _crashReporter = new();
     private readonly Localizer _localizer = new();
     private readonly FakeConnectorChannel _menuChannel = new();
     private readonly Task _menuLoop;
@@ -401,6 +402,51 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
     }
 
     [Fact]
+    public void WelcomeStep_CrashReportsSwitch_StartsFromTheSettingAndSavesChanges()
+    {
+        _settings.Update(s => s with { CrashReportingEnabled = false });
+        var vm = Create();
+        Assert.False(vm.CrashReportingEnabled);
+        Assert.True(vm.IsCrashReportingAvailable);
+
+        vm.CrashReportingEnabled = true;
+
+        Assert.True(_settings.Current.CrashReportingEnabled);
+    }
+
+    [Fact]
+    public void WelcomeStep_CrashReportsSwitch_StartsOnByDefault()
+    {
+        var vm = Create();
+
+        Assert.True(vm.CrashReportingEnabled);
+        Assert.Equal(0, _settings.SaveCount);
+    }
+
+    [Fact]
+    public void WelcomeStep_WithoutAnEndpoint_CrashReportsAreUnavailable()
+    {
+        _crashReporter.IsAvailable = false;
+
+        var vm = Create();
+
+        Assert.False(vm.IsCrashReportingAvailable);
+    }
+
+    [Fact]
+    public void WelcomeStep_AFailedSave_PutsTheSwitchBack()
+    {
+        var vm = Create();
+        _settings.UpdateFailure = new IOException("disk full");
+
+        vm.CrashReportingEnabled = false;
+
+        Assert.True(vm.CrashReportingEnabled);
+        Assert.True(_settings.Current.CrashReportingEnabled);
+        Assert.Contains("disk full", vm.SaveError);
+    }
+
+    [Fact]
     public async Task ModeStep_ChoosingCodex_SavesTheMode()
     {
         var vm = await CreateOnModeStepAsync();
@@ -727,6 +773,7 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
             _connector,
             _panel,
             _menus,
+            _crashReporter,
             tasks,
             action => action()
         );

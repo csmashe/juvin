@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Juvin.App.Services.CrashReporting;
 using Juvin.Core;
 using Juvin.Core.Interfaces;
 using Juvin.Core.Localization;
@@ -23,6 +24,9 @@ public sealed partial class PrivacyAndDataSectionViewModel : ObservableObject
     private bool _applyingSettings;
 
     [ObservableProperty]
+    private bool _crashReportingEnabled;
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasError))]
     private string? _errorMessage;
 
@@ -41,8 +45,14 @@ public sealed partial class PrivacyAndDataSectionViewModel : ObservableObject
     [ObservableProperty]
     private RetentionOption? _selectedRetention;
 
-    public PrivacyAndDataSectionViewModel(ISettingsService settings, IHistoryService history, Localizer localizer, ILoginItem loginItem)
-        : this(settings, history, localizer, loginItem, JuvinEnvironment.DataPath)
+    public PrivacyAndDataSectionViewModel(
+        ISettingsService settings,
+        IHistoryService history,
+        Localizer localizer,
+        ILoginItem loginItem,
+        ICrashReporter crashReporter
+    )
+        : this(settings, history, localizer, loginItem, crashReporter, JuvinEnvironment.DataPath)
     {
     }
 
@@ -50,12 +60,14 @@ public sealed partial class PrivacyAndDataSectionViewModel : ObservableObject
     /// <param name="history">The history the Storage card counts, exports, and clears.</param>
     /// <param name="localizer">The string table for labels and messages.</param>
     /// <param name="loginItem">The OS login entry Delete all data removes along with the setting.</param>
+    /// <param name="crashReporter">Whether this build can send crash reports at all.</param>
     /// <param name="dataPath">The folder whose secrets Delete all data removes; tests pass a temporary one.</param>
     public PrivacyAndDataSectionViewModel(
         ISettingsService settings,
         IHistoryService history,
         Localizer localizer,
         ILoginItem loginItem,
+        ICrashReporter crashReporter,
         string dataPath
     )
     {
@@ -64,6 +76,7 @@ public sealed partial class PrivacyAndDataSectionViewModel : ObservableObject
         _localizer = localizer;
         _loginItem = loginItem;
         DataFolder = dataPath;
+        IsCrashReportingAvailable = crashReporter.IsAvailable;
         RetentionOptions =
         [
             new RetentionOption(7, localizer["PrivacyAndData.Retention.Week"]),
@@ -78,6 +91,7 @@ public sealed partial class PrivacyAndDataSectionViewModel : ObservableObject
     }
 
     public string DataFolder { get; }
+    public bool IsCrashReportingAvailable { get; }
     public IReadOnlyList<RetentionOption> RetentionOptions { get; }
     public bool HasError => ErrorMessage is not null;
     public bool HasEntries => _history.Entries.Count > 0;
@@ -100,6 +114,8 @@ public sealed partial class PrivacyAndDataSectionViewModel : ObservableObject
     partial void OnHistoryEnabledChanged(bool value) => SaveSetting(s => s with { HistoryEnabled = value });
 
     partial void OnProvenanceCaptureEnabledChanged(bool value) => SaveSetting(s => s with { ProvenanceCaptureEnabled = value });
+
+    partial void OnCrashReportingEnabledChanged(bool value) => SaveSetting(s => s with { CrashReportingEnabled = value });
 
     partial void OnSelectedRetentionChanged(RetentionOption? value)
     {
@@ -193,6 +209,7 @@ public sealed partial class PrivacyAndDataSectionViewModel : ObservableObject
             return false;
         }
 
+        ErrorMessage = null;
         try
         {
             _settings.Update(update);
@@ -201,6 +218,7 @@ public sealed partial class PrivacyAndDataSectionViewModel : ObservableObject
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             Trace.WriteLine($"[PrivacyAndDataSection] Could not save settings: {ex.GetType().Name}");
+            ErrorMessage = _localizer.Format("PrivacyAndData.SaveFailed", ex.Message);
             ApplySettings(_settings.Current);
             return false;
         }
@@ -235,6 +253,7 @@ public sealed partial class PrivacyAndDataSectionViewModel : ObservableObject
         {
             HistoryEnabled = settings.HistoryEnabled;
             ProvenanceCaptureEnabled = settings.ProvenanceCaptureEnabled;
+            CrashReportingEnabled = settings.CrashReportingEnabled;
             // A hand-edited period that is not offered selects nothing; it still applies.
             SelectedRetention = RetentionOptions.FirstOrDefault(option =>
                 option.Days == settings.HistoryRetentionDays || (option.Days == 0 && settings.HistoryRetentionDays < 0)

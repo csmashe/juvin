@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Avalonia;
 using Juvin.App.Services;
+using Juvin.App.Services.CrashReporting;
 using Juvin.Core;
 using Juvin.Platform;
 using Microsoft.Extensions.DependencyInjection;
@@ -13,6 +14,7 @@ public static class Program
     private const string TriggerArgument = "--trigger";
 
     private static readonly TimeSpan s_requestTimeout = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan s_crashFlushTimeout = TimeSpan.FromSeconds(2);
 
     private static ServiceProvider? s_services;
 
@@ -38,6 +40,8 @@ public static class Program
         }
 
         s_services = services;
+        var crashReporting = services.GetRequiredService<CrashReportingService>();
+        AppDomain.CurrentDomain.UnhandledException += (_, e) => ReportCrash(crashReporting, e.ExceptionObject);
         return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
 
@@ -45,6 +49,24 @@ public static class Program
     public static AppBuilder BuildAvaloniaApp()
     {
         return AppBuilder.Configure<App>().UsePlatformDetect().WithInterFont().LogToTrace();
+    }
+
+    // The process ends when this returns, so the report is flushed here rather than left in the queue.
+    private static void ReportCrash(CrashReportingService crashReporting, object exceptionObject)
+    {
+        try
+        {
+            if (exceptionObject is Exception exception)
+            {
+                crashReporting.CaptureException(exception, CrashOperations.AppDomain, fatal: true);
+            }
+
+            crashReporting.Flush(s_crashFlushTimeout);
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[CrashReporting] Crash report failed: {ex.GetType().Name}");
+        }
     }
 
     private static int TriggerRunningInstance(ILocalSocketClient client)
