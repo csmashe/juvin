@@ -927,6 +927,67 @@ describe("Gmail adapter", () => {
     expect(result.ok && result.capture.thread.messages.map((m) => m.body)).toEqual(["First message", "Second message"]);
   });
 
+  it("puts the draft back where it was after Expand all scrolls the conversation to its top", async () => {
+    const editor = gmailThread(collapsedRow("Ana", "ana@example.com", "First message") + collapsedRow("Sam", "sam@example.com", "Second message"), EXPAND_ALL);
+    const scroller = document.createElement("div");
+    scroller.style.overflowY = "auto";
+    Object.defineProperty(scroller, "scrollHeight", { value: 4000 });
+    Object.defineProperty(scroller, "clientHeight", { value: 700 });
+    document.body.append(scroller);
+    scroller.append(document.querySelector('[role="main"]')!);
+    scroller.scrollTop = 1500;
+    // The draft's place in the conversation, which the opened messages push down by 600.
+    let draftOffset = 2000;
+    editor.getBoundingClientRect = () => ({ top: draftOffset - scroller.scrollTop }) as DOMRect;
+    const heading = document.querySelector<HTMLElement>("h2")!;
+    heading.tabIndex = -1;
+    document.querySelector('[aria-label="Expand all"]')!.addEventListener("click", () => {
+      scroller.scrollTop = 0;
+      heading.focus();
+      document.getSelection()!.removeAllRanges();
+    });
+    editor.focus();
+    select(editor, 0, 2);
+    const timed = instantGmail((tick) => {
+      if (tick === 2) {
+        draftOffset = 2600;
+        expandCollapsedRows();
+      }
+    });
+    const result = await captureContext(document, GMAIL, new EditorRegistry(), timed.adapters);
+
+    expect(result.ok && result.capture.thread.messages.length).toBe(2);
+    expect(scroller.scrollTop).toBe(2100);
+    expect(document.activeElement).toBe(editor);
+    expect(document.getSelection()!.toString()).toBe("hi");
+  });
+
+  it("leaves focus where the user moved it while the messages are still opening", async () => {
+    const editor = gmailThread(collapsedRow("Ana", "ana@example.com", "First message") + collapsedRow("Sam", "sam@example.com", "Second message"), EXPAND_ALL);
+    const search = document.createElement("input");
+    document.body.append(search);
+    const heading = document.querySelector<HTMLElement>("h2")!;
+    heading.tabIndex = -1;
+    document.querySelector('[aria-label="Expand all"]')!.addEventListener("click", () => heading.focus());
+    editor.focus();
+    select(editor, 0, 2);
+    const timed = instantGmail((tick) => {
+      if (tick === 2) {
+        search.focus();
+        document.getSelection()!.removeAllRanges();
+      }
+
+      if (tick === 4) {
+        expandCollapsedRows();
+      }
+    });
+    const result = await captureContext(document, GMAIL, new EditorRegistry(), timed.adapters);
+
+    expect(result.ok && result.capture.thread.messages.length).toBe(2);
+    expect(document.activeElement).toBe(search);
+    expect(document.getSelection()!.rangeCount).toBe(0);
+  });
+
   it("keeps waiting when the older-messages bundle vanishes a poll before its rows arrive", async () => {
     const editor = gmailThread(
       `<div id="bundle"><span role="button" aria-label="2 older messages">2</span></div>` + expandedRow("Sam", "sam@example.com", "Wed, Oct 7, 2026, 10:05 AM", "Third message"),
