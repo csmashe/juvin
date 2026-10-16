@@ -27,7 +27,7 @@ Juvin's data folder is `~/.local/share/Juvin` on Linux and `%LOCALAPPDATA%\Juvin
 - **Rewrite history** (`history.json`), off by default: with the switch on, each completed rewrite keeps the draft, the result, the subject, the action, the mode, provider, and model, the message count, and timing. Entries older than the retention period (30 days by default) are removed when you change the period and each time Juvin starts. An unreadable history file is quarantined as `history.json.broken-*`; Juvin keeps no backup copy of history.
 - **Provenance capture**, off by default: adds the exact prompt and messages sent for each rewrite to its history entry.
 - **Secrets** (`Secrets/` and, on Linux, `secret.key`): the folder exists for provider credentials, and the key file that encrypts them is created only when the first one is stored. No provider in the current version needs a credential, so nothing is stored.
-- **Runtime** (`Runtime/`): the local socket the native host connects to. It holds no content.
+- **Runtime** (`Runtime/`): the local socket the native host connects to, removed at shutdown, and on macOS or a Linux session without a runtime directory, two empty lock files that stay. None holds content.
 
 Juvin writes no log files. Diagnostic output goes to the terminal that started it and carries message types, lengths, identifiers, and error types, never the draft, the conversation, a prompt, or a response.
 
@@ -52,12 +52,12 @@ A report includes:
 
 A report never includes:
 
-- The draft, the conversation, a prompt, a model response, or any error message text. Every message is replaced with `<redacted>` before the report is built.
+- The draft, the conversation, a prompt, a model response, or any error message text. The report's own message is dropped and every exception message is replaced with `<redacted>` before the report is built.
 - File names or paths, your user name, home folder, machine name, or time zone.
 - Keys, tokens, URLs, or server addresses.
 - Any persistent install or user identifier. Reports carry no IP-address field and the SDK's automatic IP capture is off; like any HTTPS service, Sentry's servers still see the connection's source address. IP storage is turned off in the project, so Sentry does not keep it, though it may derive a coarse location from it when the report arrives.
 
-No data is written to disk for this feature. Turning the switch off stops reporting immediately and drops any report still waiting to be sent. A build made without a crash reporting endpoint cannot send reports, and its switch stays disabled.
+No data is written to disk for this feature. Turning the switch off stops reporting immediately and drops any report still waiting to be sent. A build made without a crash reporting endpoint cannot send reports, and its switch stays disabled, unless you supply one yourself through the `JUVIN_SENTRY_DSN` environment variable.
 
 ## Questions
 
