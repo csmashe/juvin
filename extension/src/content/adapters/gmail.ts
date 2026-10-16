@@ -141,7 +141,7 @@ function userInteraction(editor: HTMLElement, signal: AbortSignal): { happened: 
   const mark = (): void => {
     happened = true;
   };
-  for (const type of ["wheel", "touchstart", "pointerdown", "keydown"]) {
+  for (const type of ["wheel", "touchstart", "pointerdown", "keydown", "input"]) {
     win?.addEventListener(type, mark, { capture: true, passive: true, signal });
   }
 

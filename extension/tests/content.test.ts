@@ -962,6 +962,37 @@ describe("Gmail adapter", () => {
     expect(document.getSelection()!.toString()).toBe("hi");
   });
 
+  it("stops moving the draft once the user edits it without a key press", async () => {
+    const editor = gmailThread(collapsedRow("Ana", "ana@example.com", "First message") + collapsedRow("Sam", "sam@example.com", "Second message"), EXPAND_ALL);
+    const scroller = document.createElement("div");
+    scroller.style.overflowY = "auto";
+    Object.defineProperty(scroller, "scrollHeight", { value: 4000 });
+    Object.defineProperty(scroller, "clientHeight", { value: 700 });
+    document.body.append(scroller);
+    scroller.append(document.querySelector('[role="main"]')!);
+    scroller.scrollTop = 1500;
+    editor.getBoundingClientRect = () => ({ top: 2000 - scroller.scrollTop }) as DOMRect;
+    document.querySelector('[aria-label="Expand all"]')!.addEventListener("click", () => {
+      scroller.scrollTop = 0;
+    });
+    editor.focus();
+    select(editor, 0, 2);
+    const timed = instantGmail((tick) => {
+      if (tick === 2) {
+        editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertFromPaste" }));
+        scroller.scrollTop = 800;
+      }
+
+      if (tick === 4) {
+        expandCollapsedRows();
+      }
+    });
+    const result = await captureContext(document, GMAIL, new EditorRegistry(), timed.adapters);
+
+    expect(result.ok && result.capture.thread.messages.length).toBe(2);
+    expect(scroller.scrollTop).toBe(800);
+  });
+
   it("leaves focus where the user moved it while the messages are still opening", async () => {
     const editor = gmailThread(collapsedRow("Ana", "ana@example.com", "First message") + collapsedRow("Sam", "sam@example.com", "Second message"), EXPAND_ALL);
     const search = document.createElement("input");
