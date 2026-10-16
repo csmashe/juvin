@@ -7,6 +7,7 @@ Juvin is an open-source desktop assistant for Linux, macOS, and Windows that hel
 Status: early development. The desktop app skeleton (settings window, setup wizard, tray, local control socket) builds and runs on Linux and Windows; the rewrite workflow and the browser extension are in progress.
 
 - [MVP scope and phases](docs/mvp-scope.md)
+- [Privacy policy](docs/PRIVACY.md)
 - [Research](docs/research/desktop-ai-assistant-research.md)
 - [Brand assets](assets/brand/README.md)
 

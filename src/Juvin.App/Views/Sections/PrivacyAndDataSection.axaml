@@ -152,6 +152,24 @@
                     </StackPanel>
                 </Border>
             </StackPanel>
+
+            <StackPanel Spacing="8">
+                <TextBlock Classes="section-label" Text="{loc:Str PrivacyAndData.PolicyLabel}" />
+                <Border Classes="panel">
+                    <Border Classes="section-row">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Classes="row-title" Text="{loc:Str PrivacyAndData.Policy}" />
+                                <TextBlock Classes="row-hint" Text="{loc:Str PrivacyAndData.PolicyHint}" />
+                            </StackPanel>
+                            <HyperlinkButton Grid.Column="1"
+                                             VerticalAlignment="Center"
+                                             Content="{loc:Str PrivacyAndData.PolicyLink}"
+                                             NavigateUri="https://github.com/csmashe/juvin/blob/main/docs/PRIVACY.md" />
+                        </Grid>
+                    </Border>
+                </Border>
+            </StackPanel>
         </StackPanel>
     </ScrollViewer>
 </UserControl>
