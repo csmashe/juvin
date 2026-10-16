@@ -57,7 +57,7 @@ A report never includes:
 - Keys, tokens, URLs, or server addresses.
 - Any persistent install or user identifier. Reports carry no IP-address field and the SDK's automatic IP capture is off; like any HTTPS service, Sentry's servers still see the connection's source address. IP storage is turned off in the project, so Sentry does not keep it, though it may derive a coarse location from it when the report arrives.
 
-No data is written to disk for this feature. Turning the switch off stops reporting immediately and drops any report still waiting to be sent. A build made without a crash reporting endpoint cannot send reports, and its switch stays disabled, unless you supply one yourself through the `JUVIN_SENTRY_DSN` environment variable.
+No data is written to disk for this feature. Turning the switch off stops new reports immediately and drops any report still waiting to be sent; a report already on its way at that moment may still arrive. A build made without a crash reporting endpoint cannot send reports, and its switch stays disabled, unless you supply one yourself through the `JUVIN_SENTRY_DSN` environment variable.
 
 ## Questions
 
