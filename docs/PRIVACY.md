@@ -21,19 +21,19 @@ Juvin makes no other network connections. There are no update checks, license ch
 
 ## What Juvin keeps on your computer
 
-Juvin's data folder is `~/.local/share/Juvin` on Linux and `%LOCALAPPDATA%\Juvin` on Windows; Privacy and data shows the exact path on your system and opens the folder. The folder is readable only by your user account.
+Juvin's data folder is `~/.local/share/Juvin` on Linux and `%LOCALAPPDATA%\Juvin` on Windows; Privacy and data shows the exact path on your system and opens the folder. On Linux and macOS the folder is readable only by your user account; on Windows it has the usual permissions of your local app data.
 
 - **Settings** (`settings.json`): the processing mode, server address, model names, your sender name, the shortcut, custom actions and instruction edits, and the switches below. Juvin keeps a last-known-good copy as `settings.json.bak` and quarantines an unreadable copy as `settings.json.broken-*`.
-- **Rewrite history** (`history.json`), off by default: with the switch on, each completed rewrite keeps the draft, the result, the subject, the action, the mode, provider, and model, the message count, and timing. Entries older than the retention period (30 days by default) are removed when you change the period and each time Juvin starts. The same backup and quarantine copies exist as for settings.
+- **Rewrite history** (`history.json`), off by default: with the switch on, each completed rewrite keeps the draft, the result, the subject, the action, the mode, provider, and model, the message count, and timing. Entries older than the retention period (30 days by default) are removed when you change the period and each time Juvin starts. An unreadable history file is quarantined as `history.json.broken-*`; Juvin keeps no backup copy of history.
 - **Provenance capture**, off by default: adds the exact prompt and messages sent for each rewrite to its history entry.
-- **Secrets** (`Secrets/` and `secret.key`): the folder and the key exist for provider credentials. No provider in the current version needs one, so they hold nothing.
+- **Secrets** (`Secrets/` and, on Linux, `secret.key`): the folder exists for provider credentials, and the key file that encrypts them is created only when the first one is stored. No provider in the current version needs a credential, so nothing is stored.
 - **Runtime** (`Runtime/`): the local socket the native host connects to. It holds no content.
 
 Juvin writes no log files. Diagnostic output goes to the terminal that started it and carries message types, lengths, identifiers, and error types, never the draft, the conversation, a prompt, or a response.
 
 Exporting history writes a Markdown or JSON file wherever you choose; that file is yours to keep or delete.
 
-**Clear history** removes every entry and the backup and quarantine copies of the history file. **Delete all data** removes history, the secrets, the launch-at-login entry, and resets settings with their copies, and setup runs again at the next start.
+**Clear history** removes every entry and the quarantine copies of the history file. **Delete all data** removes history, the secrets, the launch-at-login entry, and resets settings with their copies, and setup runs again at the next start.
 
 ## What Juvin writes outside its data folder
 
