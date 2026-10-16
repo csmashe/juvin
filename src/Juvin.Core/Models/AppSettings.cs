@@ -57,7 +57,7 @@ public sealed record AppSettings
     public bool HistoryEnabled { get; init; }
     public int HistoryRetentionDays { get; init; } = 30;
     public bool ProvenanceCaptureEnabled { get; init; }
-    public bool CrashReportingEnabled { get; init; }
+    public bool CrashReportingEnabled { get; init; } = true;
 
     public bool LaunchAtLogin { get; init; }
     public bool CloseToTray { get; init; } = true;

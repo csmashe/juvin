@@ -62,10 +62,14 @@
                                     <TextBlock Classes="row-title" Text="{loc:Str PrivacyAndData.Crash}" />
                                     <TextBlock Classes="row-hint" Text="{loc:Str PrivacyAndData.CrashHint}" />
                                 </StackPanel>
-                                <Border Grid.Column="1" Classes="badge">
-                                    <TextBlock Classes="badge-text" Text="{loc:Str Common.ComingSoon}" />
-                                </Border>
+                                <ToggleSwitch Grid.Column="1"
+                                              VerticalAlignment="Center"
+                                              IsEnabled="{Binding IsCrashReportingAvailable}"
+                                              IsChecked="{Binding CrashReportingEnabled}" />
                             </Grid>
+                        </Border>
+                        <Border Classes="section-row divided" IsVisible="{Binding !IsCrashReportingAvailable}">
+                            <TextBlock Classes="row-hint" Margin="0" Text="{loc:Str PrivacyAndData.CrashUnavailable}" />
                         </Border>
                     </StackPanel>
                 </Border>

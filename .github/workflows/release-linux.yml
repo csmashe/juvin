@@ -64,6 +64,8 @@ jobs:
         run: dotnet test Juvin.slnx -c Release --no-build
 
       - name: Build packages
+        env:
+          JUVIN_SENTRY_DSN: ${{ secrets.JUVIN_SENTRY_DSN }}
         run: scripts/build-linux-packages.sh "${{ steps.version.outputs.version }}" dist
 
       - name: Smoke test packages

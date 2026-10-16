@@ -91,8 +91,11 @@ publish() {
 
 build_payload() {
     echo "==> Publishing the app"
+    if [[ -z ${JUVIN_SENTRY_DSN:-} ]]; then
+        echo "    JUVIN_SENTRY_DSN is not set; crash reporting will be disabled in this build"
+    fi
     publish src/Juvin.App/Juvin.App.csproj -o "$PUBLISH" -p:PublishSingleFile=false -p:PublishReadyToRun=true \
-        -p:DebugType=portable -p:DebugSymbols=true
+        -p:DebugType=portable -p:DebugSymbols=true -p:JuvinSentryDsn="${JUVIN_SENTRY_DSN:-}"
 
     local single=(-p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -p:DebugSymbols=false)
     echo "==> Publishing juvin-host and juvin-cli as single files"
