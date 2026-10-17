@@ -4,6 +4,9 @@ namespace Juvin.Core.Providers;
 
 public interface IModelProvider
 {
+    /// <summary>The model label recorded when no model is configured and the provider picks its own.</summary>
+    const string DefaultModelLabel = "default";
+
     ProcessingMode Mode { get; }
 
     string DisplayName { get; }

@@ -5,11 +5,16 @@ using System.Text.RegularExpressions;
 namespace Juvin.Core.Rewrite;
 
 /// <param name="IncludedMessageCount">Thread messages that fit the budget and were sent.</param>
+/// <param name="NewestMessageBodyLength">
+///     How much of the newest message's trimmed body was sent when it had to be cut to fit; null
+///     when it went whole.
+/// </param>
 public sealed record PromptBuildResult(
     string SystemPrompt,
     string UserPrompt,
     bool Truncated,
-    int IncludedMessageCount
+    int IncludedMessageCount,
+    int? NewestMessageBodyLength = null
 );
 
 /// <summary>
@@ -48,17 +53,34 @@ public sealed partial class RewritePromptBuilder
 
     /// <summary>
     ///     The first turn: thread, draft, and instruction. When the thread exceeds the character
-    ///     budget the oldest messages are dropped; the draft is always kept whole.
+    ///     budget the oldest messages are dropped; the newest is kept, with the end of its body cut
+    ///     when it alone exceeds the budget, unless its header alone is over it. The draft is always
+    ///     kept whole.
     /// </summary>
     public PromptBuildResult Build(RewriteContext context, string instruction, string? senderName = null)
     {
-        var blocks = context.Thread.Select(RenderMessage).ToList();
+        var blocks = context.Thread.Select(message => RenderMessage(message, int.MaxValue, out _)).ToList();
         var first = 0;
         var total = blocks.Sum(block => block.Length);
-        while (first < blocks.Count && total > _threadBudget)
+        while (first < blocks.Count - 1 && total > _threadBudget)
         {
             total -= blocks[first].Length;
             first++;
+        }
+
+        var newestCut = total > _threadBudget;
+        int? newestBodyLength = null;
+        if (newestCut)
+        {
+            blocks[^1] = RenderMessage(context.Thread[^1], _threadBudget, out var bodyLength);
+            newestBodyLength = bodyLength;
+            if (blocks[^1].Length > _threadBudget)
+            {
+                // The header alone is over the budget, so this message is left out too.
+                first = blocks.Count;
+                newestCut = false;
+                newestBodyLength = null;
+            }
         }
 
         var prompt = new StringBuilder();
@@ -71,12 +93,22 @@ public sealed partial class RewritePromptBuilder
             );
         }
 
-        if (first > 0)
+        switch (first)
         {
-            prompt.Append(
-                CultureInfo.InvariantCulture,
-                $"The oldest {first} messages were left out to fit the model's limit.\n"
-            );
+            case 1:
+                prompt.Append("The oldest message was left out to fit the model's limit.\n");
+                break;
+            case > 1:
+                prompt.Append(
+                    CultureInfo.InvariantCulture,
+                    $"The oldest {first} messages were left out to fit the model's limit.\n"
+                );
+                break;
+        }
+
+        if (newestCut)
+        {
+            prompt.Append("The newest message was cut short to fit the model's limit.\n");
         }
 
         if (first < blocks.Count)
@@ -108,7 +140,13 @@ public sealed partial class RewritePromptBuilder
         prompt.Append(context.IsMarkdown ? MarkdownNotice : PlainTextNotice).Append('\n');
         prompt.Append(FollowUp(instruction));
 
-        return new PromptBuildResult(SystemPrompt, prompt.ToString(), first > 0, blocks.Count - first);
+        return new PromptBuildResult(
+            SystemPrompt,
+            prompt.ToString(),
+            first > 0 || newestCut,
+            blocks.Count - first,
+            newestBodyLength
+        );
     }
 
     /// <summary>A later turn: the thread and draft are already in the conversation.</summary>
@@ -116,8 +154,13 @@ public sealed partial class RewritePromptBuilder
 
     private static string Defang(string text) => TagStart().Replace(text, "‹");
 
-    private static string RenderMessage(ThreadMessage message)
+    /// <summary>
+    ///     The body is defanged before it is cut to fit <paramref name="maxLength" />, so a cut cannot
+    ///     turn a defanged tag back into a live one; the wrapper and closing tag are always kept.
+    /// </summary>
+    private static string RenderMessage(ThreadMessage message, int maxLength, out int bodyLength)
     {
+        const string closing = "\n</message>\n";
         var block = new StringBuilder();
         block.Append("<message from=\"").Append(Attribute(message.From)).Append('"');
         if (message.To.Count > 0)
@@ -133,8 +176,21 @@ public sealed partial class RewritePromptBuilder
                 .Append('"');
         }
 
-        block.Append(">\n").Append(Defang(message.Body.Trim())).Append("\n</message>\n");
-        return block.ToString();
+        block.Append(">\n");
+        var body = Defang(message.Body.Trim());
+        var room = Math.Max(0, maxLength - block.Length - closing.Length);
+        if (body.Length > room)
+        {
+            if (room > 0 && char.IsHighSurrogate(body[room - 1]))
+            {
+                room--;
+            }
+
+            body = body[..room];
+        }
+
+        bodyLength = body.Length;
+        return block.Append(body).Append(closing).ToString();
     }
 
     private static string Attribute(string value) =>

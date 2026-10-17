@@ -51,6 +51,15 @@ public sealed class CliInputTests
         Assert.Equal(ThreadCompleteness.LoadedMessagesOnly, context.Completeness);
     }
 
+    [Fact]
+    public void Stdin_ClampsANegativeCollapsedCountToZero()
+    {
+        var context = StdinInput.Parse("""{ "draft": "ok", "collapsed": -4, "thread": [ { "from": "Dana", "body": "Hi" } ] }""");
+
+        Assert.Equal(0, context.CollapsedCount);
+        Assert.Equal(ThreadCompleteness.EntireThread, context.Completeness);
+    }
+
     [Theory]
     [InlineData("{ \"subject\": \"no draft\" }")]
     [InlineData("{ not json")]
@@ -87,6 +96,14 @@ public sealed class CliInputTests
     {
         Assert.Null(CliOptions.Parse(["rewrite", "--stdin", "--instruction", "   "], out var error));
         Assert.Contains("--instruction", error);
+    }
+
+    [Fact]
+    public void Options_RejectAnInstructionOverTheCatalogLimit()
+    {
+        var tooLong = new string('x', RewriteActionCatalog.MaxInstructionLength + 1);
+        Assert.Null(CliOptions.Parse(["rewrite", "--stdin", "--instruction", tooLong], out var error));
+        Assert.Contains("2000", error);
     }
 
     [Fact]

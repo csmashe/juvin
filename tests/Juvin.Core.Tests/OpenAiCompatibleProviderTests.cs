@@ -365,6 +365,26 @@ public sealed class OpenAiCompatibleProviderTests
     }
 
     [Fact]
+    public async Task Redirect_IsAFailureAndIsNotFollowed()
+    {
+        using var elsewhere = new LoopbackHttpServer(() => new LoopbackResponse(HttpStatusCode.OK));
+        // ReSharper disable once AccessToDisposedClosure -- server is disposed before elsewhere
+        using var server = new LoopbackHttpServer(() =>
+            new LoopbackResponse(HttpStatusCode.TemporaryRedirect, elsewhere.Url + "v1/chat/completions")
+        );
+        using var http = ModelHttpClient.Create(TimeSpan.FromSeconds(30));
+        var provider = new OpenAiCompatibleProvider(http, new AppSettings { LocalServerUrl = server.Url, LocalModel = "m" });
+
+        var ex = await Assert.ThrowsAsync<ProviderException>(() =>
+            provider.CompleteAsync(s_request, null, CancellationToken.None)
+        );
+
+        Assert.Contains("307", ex.Message);
+        Assert.True(server.Requests > 0);
+        Assert.Equal(0, elsewhere.Requests);
+    }
+
+    [Fact]
     public async Task MissingModel_IsAConfigurationFailure()
     {
         var handler = Ollama().Route("/api/chat", "{\"error\":\"model not found\"}", HttpStatusCode.NotFound);

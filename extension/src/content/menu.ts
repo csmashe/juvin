@@ -30,6 +30,7 @@ export const MENU_STRINGS = {
 };
 
 const MAX_SLOTS = 5;
+const MAX_INSTRUCTION_LENGTH = 2000;
 /** The mark's place in the drawn focus, where no bubble is. */
 const MARK = -1;
 const GAP = 12;
@@ -550,6 +551,7 @@ export class MenuRenderer {
   private askRow(menu: OpenMenu, placeholder: string, label: string): { row: HTMLElement; input: HTMLInputElement } {
     const input = menu.host.ownerDocument.createElement("input");
     input.type = "text";
+    input.maxLength = MAX_INSTRUCTION_LENGTH;
     input.placeholder = placeholder;
     input.autocomplete = "off";
     input.setAttribute("aria-label", placeholder);

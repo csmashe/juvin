@@ -40,7 +40,16 @@ public sealed class Localizer
 
     public string Format(string key, params object?[] args)
     {
-        return string.Format(CultureInfo.CurrentCulture, this[key], args);
+        var text = this[key];
+        try
+        {
+            return string.Format(CultureInfo.CurrentCulture, text, args);
+        }
+        catch (FormatException)
+        {
+            Trace.WriteLine($"[Localizer] The string {key} has a malformed placeholder.");
+            return text;
+        }
     }
 
     // ReSharper disable once MemberCanBePrivate.Global -- feeds the language picker in the settings UI

@@ -97,6 +97,20 @@ public sealed class RewritePanelViewModelTests
     }
 
     [Fact]
+    public async Task AFollowUpOverTheInstructionLimit_CannotBeSent()
+    {
+        var vm = Create();
+        await LoadAndRunAsync(vm, Capture());
+
+        vm.FollowUpText = new string('x', RewriteActionCatalog.MaxInstructionLength + 1);
+        Assert.False(vm.CanSendFollowUp);
+        Assert.False(vm.SendFollowUpCommand.CanExecute(null));
+
+        vm.FollowUpText = new string('x', RewriteActionCatalog.MaxInstructionLength);
+        Assert.True(vm.CanSendFollowUp);
+    }
+
+    [Fact]
     public async Task AFollowUp_KeepsTheEarlierTurns()
     {
         var vm = Create();
@@ -543,6 +557,17 @@ public sealed class RewritePanelViewModelTests
     }
 
     [Fact]
+    public async Task TheContextList_ShowsOnlyTheKeptPartOfACutNewestMessage()
+    {
+        var vm = Create(BuilderCuttingTheNewestMessageTo(11));
+
+        await LoadAndRunAsync(vm, Capture());
+
+        var newest = Assert.Single(vm.ContextMessages);
+        Assert.Equal("Looking int\n\n" + _localizer["Panel.NewestMessageCutShort"], newest.Body);
+    }
+
+    [Fact]
     public async Task TheContextList_ShowsEveryCapturedMessageBeforeTheResult()
     {
         _local.CompletionGate = new TaskCompletionSource();
@@ -886,6 +911,19 @@ public sealed class RewritePanelViewModelTests
         {
             var builder = new RewritePromptBuilder(budget);
             if (builder.Build(context, "x").IncludedMessageCount == count)
+            {
+                return builder;
+            }
+        }
+    }
+
+    private static RewritePromptBuilder BuilderCuttingTheNewestMessageTo(int bodyLength)
+    {
+        var context = Capture().Capture!.Context;
+        for (var budget = 0; ; budget++)
+        {
+            var builder = new RewritePromptBuilder(budget);
+            if (builder.Build(context, "x").NewestMessageBodyLength == bodyLength)
             {
                 return builder;
             }

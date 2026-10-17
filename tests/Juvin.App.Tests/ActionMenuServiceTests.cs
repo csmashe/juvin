@@ -424,6 +424,25 @@ public sealed class ActionMenuServiceTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task ACustomInstructionOverTheLimit_SendsARetryableErrorWithoutRunning()
+    {
+        var menuId = await OpenMenuAsync();
+
+        _channel.Deliver(
+            $$"""{"v":1,"type":"menu.choose","menuId":"{{menuId}}","action":"custom","instruction":"{{new string('x', RewriteActionCatalog.MaxInstructionLength + 1)}}"}"""
+        );
+
+        var error = await NextAsync("menu.update");
+        Assert.Equal("error", error.GetProperty("state").GetString());
+        Assert.Equal(
+            _localizer.Format("Menu.Error.InvalidInstruction", RewriteActionCatalog.MaxInstructionLength),
+            error.GetProperty("text").GetString()
+        );
+        Assert.False(error.GetProperty("canRetry").GetBoolean());
+        Assert.Empty(_local.Requests);
+    }
+
+    [Fact]
     public async Task Review_OpensThePanelIdleWithoutClosingTheMenu()
     {
         var menuId = await OpenMenuAsync();

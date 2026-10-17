@@ -27,11 +27,12 @@ public static class Program
           --mode <local|codex>   processing mode for this run
           --model <id>           model for this run
           --server <url>         local server URL for this run
-          --provenance           write the provenance record as JSON to stderr
+          --provenance           write the provenance record as JSON to stderr, including
+                                 the full prompt and reply
           --settings <path>      settings file to read instead of the default
           --help                 show this help
 
-        Exit codes: 0 success, 1 provider failure, 2 usage error.
+        Exit codes: 0 success, 1 provider failure, 2 usage error, 130 cancelled.
         """;
 
     private static readonly JsonSerializerOptions s_provenanceJson = new()
@@ -64,10 +65,10 @@ public static class Program
         try
         {
             settings = options.ApplyTo(
-                new SettingsService(options.SettingsPath ?? JuvinEnvironment.SettingsFilePath).Current
+                SettingsService.OpenForReading(options.SettingsPath ?? JuvinEnvironment.SettingsFilePath).Current
             );
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or JsonException)
         {
             Console.Error.WriteLine($"The settings file could not be read: {ex.Message}");
             return 2;
@@ -79,6 +80,19 @@ public static class Program
             Console.Error.WriteLine(error);
             Console.Error.WriteLine("Run juvin-cli --help for usage.");
             return 2;
+        }
+
+        using var http = ModelHttpClient.Create(TimeSpan.FromMinutes(5));
+        var selector = ProviderSelector.CreateDefault(http, new ProcessRunner());
+        try
+        {
+            // Reports a misconfigured mode before the user pipes in the draft.
+            selector.Select(settings);
+        }
+        catch (ProviderException ex)
+        {
+            Console.Error.WriteLine(ex.Message);
+            return 1;
         }
 
         RewriteContext context;
@@ -106,9 +120,6 @@ public static class Program
             cancellation.Cancel();
         };
 
-        using var http = new HttpClient();
-        http.Timeout = TimeSpan.FromMinutes(5);
-        var selector = ProviderSelector.CreateDefault(http, new ProcessRunner());
         RewriteSession? session = null;
         var printed = 0;
         var preview = new InlineProgress<string>(text =>
@@ -152,7 +163,7 @@ public static class Program
 
             Console.Error.WriteLine("Cancelled.");
             WriteProvenance(options, session);
-            return 1;
+            return 130;
         }
     }
 

@@ -356,6 +356,7 @@
   "Panel.NoMessages": "No thread messages were captured, only the draft.",
   "Panel.OlderMessagesLeftOutOne": "1 older message was left out to fit the model's limit.",
   "Panel.OlderMessagesLeftOut": "{0} older messages were left out to fit the model's limit.",
+  "Panel.NewestMessageCutShort": "The end of this message was left out to fit the model's limit.",
   "Panel.FollowUpPlaceholder": "Ask for a change, then press Enter",
   "Panel.Send": "Send",
   "Panel.Recapture": "Recapture",
@@ -390,5 +391,6 @@
   "Panel.Error.Timeout": "The browser did not answer in time. Try again.",
   "Panel.Error.TooLarge": "The rewrite is too large to send to the browser. Copy it instead.",
   "Panel.Error.Unknown": "The browser could not complete the request.",
-  "Menu.Error.UnknownAction": "That action is no longer available. Press the shortcut again to see the current actions."
+  "Menu.Error.UnknownAction": "That action is no longer available. Press the shortcut again to see the current actions.",
+  "Menu.Error.InvalidInstruction": "Enter an instruction of up to {0} characters."
 }

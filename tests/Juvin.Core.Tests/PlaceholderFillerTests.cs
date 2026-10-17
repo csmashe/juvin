@@ -72,7 +72,10 @@ public sealed class PlaceholderFillerTests
     [InlineData("Best,\n[Your Na", "Best,\n")]
     [InlineData("Best,\n{{Sender}", "Best,\n")]
     [InlineData("Best,\n[Your Name]", "Best,\n")]
-    [InlineData("Best,\n[Your Name]\n", "Best,\nChris\n")]
+    [InlineData("Best,\n[Your Name]\n", "Best,\n")]
+    [InlineData("Best,\n[Your Name]\u00a0\n", "Best,\n")]
+    [InlineData("Best,\n[Your Name]\nTitle", "Best,\nChris\nTitle")]
+    [InlineData("See you Friday. \n\t", "See you Friday.")]
     [InlineData("Best,\n  -- ", "Best,\n")]
     [InlineData("Hi there, a long paragraph still being written", "Hi there, a long paragraph still being written")]
     [InlineData("Best,\nChris [Your Name", "Best,\nChris [Your Name")]
@@ -86,9 +89,12 @@ public sealed class PlaceholderFillerTests
     [InlineData("Enter [Your Name]!\n{{Sender}}\n[Your Name] (sender)\n{{Sender}")]
     [InlineData("One long paragraph with [Your Name] inside it and no line break at all, signed -- [Your Name]")]
     [InlineData("Thanks,\r\n-- [Your Name]\r\n")]
+    [InlineData("Best,\n[Your Name]\u00a0\n")]
+    [InlineData("See you Friday.  \n\nBest,\nChris \n")]
     public void FillStreaming_PreviewsArePrefixesOfTheFilledResult(string reply)
     {
-        var final = PlaceholderFiller.Fill(reply, "Chris");
+        // Providers trim the final text before it is filled.
+        var final = PlaceholderFiller.Fill(reply.TrimEnd(), "Chris");
 
         for (var length = 0; length <= reply.Length; length++)
         {
@@ -100,5 +106,11 @@ public sealed class PlaceholderFillerTests
     public void FillStreaming_WithoutAName_PassesTextThrough()
     {
         Assert.Equal("Best,\n[Your Na", PlaceholderFiller.FillStreaming("Best,\n[Your Na", null));
+    }
+
+    [Fact]
+    public void FillStreaming_WithoutAName_DropsTrailingWhitespace()
+    {
+        Assert.Equal("Best,", PlaceholderFiller.FillStreaming("Best, \n", null));
     }
 }

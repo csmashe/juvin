@@ -34,7 +34,7 @@ public static class ServiceRegistrations
         AddPlatform(services);
 
         // Probes use this client and selector; rewrites have their own with a longer timeout.
-        services.AddSingleton(_ => new HttpClient { Timeout = TimeSpan.FromSeconds(30) });
+        services.AddSingleton(_ => ModelHttpClient.Create(TimeSpan.FromSeconds(30)));
         services.AddSingleton<IProcessRunner, ProcessRunner>();
         services.AddSingleton(sp =>
             ProviderSelector.CreateDefault(sp.GetRequiredService<HttpClient>(), sp.GetRequiredService<IProcessRunner>())
@@ -48,7 +48,7 @@ public static class ServiceRegistrations
         services.AddSingleton<IHotkeyRestart>(sp => sp.GetRequiredService<HotkeyService>());
 
         // Rewrites get a longer idle limit than probes: a local model can take minutes to load.
-        services.AddKeyedSingleton(RewriteHttpClientKey, (_, _) => new HttpClient { Timeout = s_rewriteTimeout });
+        services.AddKeyedSingleton(RewriteHttpClientKey, (_, _) => ModelHttpClient.Create(s_rewriteTimeout));
         services.AddKeyedSingleton(
             RewriteHttpClientKey,
             (sp, _) =>
