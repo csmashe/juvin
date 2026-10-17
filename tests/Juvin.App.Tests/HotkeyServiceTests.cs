@@ -8,6 +8,7 @@ namespace Juvin.App.Tests;
 
 public sealed class HotkeyServiceTests
 {
+    private static readonly TimeSpan s_reselectDelay = TimeSpan.FromMilliseconds(20);
     private static readonly TimeSpan s_timeout = TimeSpan.FromSeconds(5);
 
     private readonly ConnectorService _connector;
@@ -85,12 +86,15 @@ public sealed class HotkeyServiceTests
     [Fact]
     public async Task Start_FallsBackToAutomaticWhenTheChosenBackendIsUnavailable()
     {
+        using var trace = new TraceRecorder();
         _settings.Update(settings => settings with { HotkeyBackend = "evdev" });
         var service = Create(new FakeHotkeyBackend("evdev", isAvailable: false), new FakeHotkeyBackend("sharphook"));
 
         await service.StartAsync(CancellationToken.None);
 
         Assert.Equal("sharphook", service.Status.BackendId);
+        Assert.True(service.IsListening);
+        Assert.Contains(trace.Lines, line => line.Contains("chosen backend evdev is not available", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -124,18 +128,73 @@ public sealed class HotkeyServiceTests
     }
 
     [Fact]
-    public async Task Start_ReportsNoBackendAndInvalidShortcut()
+    public async Task Start_ReportsNoBackend()
     {
         var none = Create(new FakeHotkeyBackend("evdev", isAvailable: false));
-        await none.StartAsync(CancellationToken.None);
-        Assert.Equal(HotkeyStatusKind.NoBackend, none.Status.Kind);
 
-        _settings.Update(settings => settings with { RewriteShortcut = "F" });
+        await none.StartAsync(CancellationToken.None);
+
+        Assert.Equal(HotkeyStatusKind.NoBackend, none.Status.Kind);
+    }
+
+    [Theory]
+    [InlineData("F")]
+    [InlineData("Shift+A")]
+    public async Task Start_ListensForTheDefaultWhenTheSavedShortcutIsNotAChord(string saved)
+    {
+        using var trace = new TraceRecorder();
+        _settings.Update(settings => settings with { RewriteShortcut = saved, RewriteShortcutPhysicalKey = "Q" });
         var backend = new FakeHotkeyBackend("sharphook");
-        var invalid = Create(backend);
-        await invalid.StartAsync(CancellationToken.None);
-        Assert.Equal(HotkeyStatusKind.InvalidShortcut, invalid.Status.Kind);
-        Assert.Equal(0, backend.StartCount);
+        var service = Create(backend);
+
+        await service.StartAsync(CancellationToken.None);
+
+        Assert.Equal(new HotkeyStatus(HotkeyStatusKind.Active, "sharphook"), service.Status);
+        Assert.Equal("Ctrl+Shift+F", backend.Chord?.ToString());
+        Assert.Equal("F", backend.Chord?.PhysicalKey);
+        Assert.Contains(trace.Lines, line => line.Contains("not a valid chord", StringComparison.Ordinal) && !line.Contains(saved, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task BackendStoppingOnItsOwn_ReportsLost_ThenSelectsAgain()
+    {
+        var hook = new FakeHotkeyBackend("sharphook");
+        var service = Create(hook);
+        await service.StartAsync(CancellationToken.None);
+        var statuses = new List<HotkeyStatus>();
+        service.StatusChanged += () =>
+        {
+            lock (statuses)
+            {
+                statuses.Add(service.Status);
+            }
+        };
+
+        hook.StopOnItsOwn("The hook stopped.");
+
+        await WaitUntilAsync(() => hook.StartCount == 2);
+        await WaitUntilAsync(() => service.Status.Kind == HotkeyStatusKind.Active);
+        lock (statuses)
+        {
+            Assert.Equal(new HotkeyStatus(HotkeyStatusKind.Lost, "sharphook", "The hook stopped."), statuses[0]);
+        }
+
+        Assert.True(hook.IsRunning);
+    }
+
+    [Fact]
+    public async Task BackendStoppingOnItsOwn_AfterARestart_IsIgnored()
+    {
+        var hook = new FakeHotkeyBackend("sharphook");
+        var service = Create(hook);
+        await service.StartAsync(CancellationToken.None);
+        await service.StopAsync();
+
+        hook.StopOnItsOwn("The hook stopped.");
+        await Task.Delay(s_reselectDelay * 5);
+
+        Assert.Equal(HotkeyStatus.Stopped, service.Status);
+        Assert.Equal(1, hook.StartCount);
     }
 
     [Fact]
@@ -267,7 +326,7 @@ public sealed class HotkeyServiceTests
         Assert.Equal(1, Volatile.Read(ref captures));
     }
 
-    private HotkeyService Create(params IHotkeyBackend[] backends) => new(backends, _settings, _connector);
+    private HotkeyService Create(params IHotkeyBackend[] backends) => new(backends, _settings, _connector, s_reselectDelay);
 
     private static async Task WaitUntilAsync(Func<bool> condition)
     {

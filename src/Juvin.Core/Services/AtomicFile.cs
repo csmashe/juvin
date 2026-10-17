@@ -18,6 +18,26 @@ public static class AtomicFile
         WriteAllBytes(path, s_utf8NoBom.GetBytes(contents));
     }
 
+    /// <summary>Writes <paramref name="contents" />, replacing any existing file; on Unix the file gets exactly <paramref name="unixMode" />, whatever the umask.</summary>
+    public static void WriteAllText(string path, string contents, UnixFileMode unixMode)
+    {
+        var tempPath = WriteTemp(path, s_utf8NoBom.GetBytes(contents), unixMode);
+        if (!OperatingSystem.IsWindows())
+        {
+            try
+            {
+                File.SetUnixFileMode(tempPath, unixMode);
+            }
+            catch
+            {
+                TryDelete(tempPath);
+                throw;
+            }
+        }
+
+        Publish(tempPath, path, overwrite: true);
+    }
+
     /// <summary>Writes <paramref name="bytes" />, replacing any existing file. New files are 0600 on Unix.</summary>
     public static void WriteAllBytes(string path, ReadOnlySpan<byte> bytes)
     {

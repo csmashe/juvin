@@ -34,6 +34,16 @@ public sealed class ConnectorServiceTests : IAsyncDisposable
         await _service.StopAsync();
     }
 
+    [Theory]
+    [InlineData("Shift+A")]
+    [InlineData("F")]
+    public void BuildConfig_SendsTheDefaultShortcutWhenTheSavedOneIsNotAChord(string saved)
+    {
+        var config = _service.BuildConfig(new AppSettings { RewriteShortcut = saved });
+
+        Assert.Equal(AppSettings.DefaultRewriteShortcut, config.Shortcut);
+    }
+
     [Fact]
     public void BuildConfig_ListsLocalizedActionsAdaptersShortcutAndMode()
     {

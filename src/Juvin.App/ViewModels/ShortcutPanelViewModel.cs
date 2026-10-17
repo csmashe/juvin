@@ -96,8 +96,7 @@ public sealed partial class ShortcutPanelViewModel : ObservableObject, IDisposab
         _localizer = localizer;
         _post = post;
         _isMac = isMac ?? OperatingSystem.IsMacOS();
-        RefreshStatus();
-        ApplySettings(settings.Current);
+        Refresh(settings.Current);
         _hotkeys.StatusChanged += OnStatusChanged;
         _hotkeys.Pressed += OnPressed;
         _settings.SettingsChanged += OnSettingsChanged;
@@ -158,8 +157,8 @@ public sealed partial class ShortcutPanelViewModel : ObservableObject, IDisposab
             return true;
         }
 
-        // A bare Tab keeps moving focus, so the recorder never traps keyboard users.
-        if (key == Key.Tab && modifiers == KeyModifiers.None)
+        // Tab and Shift+Tab keep moving focus, so the recorder never traps keyboard users.
+        if (key == Key.Tab && modifiers is KeyModifiers.None or KeyModifiers.Shift)
         {
             return false;
         }
@@ -176,9 +175,14 @@ public sealed partial class ShortcutPanelViewModel : ObservableObject, IDisposab
             return true;
         }
 
-        if (!KeyChord.TryCreate(ShortcutKeyMap.Modifiers(modifiers, _isMac), name, out var chord))
+        var chordModifiers = ShortcutKeyMap.Modifiers(modifiers, _isMac);
+        if (!KeyChord.TryCreate(chordModifiers, name, _isMac, out var chord))
         {
-            RecordHint = _localizer[_isMac ? "Shortcuts.Recorder.NeedsModifierMac" : "Shortcuts.Recorder.NeedsModifier"];
+            RecordHint = _localizer[
+                KeyChord.TryCreate(chordModifiers, name, out _) ? "Shortcuts.Recorder.Reserved"
+                : _isMac ? "Shortcuts.Recorder.NeedsModifierMac"
+                : "Shortcuts.Recorder.NeedsModifier"
+            ];
             return true;
         }
 
@@ -204,7 +208,7 @@ public sealed partial class ShortcutPanelViewModel : ObservableObject, IDisposab
         _resumeAfterGrace = false;
         _awaitingRelease = true;
         _ = ResumeAfterAsync(ReleaseCap, force: true, ++_resumeGeneration);
-        ApplySettings(_settings.Current);
+        Refresh(_settings.Current);
         return true;
     }
 
@@ -281,7 +285,7 @@ public sealed partial class ShortcutPanelViewModel : ObservableObject, IDisposab
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             Trace.WriteLine($"[ShortcutPanel] Could not save the backend choice: {ex.GetType().Name}");
-            ApplySettings(_settings.Current);
+            Refresh(_settings.Current);
         }
     }
 
@@ -317,11 +321,11 @@ public sealed partial class ShortcutPanelViewModel : ObservableObject, IDisposab
         }
     }
 
-    private void OnStatusChanged() => _post(RefreshStatus);
+    private void OnStatusChanged() => _post(() => Refresh(_settings.Current));
 
     private void OnPressed() => _post(() => _ = ShowDetectedAsync());
 
-    private void OnSettingsChanged(AppSettings settings) => _post(() => ApplySettings(settings));
+    private void OnSettingsChanged(AppSettings settings) => _post(() => Refresh(settings));
 
     private async Task ShowDetectedAsync()
     {
@@ -339,67 +343,58 @@ public sealed partial class ShortcutPanelViewModel : ObservableObject, IDisposab
         }
     }
 
-    private void ApplySettings(AppSettings settings)
+    private void Refresh(AppSettings settings)
     {
         if (IsDisposed)
         {
             return;
         }
 
-        ShortcutText = KeyChord.TryParse(settings.RewriteShortcut, out var chord)
-            ? chord.ToDisplayString(_isMac)
-            : settings.RewriteShortcut;
+        ShortcutText = HotkeyService.EffectiveShortcut(settings.RewriteShortcut).ToDisplayString(_isMac);
+
+        // A chosen backend that cannot run here stays listed, so the choice is not silently shown as Automatic.
+        var available = _hotkeys.AvailableBackends;
+        var unavailableChoice = settings.HotkeyBackend is { } choice && available.All(backend => backend.Id != choice) ? choice : null;
+        List<string> ids = [.. available.Select(backend => backend.Id)];
+        if (unavailableChoice is not null)
+        {
+            ids.Add(unavailableChoice);
+        }
 
         _applyingSettings = true;
         try
         {
+            if (!BackendOptions.Select(option => option.Id).SequenceEqual([null, .. ids]))
+            {
+                BackendOptions.Clear();
+                BackendOptions.Add(new BackendOption(null, _localizer["Shortcuts.Backend.Automatic"]));
+                foreach (var id in ids)
+                {
+                    BackendOptions.Add(new BackendOption(id, BackendName(id)));
+                }
+            }
+
             SelectedBackend = BackendOptions.FirstOrDefault(option => option.Id == settings.HotkeyBackend) ?? BackendOptions[0];
         }
         finally
         {
             _applyingSettings = false;
         }
-    }
-
-    private void RefreshStatus()
-    {
-        if (IsDisposed)
-        {
-            return;
-        }
-
-        var available = _hotkeys.AvailableBackends;
-        string?[] ids = [null, .. available.Select(backend => backend.Id)];
-        if (!BackendOptions.Select(option => option.Id).SequenceEqual(ids))
-        {
-            _applyingSettings = true;
-            try
-            {
-                BackendOptions.Clear();
-                BackendOptions.Add(new BackendOption(null, _localizer["Shortcuts.Backend.Automatic"]));
-                foreach (var backend in available)
-                {
-                    BackendOptions.Add(new BackendOption(backend.Id, BackendName(backend.Id)));
-                }
-            }
-            finally
-            {
-                _applyingSettings = false;
-            }
-
-            ApplySettings(_settings.Current);
-        }
 
         var status = _hotkeys.Status;
         IsListening = status.Kind == HotkeyStatusKind.Active;
         StatusText = status.Kind switch
         {
+            HotkeyStatusKind.Active when unavailableChoice is not null =>
+                _localizer.Format("Shortcuts.Status.ChoiceUnavailable", BackendName(unavailableChoice), BackendName(status.BackendId!)),
+            HotkeyStatusKind.Active when !KeyChord.TryParse(settings.RewriteShortcut, out _) =>
+                _localizer.Format("Shortcuts.Status.InvalidShortcut", BackendName(status.BackendId!)),
             HotkeyStatusKind.Active => _localizer.Format("Shortcuts.Status.Active", BackendName(status.BackendId!)),
             HotkeyStatusKind.NoBackend => _localizer["Shortcuts.Status.NoBackend"],
-            HotkeyStatusKind.InvalidShortcut => _localizer["Shortcuts.Status.InvalidShortcut"],
             HotkeyStatusKind.Failed when status.Message is { } message =>
                 _localizer.Format("Shortcuts.Status.Failed", BackendName(status.BackendId!), message),
             HotkeyStatusKind.Failed => _localizer.Format("Shortcuts.Status.FailedNoReason", BackendName(status.BackendId!)),
+            HotkeyStatusKind.Lost => _localizer.Format("Shortcuts.Status.Lost", BackendName(status.BackendId!), status.Message),
             _ => _localizer["Shortcuts.Status.Stopped"],
         };
 

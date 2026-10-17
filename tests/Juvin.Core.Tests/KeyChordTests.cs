@@ -37,6 +37,8 @@ public sealed class KeyChordTests
     [InlineData("Ctrl+F25")]
     [InlineData("Ctrl+Hyper")]
     [InlineData("Ctrl+Shift+F+")]
+    [InlineData("Shift+A")]
+    [InlineData("Shift+F5")]
     public void TryParse_RejectsAnythingButModifiersAndOneKey(string? text)
     {
         Assert.False(KeyChord.TryParse(text, out var chord));
@@ -103,8 +105,52 @@ public sealed class KeyChordTests
         Assert.True(KeyChord.TryCreate(ChordModifiers.Ctrl | ChordModifiers.Shift, "f", out var chord));
         Assert.Equal("Ctrl+Shift+F", chord.ToString());
         Assert.False(KeyChord.TryCreate(ChordModifiers.None, "F", out _));
+        Assert.False(KeyChord.TryCreate(ChordModifiers.Shift, "A", out _));
         Assert.False(KeyChord.TryCreate(ChordModifiers.Ctrl, "Hyper", out _));
         Assert.False(KeyChord.TryCreate((ChordModifiers)64, "F", out _));
+    }
+
+    [Theory]
+    [InlineData(ChordModifiers.Ctrl | ChordModifiers.Shift)]
+    [InlineData(ChordModifiers.Alt | ChordModifiers.Shift)]
+    [InlineData(ChordModifiers.Super | ChordModifiers.Shift)]
+    public void TryCreate_AcceptsShiftAlongsideAnotherModifier(ChordModifiers modifiers)
+    {
+        Assert.True(KeyChord.TryCreate(modifiers, "A", out var chord));
+        Assert.Equal(modifiers, chord.Modifiers);
+    }
+
+    [Theory]
+    [InlineData("Alt+Tab", false)]
+    [InlineData("Alt+F4", false)]
+    [InlineData("Ctrl+Alt+Delete", false)]
+    [InlineData("Super+L", false)]
+    [InlineData("Ctrl+Esc", false)]
+    [InlineData("Alt+Escape", false)]
+    [InlineData("Cmd+Tab", true)]
+    [InlineData("Cmd+Q", true)]
+    [InlineData("Cmd+Space", true)]
+    [InlineData("Cmd+H", true)]
+    [InlineData("Cmd+M", true)]
+    public void TryCreate_RefusesTheOsReservedShortcuts_WhileTryParseStillReadsThem(string text, bool isMac)
+    {
+        Assert.True(KeyChord.TryParse(text, out var parsed));
+
+        Assert.False(KeyChord.TryCreate(parsed.Modifiers, parsed.Key, isMac, out var chord));
+        Assert.Null(chord);
+        Assert.True(KeyChord.TryCreate(parsed.Modifiers, parsed.Key, !isMac, out _));
+    }
+
+    [Theory]
+    [InlineData("Ctrl+Shift+F", false)]
+    [InlineData("Ctrl+Shift+F", true)]
+    [InlineData("Alt+Shift+Tab", false)]
+    public void TryCreate_WithTheOs_AcceptsOrdinaryShortcuts(string text, bool isMac)
+    {
+        Assert.True(KeyChord.TryParse(text, out var parsed));
+
+        Assert.True(KeyChord.TryCreate(parsed.Modifiers, parsed.Key, isMac, out var chord));
+        Assert.Equal(parsed, chord);
     }
 
     [Fact]

@@ -19,6 +19,12 @@ public interface IHotkeyBackend
     event Action? Pressed;
 
     /// <summary>
+    ///     Raised on any thread when the backend stops listening on its own after a successful start, with a
+    ///     reason shown to the user that carries no key names. <see cref="StopAsync" /> does not raise it.
+    /// </summary>
+    event Action<string>? Stopped;
+
+    /// <summary>
     ///     Starts listening for <paramref name="chord" />. Called again only after <see cref="StopAsync" />.
     ///     Backends that match key positions use <see cref="KeyChord.PhysicalKey" />; backends that write a
     ///     desktop binding use <see cref="KeyChord.Key" />.

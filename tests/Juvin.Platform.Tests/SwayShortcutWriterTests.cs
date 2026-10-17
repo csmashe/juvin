@@ -20,6 +20,11 @@ public sealed class SwayShortcutWriterTests : IDisposable
 
     private string Config => Path.Join(_session.ConfigHome, "sway", "config");
 
+    private string ReloadMarker => Path.Join(_session.ConfigHome, "sway", ".juvin-reload-pending");
+
+    private static string Block(string newline) =>
+        $"{SentinelBlock.Open}{newline}bindsym --no-repeat Ctrl+Shift+f exec /opt/juvin/juvin --trigger{newline}{SentinelBlock.Close}";
+
     public void Dispose() => _session.Dispose();
 
     [LinuxFact]
@@ -65,7 +70,76 @@ public sealed class SwayShortcutWriterTests : IDisposable
 
         Assert.Equal(UserConfig, await File.ReadAllTextAsync(Config));
         Assert.Equal(3, _runner.Calls.Count);
-        Assert.False(File.Exists(Path.Join(_session.ConfigHome, "sway", ".juvin-reload-pending")));
+        Assert.False(File.Exists(ReloadMarker));
+    }
+
+    [LinuxFact]
+    public async Task WriteAndRemove_KeepTheFilesCrlfLineEndings()
+    {
+        const string crlfConfig = "set $mod Mod4\r\nbindsym $mod+Return exec foot\r\n";
+        _session.WriteConfig("sway/config", crlfConfig);
+
+        await _writer.WriteAsync(DesktopShortcutTestSession.Spec(), CancellationToken.None);
+        Assert.Equal(crlfConfig + "\r\n" + Block("\r\n") + "\r\n", await File.ReadAllTextAsync(Config));
+        Assert.True(await _writer.IsInstalledAsync(DesktopShortcutTestSession.Spec(), CancellationToken.None));
+
+        await _writer.RemoveAsync("juvin.rewrite", CancellationToken.None);
+        Assert.Equal(crlfConfig, await File.ReadAllTextAsync(Config));
+    }
+
+    [LinuxFact]
+    public async Task WriteAndRemove_KeepAMissingFinalNewlineMissing()
+    {
+        const string unterminated = "set $mod Mod4\nbindsym $mod+Return exec foot";
+        _session.WriteConfig("sway/config", unterminated);
+
+        await _writer.WriteAsync(DesktopShortcutTestSession.Spec(), CancellationToken.None);
+        Assert.Equal(unterminated + "\n\n" + Block("\n"), await File.ReadAllTextAsync(Config));
+
+        await _writer.WriteAsync(DesktopShortcutTestSession.Spec("Ctrl+Alt+J"), CancellationToken.None);
+        Assert.EndsWith(SentinelBlock.Close, await File.ReadAllTextAsync(Config), StringComparison.Ordinal);
+
+        await _writer.RemoveAsync("juvin.rewrite", CancellationToken.None);
+        Assert.Equal(unterminated, await File.ReadAllTextAsync(Config));
+    }
+
+    [LinuxFact]
+    public async Task Write_KeepsTheConfigsPermissions()
+    {
+        const UnixFileMode mode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.OtherRead;
+        _session.WriteConfig("sway/config", UserConfig);
+        File.SetUnixFileMode(Config, mode);
+
+        await _writer.WriteAsync(DesktopShortcutTestSession.Spec(), CancellationToken.None);
+        Assert.Equal(mode, File.GetUnixFileMode(Config));
+
+        await _writer.RemoveAsync("juvin.rewrite", CancellationToken.None);
+        Assert.Equal(mode, File.GetUnixFileMode(Config));
+    }
+
+    [LinuxFact]
+    public async Task Write_ACancelledReloadLeavesTheMarker_SoTheNextWriteReloads()
+    {
+        _session.WriteConfig("sway/config", UserConfig);
+        using var cancel = new CancellationTokenSource();
+        var token = cancel.Token;
+        _runner.Handler = (_, _) =>
+        {
+            // ReSharper disable once AccessToDisposedClosure -- the handler runs inside the awaited write
+            cancel.Cancel();
+            throw new OperationCanceledException(token);
+        };
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => _writer.WriteAsync(DesktopShortcutTestSession.Spec(), cancel.Token));
+        Assert.True(File.Exists(ReloadMarker));
+        Assert.False(await _writer.IsInstalledAsync(DesktopShortcutTestSession.Spec(), CancellationToken.None));
+
+        _runner.Handler = null;
+        await _writer.WriteAsync(DesktopShortcutTestSession.Spec(), CancellationToken.None);
+
+        Assert.Equal(2, _runner.Calls.Count);
+        Assert.False(File.Exists(ReloadMarker));
+        Assert.True(await _writer.IsInstalledAsync(DesktopShortcutTestSession.Spec(), CancellationToken.None));
     }
 
     [LinuxFact]

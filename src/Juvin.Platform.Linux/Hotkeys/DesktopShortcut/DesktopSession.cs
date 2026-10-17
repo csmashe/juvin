@@ -81,11 +81,13 @@ internal sealed record DesktopSession(
     }
 
     /// <summary>
-    ///     Asks a compositor to reload its already written config. On failure <paramref name="pendingMarker" />
-    ///     makes the next write reload even when unchanged, and <see cref="DesktopReloadException" /> tells the user.
+    ///     Asks a compositor to reload its already written config. <paramref name="pendingMarker" /> stays until a
+    ///     reload succeeds, so a failed or cancelled one makes the next write reload even when unchanged; a failure
+    ///     throws <see cref="DesktopReloadException" /> to tell the user.
     /// </summary>
     public static async Task ReloadAsync(IProcessRunner runner, string fileName, string pendingMarker, CancellationToken ct)
     {
+        await File.WriteAllTextAsync(pendingMarker, "", CancellationToken.None).ConfigureAwait(false);
         var exitCode = -1;
         try
         {
@@ -103,7 +105,6 @@ internal sealed record DesktopSession(
         }
 
         Trace.WriteLine($"[DesktopSession] {fileName} reload exited with {exitCode}.");
-        await File.WriteAllTextAsync(pendingMarker, "", ct).ConfigureAwait(false);
         throw new DesktopReloadException(fileName);
     }
 }

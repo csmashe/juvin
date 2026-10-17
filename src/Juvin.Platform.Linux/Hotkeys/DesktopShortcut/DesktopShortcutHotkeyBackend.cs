@@ -51,6 +51,12 @@ public sealed class DesktopShortcutHotkeyBackend : IHotkeyBackend, IDesktopShort
         remove { }
     }
 
+    public event Action<string>? Stopped
+    {
+        add { }
+        remove { }
+    }
+
     public async Task StartAsync(KeyChord chord, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(chord);

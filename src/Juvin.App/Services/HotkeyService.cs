@@ -11,12 +11,14 @@ public enum HotkeyStatusKind
     Stopped,
     Active,
     NoBackend,
-    InvalidShortcut,
     Failed,
+
+    /// <summary>The backend stopped on its own after starting; selection runs again shortly.</summary>
+    Lost,
 }
 
-/// <param name="BackendId">The backend listening, or the one that failed; null otherwise.</param>
-/// <param name="Message">The backend's own reason for a failure; null when it gave none.</param>
+/// <param name="BackendId">The backend listening, or the one that failed or was lost; null otherwise.</param>
+/// <param name="Message">The backend's own reason for a failure or loss; null when it gave none.</param>
 public sealed record HotkeyStatus(HotkeyStatusKind Kind, string? BackendId = null, string? Message = null)
 {
     public static HotkeyStatus Stopped { get; } = new(HotkeyStatusKind.Stopped);
@@ -25,7 +27,9 @@ public sealed record HotkeyStatus(HotkeyStatusKind Kind, string? BackendId = nul
 /// <summary>
 ///     Listens for the rewrite shortcut through the user's chosen hotkey backend, or the first one
 ///     that starts in registration order, and turns each press into a capture. Restarts when the
-///     shortcut or the backend choice changes. Traces carry backend ids and status only.
+///     shortcut or the backend choice changes, and selects again shortly after a backend stops on its
+///     own. A saved shortcut that is not a valid chord falls back to the default. Traces carry backend
+///     ids and status only.
 /// </summary>
 /// <remarks>
 ///     Members are safe to call from any thread. Events are raised on backend or thread-pool
@@ -34,14 +38,25 @@ public sealed record HotkeyStatus(HotkeyStatusKind Kind, string? BackendId = nul
 /// </remarks>
 public sealed class HotkeyService : IHotkeyRestart
 {
+    private static readonly TimeSpan s_reselectDelay = TimeSpan.FromSeconds(3);
+
+    private static readonly KeyChord s_defaultChord = KeyChord.TryParse(AppSettings.DefaultRewriteShortcut, out var chord)
+        ? chord
+        : throw new InvalidOperationException("The default shortcut is not a valid chord.");
+
     private readonly IReadOnlyList<IHotkeyBackend> _backends;
     private readonly ConnectorService _connector;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly TimeSpan _reselectDelay;
     private readonly ISettingsService _settings;
 
+    // Written under _gate; HandleTrigger reads it without the gate.
+    private volatile IHotkeyBackend? _active;
+
     // Guarded by _gate.
-    private IHotkeyBackend? _active;
+    private Action<string>? _activeStopped;
     private (string Shortcut, string? PhysicalKey, string? Backend)? _applied;
+    private int _generation;
     private bool _started;
 
     private volatile HotkeyStatus _status = HotkeyStatus.Stopped;
@@ -51,14 +66,22 @@ public sealed class HotkeyService : IHotkeyRestart
     /// <param name="settings">Supplies the shortcut and the backend choice.</param>
     /// <param name="connector">Captures on each press.</param>
     public HotkeyService(IEnumerable<IHotkeyBackend> backends, ISettingsService settings, ConnectorService connector)
+        : this(backends, settings, connector, s_reselectDelay)
+    {
+    }
+
+    internal HotkeyService(IEnumerable<IHotkeyBackend> backends, ISettingsService settings, ConnectorService connector, TimeSpan reselectDelay)
     {
         _backends = [.. backends];
         _settings = settings;
         _connector = connector;
+        _reselectDelay = reselectDelay;
         _settings.SettingsChanged += changed => _ = RestartIfChangedAsync(changed);
     }
 
     public HotkeyStatus Status => _status;
+
+    public bool IsListening => _status.Kind == HotkeyStatusKind.Active;
 
     /// <summary>The backends that can run in this session, most preferred first.</summary>
     public IReadOnlyList<IHotkeyBackend> AvailableBackends => [.. _backends.Where(backend => backend.IsAvailable)];
@@ -74,6 +97,9 @@ public sealed class HotkeyService : IHotkeyRestart
 
     /// <summary>Raised on every press before the capture starts, for the settings "press to test" row.</summary>
     public event Action? Pressed;
+
+    /// <summary>The chord a saved shortcut listens for: the shortcut itself, or the default when it is not a valid chord.</summary>
+    public static KeyChord EffectiveShortcut(string shortcut) => KeyChord.TryParse(shortcut, out var chord) ? chord : s_defaultChord;
 
     public async Task StartAsync(CancellationToken ct)
     {
@@ -96,6 +122,7 @@ public sealed class HotkeyService : IHotkeyRestart
         {
             _started = false;
             _applied = null;
+            _generation++;
             await StopActiveAsync().ConfigureAwait(false);
             SetStatus(HotkeyStatus.Stopped);
         }
@@ -194,17 +221,26 @@ public sealed class HotkeyService : IHotkeyRestart
     private async Task ApplyAsync(AppSettings settings, CancellationToken ct)
     {
         await StopActiveAsync().ConfigureAwait(false);
+        _generation++;
         _applied = (settings.RewriteShortcut, settings.RewriteShortcutPhysicalKey, settings.HotkeyBackend);
-        if (!KeyChord.TryParse(settings.RewriteShortcut, out var parsed))
+        KeyChord chord;
+        if (KeyChord.TryParse(settings.RewriteShortcut, out var parsed))
         {
-            Trace.WriteLine($"[HotkeyService] The shortcut setting is not a valid chord ({settings.RewriteShortcut.Length} chars).");
-            SetStatus(new HotkeyStatus(HotkeyStatusKind.InvalidShortcut));
-            return;
+            chord = parsed.WithPhysicalKey(settings.RewriteShortcutPhysicalKey);
+        }
+        else
+        {
+            Trace.WriteLine($"[HotkeyService] The shortcut setting is not a valid chord ({settings.RewriteShortcut.Length} chars); using the default.");
+            chord = s_defaultChord;
         }
 
-        var chord = parsed.WithPhysicalKey(settings.RewriteShortcutPhysicalKey);
         var available = AvailableBackends;
         var preferred = available.FirstOrDefault(backend => backend.Id == settings.HotkeyBackend);
+        if (preferred is null && settings.HotkeyBackend is { } chosen)
+        {
+            Trace.WriteLine($"[HotkeyService] The chosen backend {chosen} is not available; selecting automatically.");
+        }
+
         var candidates = preferred is null ? available : [preferred];
         if (candidates.Count == 0)
         {
@@ -216,7 +252,10 @@ public sealed class HotkeyService : IHotkeyRestart
         HotkeyStatus? failure = null;
         foreach (var backend in candidates)
         {
+            var generation = _generation;
+            Action<string> stopped = reason => _ = ReselectAfterStopAsync(backend, generation, reason);
             backend.Pressed += HandlePress;
+            backend.Stopped += stopped;
             try
             {
                 await backend.StartAsync(chord, ct).ConfigureAwait(false);
@@ -224,6 +263,7 @@ public sealed class HotkeyService : IHotkeyRestart
             catch (Exception ex)
             {
                 backend.Pressed -= HandlePress;
+                backend.Stopped -= stopped;
                 if (ex is OperationCanceledException)
                 {
                     throw;
@@ -235,6 +275,7 @@ public sealed class HotkeyService : IHotkeyRestart
             }
 
             _active = backend;
+            _activeStopped = stopped;
             Trace.WriteLine($"[HotkeyService] Listening with {backend.Id}.");
             SetStatus(new HotkeyStatus(HotkeyStatusKind.Active, backend.Id));
             await RemoveIdleDesktopShortcutsAsync(backend, ct).ConfigureAwait(false);
@@ -274,6 +315,8 @@ public sealed class HotkeyService : IHotkeyRestart
 
         _active = null;
         active.Pressed -= HandlePress;
+        active.Stopped -= _activeStopped;
+        _activeStopped = null;
         try
         {
             await active.StopAsync().ConfigureAwait(false);
@@ -281,6 +324,41 @@ public sealed class HotkeyService : IHotkeyRestart
         catch (Exception ex)
         {
             Trace.WriteLine($"[HotkeyService] {active.Id} did not stop cleanly ({ex.GetType().Name}).");
+        }
+    }
+
+    /// <summary>A backend that stopped on its own is reported as lost, then selection runs again unless something restarted it meanwhile.</summary>
+    private async Task ReselectAfterStopAsync(IHotkeyBackend backend, int generation, string reason)
+    {
+        await _gate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (generation != _generation || !ReferenceEquals(_active, backend))
+            {
+                return;
+            }
+
+            Trace.WriteLine($"[HotkeyService] {backend.Id} stopped listening; selecting again in {_reselectDelay.TotalSeconds:0} seconds.");
+            await StopActiveAsync().ConfigureAwait(false);
+            SetStatus(new HotkeyStatus(HotkeyStatusKind.Lost, backend.Id, reason));
+        }
+        finally
+        {
+            _gate.Release();
+        }
+
+        await Task.Delay(_reselectDelay).ConfigureAwait(false);
+        await _gate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (_started && generation == _generation)
+            {
+                await ApplyAsync(_settings.Current, CancellationToken.None).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            _gate.Release();
         }
     }
 

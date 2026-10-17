@@ -53,7 +53,7 @@ public sealed class HyprlandShortcutWriter : IDesktopShortcutWriter
         var changed = SentinelBlock.WriteIfChanged(JuvinConfig, existing, SentinelBlock.Upsert(existing ?? "", Lines(spec)));
         if (!IsSourced(main))
         {
-            SentinelBlock.WriteIfChanged(MainConfig, main, main + (main.Length == 0 || main.EndsWith('\n') ? "" : "\n") + SourceLine + "\n");
+            SentinelBlock.WriteIfChanged(MainConfig, main, SentinelBlock.AppendLine(main, SourceLine));
             changed = true;
         }
 
@@ -74,7 +74,33 @@ public sealed class HyprlandShortcutWriter : IDesktopShortcutWriter
     }
 
     private bool IsSourced(string? main) =>
-        main is not null && main.Split('\n').Any(line => line.Trim() == SourceLine);
+        main is not null && main.Split('\n').Any(SourcesJuvinConfig);
+
+    /// <summary>A <c>source</c> line naming <c>juvin.conf</c>, or a <c>*</c> or <c>*.conf</c> glob in its directory, after <c>~</c> and <c>$HOME</c> expand.</summary>
+    private bool SourcesJuvinConfig(string line)
+    {
+        var parts = line.Split('=', 2, StringSplitOptions.TrimEntries);
+        if (parts is not ["source", var value])
+        {
+            return false;
+        }
+
+        // ReSharper disable once InvertIf -- the expansion reads as one guarded block
+        if (_session.GetEnvironment("HOME") is { Length: > 0 } home)
+        {
+            if (value.StartsWith("~/", StringComparison.Ordinal))
+            {
+                value = Path.Join(home, value[2..]);
+            }
+            else if (value.StartsWith("$HOME/", StringComparison.Ordinal))
+            {
+                value = Path.Join(home, value[6..]);
+            }
+        }
+
+        return value == JuvinConfig
+            || (Path.GetFileName(value) is "*" or "*.conf" && Path.GetDirectoryName(value) == Path.GetDirectoryName(JuvinConfig));
+    }
 
     private static List<string> Lines(DesktopShortcutSpec spec)
     {

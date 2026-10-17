@@ -16,6 +16,8 @@ public sealed class FakeHotkeyBackend(string id, bool isAvailable = true) : IHot
 
     public event Action? Pressed;
 
+    public event Action<string>? Stopped;
+
     public Task StartAsync(KeyChord chord, CancellationToken ct)
     {
         StartCount++;
@@ -36,4 +38,11 @@ public sealed class FakeHotkeyBackend(string id, bool isAvailable = true) : IHot
     }
 
     public void Press() => Pressed?.Invoke();
+
+    /// <summary>Stops listening on its own, as a backend that lost its devices does.</summary>
+    public void StopOnItsOwn(string reason)
+    {
+        IsRunning = false;
+        Stopped?.Invoke(reason);
+    }
 }

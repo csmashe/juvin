@@ -142,7 +142,7 @@ public sealed class ConnectorService
         {
             Actions = [.. RewriteActionCatalog.Resolve(settings).Select(action => new ConnectorAction(action.Id, action.DisplayName(_localizer)))],
             Adapters = s_adapters,
-            Shortcut = settings.RewriteShortcut,
+            Shortcut = HotkeyService.EffectiveShortcut(settings.RewriteShortcut).ToString(),
             Health = new ConnectorHealth(settings.ProcessingMode == ProcessingMode.Codex ? "codex" : "local", null),
         };
 

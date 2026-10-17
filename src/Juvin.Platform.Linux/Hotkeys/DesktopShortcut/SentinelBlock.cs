@@ -4,8 +4,9 @@ namespace Juvin.Platform.Linux.Hotkeys.DesktopShortcut;
 
 /// <summary>
 ///     The block of lines Juvin owns in a compositor config, between two marker comments, so it can
-///     be replaced or removed without touching the rest. A file with stray or doubled markers is
-///     refused rather than guessed at.
+///     be replaced or removed without touching the rest. Edits keep the file's own line endings and
+///     whether it ends in a newline. A file with stray or doubled markers is refused rather than
+///     guessed at.
 /// </summary>
 internal static class SentinelBlock
 {
@@ -18,30 +19,39 @@ internal static class SentinelBlock
     {
         var lines = SplitLines(contents);
         var (open, close) = Find(lines);
-        return open < 0 ? null : lines[(open + 1)..close].Select(line => line.TrimEnd()).ToList();
+        return open < 0 ? null : lines[(open + 1)..close].Select(line => line.Text.TrimEnd()).ToList();
     }
 
     public static string Upsert(string contents, IEnumerable<string> managed)
     {
         var lines = SplitLines(contents);
         var (open, close) = Find(lines);
-        List<string> block = [Open, .. managed, Close];
+        var newline = NewlineOf(lines);
+        string finalEnding;
         if (open >= 0)
         {
+            finalEnding = lines[close].Ending;
             lines.RemoveRange(open, close - open + 1);
-            lines.InsertRange(open, block);
         }
         else
         {
-            if (lines.Count > 0 && lines[^1].Length > 0)
+            finalEnding = lines.Count == 0 ? newline : lines[^1].Ending;
+            if (lines.Count > 0)
             {
-                lines.Add("");
+                lines[^1] = lines[^1] with { Ending = newline };
+                if (lines[^1].Text.Length > 0)
+                {
+                    lines.Add(new Line("", newline));
+                }
             }
 
-            lines.AddRange(block);
+            open = lines.Count;
         }
 
-        return string.Join('\n', lines) + "\n";
+        List<Line> block = [.. new[] { Open }.Concat(managed).Append(Close).Select(text => new Line(text, newline))];
+        block[^1] = block[^1] with { Ending = finalEnding };
+        lines.InsertRange(open, block);
+        return Join(lines);
     }
 
     public static string Remove(string contents)
@@ -53,18 +63,44 @@ internal static class SentinelBlock
             return contents;
         }
 
+        var finalEnding = lines[close].Ending;
         lines.RemoveRange(open, close - open + 1);
-        if (open > 0 && open == lines.Count && lines[open - 1].Length == 0)
+        if (open != lines.Count)
+        {
+            return Join(lines);
+        }
+
+        // The block ended the file: drop the blank line Upsert put before it, and keep a missing final newline missing.
+        if (open > 0 && lines[open - 1].Text.Length == 0)
         {
             lines.RemoveAt(open - 1);
         }
 
-        return lines.Count == 0 ? "" : string.Join('\n', lines) + "\n";
+        if (lines.Count > 0 && finalEnding.Length == 0)
+        {
+            lines[^1] = lines[^1] with { Ending = "" };
+        }
+
+        return Join(lines);
+    }
+
+    /// <summary>Adds <paramref name="line" /> after the last line, in the file's line endings.</summary>
+    public static string AppendLine(string contents, string line)
+    {
+        var lines = SplitLines(contents);
+        var newline = NewlineOf(lines);
+        if (lines.Count > 0)
+        {
+            lines[^1] = lines[^1] with { Ending = newline };
+        }
+
+        lines.Add(new Line(line, newline));
+        return Join(lines);
     }
 
     /// <summary>
-    ///     Writes <paramref name="contents" /> atomically unless the file already holds exactly that.
-    ///     A symlinked config, as dotfile managers make, is written through to its target.
+    ///     Writes <paramref name="contents" /> atomically unless the file already holds exactly that, keeping an
+    ///     existing file's permissions. A symlinked config, as dotfile managers make, is written through to its target.
     /// </summary>
     public static bool WriteIfChanged(string path, string? existing, string contents)
     {
@@ -76,27 +112,43 @@ internal static class SentinelBlock
         var info = new FileInfo(path);
         var target = info.LinkTarget is null ? path : info.ResolveLinkTarget(returnFinalTarget: true)!.FullName;
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-        AtomicFile.WriteAllText(target, contents);
+        var mode = File.Exists(target) ? File.GetUnixFileMode(target) : AtomicFile.OwnerReadWrite;
+        AtomicFile.WriteAllText(target, contents, mode);
         return true;
     }
 
     public static string? ReadFile(string path) => File.Exists(path) ? File.ReadAllText(path) : null;
 
-    private static List<string> SplitLines(string contents)
+    private static List<Line> SplitLines(string contents)
     {
-        var lines = contents.Replace("\r\n", "\n").Split('\n').ToList();
-        if (lines[^1].Length == 0)
+        var lines = new List<Line>();
+        var start = 0;
+        while (start < contents.Length)
         {
-            lines.RemoveAt(lines.Count - 1);
+            var newline = contents.IndexOf('\n', start);
+            if (newline < 0)
+            {
+                lines.Add(new Line(contents[start..], ""));
+                break;
+            }
+
+            var end = newline > start && contents[newline - 1] == '\r' ? newline - 1 : newline;
+            lines.Add(new Line(contents[start..end], contents[end..(newline + 1)]));
+            start = newline + 1;
         }
 
         return lines;
     }
 
-    private static (int Open, int Close) Find(List<string> lines)
+    /// <summary>The first line ending in the file, so added lines match it; a file without one gets LF.</summary>
+    private static string NewlineOf(List<Line> lines) => lines.FirstOrDefault(line => line.Ending.Length > 0)?.Ending ?? "\n";
+
+    private static string Join(List<Line> lines) => string.Concat(lines.Select(line => line.Text + line.Ending));
+
+    private static (int Open, int Close) Find(List<Line> lines)
     {
-        var opens = lines.Select((line, index) => (line, index)).Where(l => l.line.TrimEnd().StartsWith(OpenPrefix, StringComparison.Ordinal)).ToList();
-        var closes = lines.Select((line, index) => (line, index)).Where(l => l.line.TrimEnd() == Close).ToList();
+        var opens = lines.Select((line, index) => (line, index)).Where(l => l.line.Text.TrimEnd().StartsWith(OpenPrefix, StringComparison.Ordinal)).ToList();
+        var closes = lines.Select((line, index) => (line, index)).Where(l => l.line.Text.TrimEnd() == Close).ToList();
         return (opens.Count, closes.Count) switch
         {
             (0, 0) => (-1, -1),
@@ -106,4 +158,8 @@ internal static class SentinelBlock
             ),
         };
     }
+
+    /// <param name="Text">The line without its ending.</param>
+    /// <param name="Ending"><c>\n</c>, <c>\r\n</c>, or empty for a last line without a newline.</param>
+    private sealed record Line(string Text, string Ending);
 }

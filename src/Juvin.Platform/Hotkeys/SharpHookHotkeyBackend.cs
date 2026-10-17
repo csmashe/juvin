@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Juvin.Core.Hotkeys;
+using Juvin.Core.Localization;
 using SharpHook;
 using SharpHook.Native;
 
@@ -17,10 +18,16 @@ public sealed class SharpHookHotkeyBackend : IHotkeyBackend
     private static readonly TimeSpan s_stopTimeout = TimeSpan.FromSeconds(1);
 
     private readonly Lock _gate = new();
+    private readonly Localizer _localizer;
     private TaskPoolGlobalHook? _hook;
     private KeyCode _key;
     private bool _keyDown;
     private ChordModifiers _modifiers;
+
+    public SharpHookHotkeyBackend(Localizer localizer)
+    {
+        _localizer = localizer;
+    }
 
     public string Id => BackendId;
 
@@ -31,6 +38,8 @@ public sealed class SharpHookHotkeyBackend : IHotkeyBackend
 
     public event Action? Pressed;
 
+    public event Action<string>? Stopped;
+
     /// <summary>Every <see cref="KeyChord.KeyNames" /> entry and its SharpHook key code.</summary>
     internal static IReadOnlyDictionary<string, KeyCode> KeyCodes { get; } = BuildKeyCodes();
 
@@ -40,7 +49,7 @@ public sealed class SharpHookHotkeyBackend : IHotkeyBackend
         await StopAsync().ConfigureAwait(false);
         if (!KeyCodes.TryGetValue(KeyToMatch(chord, OperatingSystem.IsMacOS()), out var key))
         {
-            throw new HotkeyBackendException("The keyboard hook cannot listen for that key.");
+            throw new HotkeyBackendException(_localizer["Hotkey.SharpHook.UnsupportedKey"]);
         }
 
         // A background thread: a hung libuiohook must not keep the process alive after the bounded stop.
@@ -66,8 +75,8 @@ public sealed class SharpHookHotkeyBackend : IHotkeyBackend
             Trace.WriteLine($"[SharpHookHotkeyBackend] Hook did not start ({result}).");
             throw new HotkeyBackendException(
                 result == UioHookResult.ErrorAxApiDisabled
-                    ? "Allow Juvin under Accessibility in System Settings, then try again."
-                    : $"The keyboard hook could not start ({result})."
+                    ? _localizer["Hotkey.SharpHook.AccessibilityNeeded"]
+                    : _localizer.Format("Hotkey.SharpHook.StartFailed", result)
             );
         }
 
@@ -81,13 +90,13 @@ public sealed class SharpHookHotkeyBackend : IHotkeyBackend
         {
             await StopAsync().ConfigureAwait(false);
             Trace.WriteLine("[SharpHookHotkeyBackend] Hook did not report enabled in time.");
-            throw new HotkeyBackendException("The keyboard hook did not respond.");
+            throw new HotkeyBackendException(_localizer["Hotkey.SharpHook.NoResponse"]);
         }
 
         _ = run.ContinueWith(
-            task => Trace.WriteLine($"[SharpHookHotkeyBackend] Hook stopped ({task.Exception?.GetBaseException().GetType().Name})."),
+            task => OnHookEnded(hook, task),
             CancellationToken.None,
-            TaskContinuationOptions.OnlyOnFaulted,
+            TaskContinuationOptions.None,
             TaskScheduler.Default
         );
     }
@@ -118,6 +127,26 @@ public sealed class SharpHookHotkeyBackend : IHotkeyBackend
         {
             Trace.WriteLine($"[SharpHookHotkeyBackend] Stopping the hook failed ({ex.GetType().Name}).");
         }
+    }
+
+    /// <summary>A hook that ends while it is still the current one stopped on its own, not through <see cref="StopAsync" />.</summary>
+    private void OnHookEnded(TaskPoolGlobalHook hook, Task run)
+    {
+        // The subscriber is taken under the same lock as the identity check, so a restart that swaps
+        // the hook and the subscription in between cannot have the old hook's end stop the new one.
+        Action<string>? stopped;
+        lock (_gate)
+        {
+            if (!ReferenceEquals(_hook, hook))
+            {
+                return;
+            }
+
+            stopped = Stopped;
+        }
+
+        Trace.WriteLine($"[SharpHookHotkeyBackend] Hook stopped on its own ({run.Exception?.GetBaseException().GetType().Name ?? run.Status.ToString()}).");
+        stopped?.Invoke(_localizer["Hotkey.SharpHook.Stopped"]);
     }
 
     /// <summary>libuiohook reports layout keys (Windows virtual keys, X11 keysyms); only macOS gives the hardware key code.</summary>
