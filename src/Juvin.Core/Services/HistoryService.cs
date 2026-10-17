@@ -13,7 +13,7 @@ public sealed class HistoryService : IHistoryService
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Skip,
-        Converters = { new JsonStringEnumConverter() },
+        Converters = { new JsonStringEnumConverter(allowIntegerValues: false) },
     };
 
     private const int MaxRetentionDays = 36500;
@@ -58,6 +58,10 @@ public sealed class HistoryService : IHistoryService
     public void MarkApplied(string id) =>
         Update(entries => [.. entries.Select(entry => entry.Id == id ? entry with { Applied = true } : entry)]);
 
+    /// <summary>
+    ///     Removes the entry from the file only. A preserved copy of a corrupt history file cannot
+    ///     hold a visible entry, since the file was reset when the copy was made; only Clear removes them.
+    /// </summary>
     public void Delete(string id) => Update(entries => entries.RemoveAll(entry => entry.Id == id));
 
     /// <summary>Also removes preserved copies of a corrupt history file, which hold email content too.</summary>

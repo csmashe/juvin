@@ -108,6 +108,8 @@ internal static class AtomicJsonText
 public sealed class AtomicJsonStore<T>
     where T : notnull
 {
+    private const int AbandonedStagingMinutes = 1;
+
     private readonly Action<string, string> _atomicWrite;
     private readonly string _backupPath;
     private readonly AtomicJsonPathCoordinator _coordinator;
@@ -199,6 +201,41 @@ public sealed class AtomicJsonStore<T>
         }
     }
 
+    /// <summary>
+    ///     Staging files an interrupted write left behind are never needed once a write succeeds,
+    ///     and may hold content that has since been deleted. Only files older than
+    ///     <see cref="AbandonedStagingMinutes" /> go, so a writer in another process that is between
+    ///     writing and publishing keeps its file. Removal is best effort.
+    /// </summary>
+    private void DeleteStagingFilesLocked()
+    {
+        var cutoff = DateTime.UtcNow - TimeSpan.FromMinutes(AbandonedStagingMinutes);
+        foreach (var path in new[] { _filePath, _backupPath })
+        {
+            try
+            {
+                var directory = Path.GetDirectoryName(path);
+                if (string.IsNullOrEmpty(directory))
+                {
+                    continue;
+                }
+
+                var fileName = Path.GetFileName(path);
+                foreach (var staging in Directory.EnumerateFiles(directory, AtomicFile.TempFilePattern(fileName)))
+                {
+                    if (AtomicFile.IsTempFileOf(fileName, staging) && File.GetLastWriteTimeUtc(staging) < cutoff)
+                    {
+                        File.Delete(staging);
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // A leftover staging file is removed by the next publish or by DeleteCopies.
+            }
+        }
+    }
+
     private static IEnumerable<string> CopiesOf(string path)
     {
         var directory = Path.GetDirectoryName(path);
@@ -266,6 +303,7 @@ public sealed class AtomicJsonStore<T>
                 }
 
                 _atomicWrite(_filePath, candidateJson);
+                DeleteStagingFilesLocked();
 
                 _current = candidate;
                 _currentJson = candidateJson;
@@ -408,6 +446,7 @@ public sealed class AtomicJsonStore<T>
         {
             EnsureParentDirectory();
             _atomicWrite(_filePath, backupJson);
+            DeleteStagingFilesLocked();
             _coordinator.Revision++;
             return true;
         }
@@ -513,7 +552,8 @@ public sealed class AtomicJsonStore<T>
     /// <summary>
     ///     The preserved copy holds exactly the bytes of the original, so it has to hold the
     ///     original's permissions too. Plain create-new is umask-governed, which would widen an
-    ///     owner-only file to world-readable.
+    ///     owner-only file to world-readable. It keeps the original's write time as well, so
+    ///     retention pruning by age does not restart for content that was already old.
     /// </summary>
     private static void WriteCorruptCopy(
         string sourcePath,
@@ -524,14 +564,24 @@ public sealed class AtomicJsonStore<T>
         if (OperatingSystem.IsWindows())
         {
             AtomicFile.WriteAllBytesCreateNew(preservedPath, corruptBytes);
-            return;
+        }
+        else
+        {
+            AtomicFile.WriteAllBytesCreateNew(
+                preservedPath,
+                corruptBytes,
+                ReadUnixModeOrOwnerOnly(sourcePath)
+            );
         }
 
-        AtomicFile.WriteAllBytesCreateNew(
-            preservedPath,
-            corruptBytes,
-            ReadUnixModeOrOwnerOnly(sourcePath)
-        );
+        try
+        {
+            File.SetLastWriteTimeUtc(preservedPath, File.GetLastWriteTimeUtc(sourcePath));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // The copy is still preserved; it is just pruned later than the original would be.
+        }
     }
 
     [UnsupportedOSPlatform("windows")]
@@ -630,9 +680,10 @@ public sealed class AtomicJsonStore<T>
     private void EnsureParentDirectory()
     {
         var directory = Path.GetDirectoryName(_filePath);
-        if (!string.IsNullOrEmpty(directory))
+        // Only a missing folder is created owner-only; an existing one keeps the mode it has.
+        if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
         {
-            Directory.CreateDirectory(directory);
+            JuvinEnvironment.CreatePrivateDirectory(directory);
         }
     }
 

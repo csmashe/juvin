@@ -147,10 +147,10 @@ public sealed class HomeSectionViewModelTests : IAsyncDisposable
     [InlineData("http://localhost:11434", null, "This device, no model chosen")]
     [InlineData("not a url", "qwen3.5:27b", "qwen3.5:27b")]
     [InlineData("not a url", null, "No model chosen")]
-    [InlineData(null, "qwen3.5:27b", "qwen3.5:27b")]
+    [InlineData(null, "qwen3.5:27b", "This device: qwen3.5:27b")]
     public void ModelStatus_InLocalMode_NamesTheServerAndModel(string? url, string? model, string expected)
     {
-        // A hand-edited settings.json can hold "localServerUrl": null.
+        // A hand-edited "localServerUrl": null reads as the default server.
         _settings.Update(s => s with { LocalServerUrl = url!, LocalModel = model });
 
         Assert.Equal(expected, Create().ModelStatus);
