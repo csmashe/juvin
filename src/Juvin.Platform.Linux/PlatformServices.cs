@@ -24,7 +24,11 @@ public static class PlatformServices
         services.AddUnixLocalSocket();
         services.AddUnixConnectorSocket();
         services.AddSingleton<ITrayHostProbe, StatusNotifierTrayHostProbe>();
-        services.AddSingleton<IPanelWindowSupport>(sp => new HyprlandPanelWindowSupport(new X11PanelWindowSupport(), sp.GetRequiredService<IProcessRunner>()));
+        services.AddSingleton<IPanelWindowSupport>(sp =>
+        {
+            var runner = sp.GetRequiredService<IProcessRunner>();
+            return new SwayPanelWindowSupport(new HyprlandPanelWindowSupport(new X11PanelWindowSupport(), runner), runner);
+        });
         services.AddSingleton<INativeHostRegistrar>(_ => new LinuxNativeHostRegistrar(NativeHost.Locate));
         services.AddSingleton<ILauncherIntegration>(_ => new AppImageLauncherIntegration(
             Environment.GetEnvironmentVariable,
