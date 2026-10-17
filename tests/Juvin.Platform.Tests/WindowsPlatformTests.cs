@@ -1,4 +1,7 @@
+using System.IO.Pipes;
 using System.Runtime.Versioning;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using Juvin.Core.Connector;
 using Juvin.Platform.Windows;
 using Juvin.Platform.Windows.Ipc;
@@ -6,6 +9,7 @@ using Juvin.Platform.Windows.Secrets;
 
 namespace Juvin.Platform.Tests;
 
+// The pipe tests need an interactive logon: an SSH session is a network logon, which the pipes' NETWORK deny rule blocks.
 [SupportedOSPlatform("windows")]
 public sealed class WindowsPlatformTests : IDisposable
 {
@@ -36,7 +40,7 @@ public sealed class WindowsPlatformTests : IDisposable
         using var server = new NamedPipeServer(_pipeName);
         await server.StartAsync((_, _) => Task.FromResult("ok"), CancellationToken.None);
 
-        await using var pipe = new System.IO.Pipes.NamedPipeClientStream(".", _pipeName, System.IO.Pipes.PipeDirection.InOut);
+        await using var pipe = new NamedPipeClientStream(".", _pipeName, PipeDirection.InOut);
         await pipe.ConnectAsync(5000);
         await pipe.WriteAsync(Enumerable.Repeat((byte)'a', LocalSocketProtocol.MaxLineBytes + 10).ToArray());
         var (reply, _) = await LocalSocketProtocol.ReadLineAsync(pipe, LocalSocketProtocol.MaxLineBytes, CancellationToken.None);
@@ -47,10 +51,7 @@ public sealed class WindowsPlatformTests : IDisposable
     [WindowsFact]
     public async Task Pipe_ClientReportsNoPeerWhenNothingIsListening()
     {
-        var client = new NamedPipeClient(_pipeName);
-
-        Assert.False(client.IsLivePeer());
-        Assert.Null(await client.SendAsync("{}", TimeSpan.FromMilliseconds(300)));
+        Assert.Null(await new NamedPipeClient(_pipeName).SendAsync("{}", TimeSpan.FromMilliseconds(300)));
     }
 
     [WindowsFact]
@@ -60,7 +61,7 @@ public sealed class WindowsPlatformTests : IDisposable
         await first.StartAsync((_, _) => Task.FromResult("ok"), CancellationToken.None);
         using var second = new NamedPipeServer(_pipeName);
 
-        Assert.True(new NamedPipeClient(_pipeName).IsLivePeer());
+        Assert.Equal("ok", await new NamedPipeClient(_pipeName).SendAsync("{}", s_timeout));
         await Assert.ThrowsAsync<IOException>(() => second.StartAsync((_, _) => Task.FromResult("ok"), CancellationToken.None));
     }
 
@@ -109,6 +110,48 @@ public sealed class WindowsPlatformTests : IDisposable
         await server.StopAsync();
 
         Assert.Null(await NativeMessagingFraming.ReadFrameAsync(stream, CancellationToken.None).WaitAsync(s_timeout));
+    }
+
+    [WindowsFact]
+    public async Task ConnectorPipe_StopAsyncClosesConnectionsWhoseHandlerIgnoresCancellation()
+    {
+        var server = new NamedPipeConnectorServer(_pipeName);
+        var entered = new TaskCompletionSource();
+        var release = new TaskCompletionSource();
+        await server.StartAsync(
+            async (_, _) =>
+            {
+                entered.SetResult();
+                await release.Task;
+            },
+            CancellationToken.None
+        );
+
+        try
+        {
+            await using var stream = await new NamedPipeConnectorClient(_pipeName).ConnectAsync(s_timeout);
+            Assert.NotNull(stream);
+            // ReSharper disable once MethodSupportsCancellation -- no token is in scope; the timeout bounds the wait
+            await entered.Task.WaitAsync(s_timeout);
+            await server.StopAsync();
+
+            Assert.Null(await NativeMessagingFraming.ReadFrameAsync(stream, CancellationToken.None).WaitAsync(s_timeout));
+        }
+        finally
+        {
+            release.SetResult();
+        }
+    }
+
+    [WindowsFact]
+    public void Pipe_DeniesNetworkLogons()
+    {
+        using var pipe = new NamedPipeListener(_pipeName, "test pipe", 4096).CreatePipe(firstInstance: true);
+        var network = new SecurityIdentifier(WellKnownSidType.NetworkSid, null);
+
+        var rules = pipe.GetAccessControl().GetAccessRules(true, false, typeof(SecurityIdentifier)).OfType<PipeAccessRule>();
+
+        Assert.Contains(rules, r => r.AccessControlType == AccessControlType.Deny && network.Equals(r.IdentityReference));
     }
 
     [WindowsFact]

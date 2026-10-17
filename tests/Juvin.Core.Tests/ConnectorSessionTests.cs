@@ -511,6 +511,36 @@ public sealed class ConnectorSessionTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task NoHelloInTime_ClosesTheSession()
+    {
+        var channel = new FakeConnectorChannel();
+        await using var session = new ConnectorSession(channel, () => Config("x"), TimeSpan.FromMilliseconds(200));
+
+        await session.RunAsync(CancellationToken.None).WaitAsync(s_timeout);
+
+        Assert.True(session.IsClosed);
+        Assert.True(channel.IsDisposed);
+    }
+
+    [Fact]
+    public async Task HelloInTime_KeepsTheSessionOpenPastTheDeadline()
+    {
+        var channel = new FakeConnectorChannel();
+        var session = new ConnectorSession(channel, () => Config("x"), TimeSpan.FromMilliseconds(200));
+        var loop = session.RunAsync(CancellationToken.None);
+
+        channel.Deliver(Hello);
+        Assert.Equal("config", (await channel.NextSentAsync()).GetProperty("type").GetString());
+        await Task.Delay(500);
+        channel.Deliver("""{"v":1,"type":"ping","id":"p1"}""");
+
+        Assert.Equal("pong", (await channel.NextSentAsync()).GetProperty("type").GetString());
+        Assert.False(session.IsClosed);
+        await session.DisposeAsync();
+        await loop.WaitAsync(s_timeout);
+    }
+
+    [Fact]
     public async Task OversizedFrame_ClosesTheSession()
     {
         var header = new byte[4];

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net.Sockets;
 
 namespace Juvin.Platform.Unix.Ipc;
@@ -21,6 +22,12 @@ public sealed class UnixConnectorSocketClient : IConnectorSocketClient
 
     public async Task<Stream?> ConnectAsync(TimeSpan timeout)
     {
+        if (SocketPathResolver.IsTooLong(_socketPath))
+        {
+            Trace.WriteLine("[UnixConnectorSocketClient] The connector socket path is over the length limit.");
+            return null;
+        }
+
         if (!File.Exists(_socketPath))
         {
             return null;
@@ -31,7 +38,14 @@ public sealed class UnixConnectorSocketClient : IConnectorSocketClient
         try
         {
             await socket.ConnectAsync(new UnixDomainSocketEndPoint(_socketPath), cts.Token).ConfigureAwait(false);
-            return new NetworkStream(socket, ownsSocket: true);
+            if (UnixPeerCredentials.IsOwnedByEffectiveUser(socket))
+            {
+                return new NetworkStream(socket, ownsSocket: true);
+            }
+
+            Trace.WriteLine("[UnixConnectorSocketClient] Refused a connector socket served by another user.");
+            socket.Dispose();
+            return null;
         }
         catch (Exception ex) when (ex is SocketException or IOException or OperationCanceledException)
         {

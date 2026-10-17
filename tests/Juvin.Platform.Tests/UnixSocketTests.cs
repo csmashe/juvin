@@ -116,27 +116,61 @@ public sealed class UnixSocketTests : IDisposable
     }
 
     [UnixFact]
-    public async Task Client_ReportsNoPeerWhenNothingIsListening()
+    public async Task Client_ReturnsNullWhenNothingIsListening()
     {
-        var client = new UnixSocketClient(SocketPath);
-
-        Assert.False(client.IsLivePeer());
-        Assert.Null(await client.SendAsync("{}", s_timeout));
+        Assert.Null(await new UnixSocketClient(SocketPath).SendAsync("{}", s_timeout));
     }
 
     [UnixFact]
-    public async Task Client_SeesLivePeerUntilTheServerStops()
+    public async Task Client_GetsRepliesUntilTheServerStops()
     {
         var server = new UnixSocketServer(SocketPath);
         await server.StartAsync((_, _) => Task.FromResult("ok"), CancellationToken.None);
         var client = new UnixSocketClient(SocketPath);
 
-        Assert.True(client.IsLivePeer());
+        Assert.Equal("ok", await client.SendAsync("{}", s_timeout));
 
         await server.StopAsync();
 
-        Assert.False(client.IsLivePeer());
+        Assert.Null(await client.SendAsync("{}", s_timeout));
         Assert.False(File.Exists(SocketPath));
+    }
+
+    [UnixFact]
+    public async Task SendWhenReady_ReachesAServerThatStartsLate()
+    {
+        using var guard = new UnixSingleInstanceGuard(SocketPath);
+        Assert.True(guard.TryAcquire());
+        var send = new UnixSocketClient(SocketPath).SendWhenReadyAsync("show", TimeSpan.FromSeconds(3));
+
+        await Task.Delay(500);
+        using var server = new UnixSocketServer(SocketPath, guard);
+        await server.StartAsync((line, _) => Task.FromResult("echo:" + line), CancellationToken.None);
+
+        Assert.Equal("echo:show", await send);
+    }
+
+    [UnixFact]
+    public async Task Client_AcceptsAServerRunByTheSameUser()
+    {
+        using var server = new UnixSocketServer(SocketPath);
+        await server.StartAsync((_, _) => Task.FromResult("ok"), CancellationToken.None);
+
+        using var socket = NewUnixSocket();
+        await socket.ConnectAsync(new UnixDomainSocketEndPoint(SocketPath));
+
+        Assert.True(UnixPeerCredentials.IsOwnedByEffectiveUser(socket));
+    }
+
+    [UnixFact]
+    public async Task Client_LeavesARefusingSocketInPlaceWhileTheOwnerHoldsTheLock()
+    {
+        using var guard = new UnixSingleInstanceGuard(SocketPath);
+        Assert.True(guard.TryAcquire());
+        LeaveStaleSocket();
+
+        Assert.Null(await new UnixSocketClient(SocketPath).SendAsync("{}", s_timeout));
+        Assert.True(File.Exists(SocketPath));
     }
 
     [UnixFact]
@@ -152,14 +186,7 @@ public sealed class UnixSocketTests : IDisposable
     [UnixFact]
     public async Task Server_RemovesAStaleSocketFileOnStart()
     {
-        // .NET unlinks a socket file when the socket that bound it is closed, so bind elsewhere
-        // and move the file into place to leave a socket nobody listens on.
-        var boundPath = _temp.File("stale.sock");
-        using (var stale = NewUnixSocket())
-        {
-            stale.Bind(new UnixDomainSocketEndPoint(boundPath));
-            File.Move(boundPath, SocketPath);
-        }
+        LeaveStaleSocket();
 
         Assert.True(File.Exists(SocketPath));
 
@@ -197,6 +224,58 @@ public sealed class UnixSocketTests : IDisposable
 
         using var second = new UnixSingleInstanceGuard(SocketPath);
         Assert.True(second.TryAcquire());
+    }
+
+    [UnixFact]
+    public async Task SocketPathOverTheLimit_FailsOnlyWhereTheSocketIsUsed()
+    {
+        var path = SocketPathResolver.ResolveSocketPath("control.sock", _temp.File(new string('a', 110)), runtimeDirectory: null);
+        using var guard = new UnixSingleInstanceGuard(path);
+        using var server = new UnixSocketServer(path, guard);
+        using var connector = new UnixConnectorSocketServer(path);
+
+        Assert.True(guard.TryAcquire());
+        await Assert.ThrowsAsync<IOException>(() => server.StartAsync((_, _) => Task.FromResult("ok"), CancellationToken.None));
+        await Assert.ThrowsAsync<IOException>(() => connector.StartAsync((_, _) => Task.CompletedTask, CancellationToken.None));
+        Assert.Null(await new UnixSocketClient(path).SendAsync("{}", s_timeout));
+        Assert.Null(await new UnixConnectorSocketClient(path).ConnectAsync(s_timeout));
+    }
+
+    [LinuxFact]
+    public void Resolver_UsesAPrivateRuntimeDirectory()
+    {
+        var runtime = _temp.File("run");
+        Directory.CreateDirectory(runtime, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+
+        var path = SocketPathResolver.ResolveSocketPath("control.sock", _temp.File("data"), runtime);
+
+        Assert.Equal(Path.Join(runtime, "juvin", "control.sock"), path);
+    }
+
+    [LinuxFact]
+    public void Resolver_FallsBackWhenTheRuntimeDirectoryIsWritableByOthers()
+    {
+        var runtime = _temp.File("run");
+        Directory.CreateDirectory(runtime);
+        File.SetUnixFileMode(runtime, (UnixFileMode)0b111_111_111);
+        var fallback = _temp.File("data");
+
+        var path = SocketPathResolver.ResolveSocketPath("control.sock", fallback, runtime);
+
+        Assert.Equal(Path.Join(fallback, "control.sock"), path);
+        Assert.False(Directory.Exists(Path.Join(runtime, "juvin")));
+    }
+
+    /// <summary>
+    ///     .NET unlinks a socket file when the socket that bound it is closed, so this binds elsewhere
+    ///     and moves the file into place to leave a socket nobody listens on.
+    /// </summary>
+    private void LeaveStaleSocket()
+    {
+        var boundPath = _temp.File("stale.sock");
+        using var stale = NewUnixSocket();
+        stale.Bind(new UnixDomainSocketEndPoint(boundPath));
+        File.Move(boundPath, SocketPath);
     }
 
     private static Socket NewUnixSocket() => new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);

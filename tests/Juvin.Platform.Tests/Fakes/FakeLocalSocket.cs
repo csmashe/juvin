@@ -33,6 +33,4 @@ public sealed class FakeLocalSocket : ILocalSocketServer, ILocalSocketClient
         ReceivedLines.Add(line);
         return await handler(line, CancellationToken.None);
     }
-
-    public bool IsLivePeer() => _handler is not null;
 }

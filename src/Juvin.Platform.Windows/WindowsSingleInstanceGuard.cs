@@ -32,7 +32,18 @@ public sealed class WindowsSingleInstanceGuard : ISingleInstanceGuard, IDisposab
                 return true;
             }
 
-            var mutex = new Mutex(initiallyOwned: false, _mutexName, out var createdNew);
+            Mutex mutex;
+            bool createdNew;
+            try
+            {
+                mutex = new Mutex(initiallyOwned: false, _mutexName, out createdNew);
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or WaitHandleCannotBeOpenedException)
+            {
+                // An elevated instance holds the mutex and this token cannot open it.
+                return false;
+            }
+
             if (!createdNew)
             {
                 mutex.Dispose();

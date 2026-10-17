@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text;
 using Juvin.Core;
 
 namespace Juvin.Platform.Unix.Ipc;
@@ -11,7 +12,7 @@ namespace Juvin.Platform.Unix.Ipc;
 /// <remarks>
 ///     Linux prefers <c>$XDG_RUNTIME_DIR/juvin/</c> (the runtime dir is already 0700 via
 ///     systemd-logind) and falls back to <c>&lt;data&gt;/Runtime/</c> when
-///     <c>XDG_RUNTIME_DIR</c> is absent or unusable. macOS always uses the data directory.
+///     <c>XDG_RUNTIME_DIR</c> is absent, unusable, or open to other users. macOS always uses the data directory.
 /// </remarks>
 internal static partial class SocketPathResolver
 {
@@ -22,21 +23,30 @@ internal static partial class SocketPathResolver
         UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
 
     // statx(2) ABI: kernel-defined struct, arch-independent. stx_uid is at offset 20 (after
-    // stx_mask:4, stx_blksize:4, stx_attributes:8, stx_nlink:4).
+    // stx_mask:4, stx_blksize:4, stx_attributes:8, stx_nlink:4), then stx_gid:4 and stx_mode:2.
     private const int StatxBufSize = 256;
     private const int StatxUidOffset = 20;
+    private const int StatxModeOffset = 28;
     private const int AtFdcwd = -100;
     private const int AtSymlinkNofollow = 0x100;
+    private const uint StatxType = 0x00000001;
+    private const uint StatxMode = 0x00000002;
     private const uint StatxUid = 0x00000008;
+    private const int FileTypeMask = 0xF000;
+    private const int DirectoryType = 0x4000;
+    private const int GroupOrOtherWrite = 0b000_010_010;
+
+    // sun_path is 108 bytes on Linux and 104 on macOS, and one of them holds the terminating NUL.
+    private static readonly int s_maxSocketPathBytes = OperatingSystem.IsMacOS() ? 103 : 107;
 
     public static string ResolveControlSocketPath()
     {
-        return ResolveSocketPath(ControlSocketFileName, JuvinEnvironment.RuntimePath);
+        return ResolveSocketPath(ControlSocketFileName, JuvinEnvironment.RuntimePath, RuntimeDirectory());
     }
 
     public static string ResolveConnectorSocketPath()
     {
-        return ResolveSocketPath(ConnectorSocketFileName, JuvinEnvironment.RuntimePath);
+        return ResolveSocketPath(ConnectorSocketFileName, JuvinEnvironment.RuntimePath, RuntimeDirectory());
     }
 
     /// <summary>
@@ -74,18 +84,29 @@ internal static partial class SocketPathResolver
         return Path.Join(runtimeDirectory, "app", flatpakId, "juvin", ConnectorSocketFileName);
     }
 
-    private static string ResolveSocketPath(string fileName, string fallbackDirectory)
+    /// <param name="fileName">The socket file name.</param>
+    /// <param name="fallbackDirectory">The data directory used when the runtime directory is absent or unsafe.</param>
+    /// <param name="runtimeDirectory">The value of <c>XDG_RUNTIME_DIR</c>, or null where it is not used.</param>
+    internal static string ResolveSocketPath(string fileName, string fallbackDirectory, string? runtimeDirectory)
     {
-        var xdg = OperatingSystem.IsLinux()
-            ? Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR")
-            : null;
-        if (!string.IsNullOrEmpty(xdg) && Directory.Exists(xdg))
+        if (!string.IsNullOrEmpty(runtimeDirectory) && Directory.Exists(runtimeDirectory))
         {
-            var dir = Path.Join(xdg, "juvin");
+            var dir = Path.Join(runtimeDirectory, "juvin");
             try
             {
+                if (!IsOwnedAndNotWritableByOthers(runtimeDirectory))
+                {
+                    throw new IOException("XDG_RUNTIME_DIR is not a directory owned by this user and closed to other users.");
+                }
+
+                var path = Path.Join(dir, fileName);
+                if (IsTooLong(path))
+                {
+                    throw new IOException("The socket path is over the length limit for Unix sockets.");
+                }
+
                 PreparePrivateDirectory(dir);
-                return Path.Join(dir, fileName);
+                return path;
             }
             catch (Exception ex)
             {
@@ -97,6 +118,31 @@ internal static partial class SocketPathResolver
 
         PreparePrivateDirectory(fallbackDirectory);
         return Path.Join(fallbackDirectory, fileName);
+    }
+
+    private static string? RuntimeDirectory() =>
+        OperatingSystem.IsLinux() ? Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR") : null;
+
+    internal static bool IsTooLong(string socketPath) => Encoding.UTF8.GetByteCount(socketPath) > s_maxSocketPathBytes;
+
+    /// <summary>Called where a socket is bound, so resolving a path never fails for its length.</summary>
+    internal static void ThrowIfTooLong(string socketPath)
+    {
+        if (IsTooLong(socketPath))
+        {
+            throw new IOException(
+                $"The socket path is {Encoding.UTF8.GetByteCount(socketPath)} bytes, over the {s_maxSocketPathBytes}-byte limit for Unix sockets."
+            );
+        }
+    }
+
+    /// <summary>Checks the directory itself, not a symlink's target, the same as the private subdirectory.</summary>
+    private static bool IsOwnedAndNotWritableByOthers(string path)
+    {
+        return TryStat(path, out var ownerUid, out var mode)
+            && (mode & FileTypeMask) == DirectoryType
+            && (mode & GroupOrOtherWrite) == 0
+            && ownerUid == geteuid();
     }
 
     internal static void PreparePrivateDirectory(string directory)
@@ -148,7 +194,7 @@ internal static partial class SocketPathResolver
                 return true;
             }
 
-            if (TryGetOwnerUid(path, out var ownerUid) && ownerUid == geteuid())
+            if (TryStat(path, out var ownerUid, out _) && ownerUid == geteuid())
             {
                 return true;
             }
@@ -163,9 +209,10 @@ internal static partial class SocketPathResolver
         }
     }
 
-    private static bool TryGetOwnerUid(string path, out uint ownerUid)
+    private static bool TryStat(string path, out uint ownerUid, out int mode)
     {
         ownerUid = uint.MaxValue;
+        mode = 0;
         var buffer = Marshal.AllocHGlobal(StatxBufSize);
         try
         {
@@ -174,12 +221,13 @@ internal static partial class SocketPathResolver
                 Marshal.WriteByte(buffer, i, 0);
             }
 
-            if (statx(AtFdcwd, path, AtSymlinkNofollow, StatxUid, buffer) != 0)
+            if (statx(AtFdcwd, path, AtSymlinkNofollow, StatxType | StatxMode | StatxUid, buffer) != 0)
             {
                 return false;
             }
 
             ownerUid = (uint)Marshal.ReadInt32(buffer, StatxUidOffset);
+            mode = (ushort)Marshal.ReadInt16(buffer, StatxModeOffset);
             return true;
         }
         finally
