@@ -41,6 +41,14 @@ describe("selectionMarkdown", () => {
     );
   });
 
+  it("indents nested list items two spaces per level", () => {
+    expect(whole("<ul><li>one<ul><li>two<ol><li>deep</li></ol></li></ul></li><li>three</li></ul>")).toBe("- one\n  - two\n    1. deep\n- three");
+  });
+
+  it("keeps the cells of a table row apart with a tab", () => {
+    expect(whole("<table><tr><td><b>Due</b></td><td>Oct 20</td></tr></table>")).toBe("**Due**\tOct 20");
+  });
+
   it("gives no list marker to a line that starts inside a list item", () => {
     const root = editor("<ul><li>first</li><li>second</li></ul>");
     expect(selectionMarkdown(root, 2, 12)).toBe("rst\n- second");
@@ -80,6 +88,62 @@ describe("apply performance", () => {
     expect(performance.now() - started).toBeLessThan(1000);
     expect(stripped.length).toBeGreaterThan(0);
     expect(container.textContent!.length).toBeGreaterThan(0);
+  });
+});
+
+describe("deep nesting", () => {
+  it("keeps emphasis nested past the limit as literal markers instead of overflowing the stack", () => {
+    const markdown = "*".repeat(10_000) + "x" + "*".repeat(10_000);
+    const container = markdownToElement(document, markdown);
+    expect(container.querySelectorAll("b")).toHaveLength(8);
+    expect(container.textContent).toBe("*".repeat(9_984) + "x" + "*".repeat(9_984));
+    expect(stripMarkdown(markdown)).toBe("*".repeat(9_984) + "x" + "*".repeat(9_984));
+  });
+
+  it("renders and strips a long ordinary text", () => {
+    const markdown = "Thanks for the **update**, see you *soon*. ".repeat(20_000);
+    const container = markdownToElement(document, markdown);
+    expect(container.querySelectorAll("b")).toHaveLength(20_000);
+    expect(container.querySelectorAll("i")).toHaveLength(20_000);
+    expect(stripMarkdown(markdown)).toBe("Thanks for the update, see you soon. ".repeat(20_000));
+  });
+});
+
+describe("nested lists", () => {
+  it("captures and rebuilds a nested list with its formatting", () => {
+    const source = `<ul><li>one<ul><li>two</li><li>three<ol start="4"><li>four</li></ol></li></ul></li><li>five</li></ul>`;
+    const root = editor(source);
+    const length = readPlainText(root).text.length;
+    const markdown = selectionMarkdown(root, 0, length);
+    expect(markdown).toBe("- one\n  - two\n  - three\n    4. four\n- five");
+    const container = markdownToElement(document, markdown);
+    expect(container.innerHTML).toBe(source);
+    expect(formatSignature(container, 0, length)).toBe(formatSignature(root, 0, length));
+  });
+
+  it("nests by indentation of any width and goes back to the level an item reaches", () => {
+    expect(html("- a\n    - b\n        1. c\n    - d\n- e")).toBe("<ul><li>a<ul><li>b<ol><li>c</li></ol></li><li>d</li></ul></li><li>e</li></ul>");
+    expect(html("1. a\n   - b\n   2. c\n2. d")).toBe(`<ol><li>a<ul><li>b</li></ul><ol start="2"><li>c</li></ol></li><li>d</li></ol>`);
+  });
+
+  it("starts a top-level list at whatever indent its first item has", () => {
+    expect(html("  - a\n- b\n1. c")).toBe("<ul><li>a</li><li>b</li></ul><ol><li>c</li></ol>");
+  });
+
+  it("nests under an item that dedents below the list's first item", () => {
+    expect(html("  - a\n- b\n  - c")).toBe("<ul><li>a</li><li>b<ul><li>c</li></ul></li></ul>");
+    expect(stripMarkdown("  - a\n- b\n  - c")).toBe("- a\n- b\n  - c");
+  });
+
+  it("puts items deeper than the limit in the deepest list", () => {
+    const markdown = Array.from({ length: 12 }, (_, i) => `${"  ".repeat(i)}- ${i}`).join("\n");
+    const container = markdownToElement(document, markdown);
+    expect(container.querySelectorAll("ul")).toHaveLength(8);
+    expect(container.querySelectorAll("li")).toHaveLength(12);
+  });
+
+  it("keeps the nesting when stripped", () => {
+    expect(stripMarkdown("- a\n    - **b**\n        1. c")).toBe("- a\n  - b\n    1. c");
   });
 });
 

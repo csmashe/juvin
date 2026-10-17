@@ -1,9 +1,10 @@
 // A lossless record of a rich editor's formatting: unlike the Markdown, which drops what it cannot write
-// unambiguously, it tells apart every difference in bold, italic, links, and list structure. Capture hashes it
-// to detect formatting changed since then, and apply compares it to check what an HTML edit produced.
+// unambiguously, it tells apart every difference in bold, italic, links, and list structure, and records the
+// images, tables, and other content outside the subset. Capture hashes it to detect formatting changed since
+// then, and apply compares it to check what an HTML edit produced.
 
 import { itemNumber, styleOf, type ItemNumbers } from "./markdown";
-import { readPlainText } from "./plain-text";
+import { emojiText, offsetsToRange, pointToOffset, readPlainText, segmentText } from "./plain-text";
 
 export interface FormatState {
   bold: boolean;
@@ -17,7 +18,7 @@ export interface FormatState {
 
 export interface FormatRun {
   text: string;
-  /** Absent for a line break. */
+  /** Absent for a line break or a tab between table cells. */
   format?: FormatState;
 }
 
@@ -32,7 +33,7 @@ function formatKey(format: FormatState | undefined, numbers = true): string {
   return JSON.stringify([format.bold, format.italic, format.href, format.itemStart, numbers ? format.lists : format.lists.map((list) => list[0])]);
 }
 
-function formatState(node: Text, root: Element, numbers: ItemNumbers): FormatState {
+function formatState(node: Node, root: Element, numbers: ItemNumbers): FormatState {
   const { bold, italic } = styleOf(node, root);
   let href: string | null = null;
   const lists: string[] = [];
@@ -75,14 +76,14 @@ export function formatRuns(root: Element, start: number, end: number): FormatRun
   for (const segment of readPlainText(root).segments) {
     if (segment.kind === "break") {
       if (segment.start >= start && segment.start < end) {
-        push(runs, "\n");
+        push(runs, segment.char);
       }
 
       continue;
     }
 
     // An item starts at its first visible character, wherever the range begins.
-    const data = segment.node.data;
+    const data = segmentText(segment);
     const li = segment.node.parentElement?.closest("li");
     let itemStart = -1;
     if (li && root.contains(li) && !started.has(li)) {
@@ -113,9 +114,26 @@ export function formatRuns(root: Element, start: number, end: number): FormatRun
   return runs;
 }
 
-/** Run lengths and states of the range; capture hashes it to detect formatting changed since then. */
+/** Content the Markdown subset cannot hold, which replacing a range around it would delete. */
+const EMBEDDED = "img, picture, svg, video, audio, canvas, iframe, object, embed, table, hr";
+
+/** Each image, table, rule, or embedded object the range touches, as its tag, source, and offset; emoji images are text. */
+export function embeddedContent(root: Element, start: number, end: number): string[] {
+  const plain = readPlainText(root);
+  const range = offsetsToRange(root, plain, start, end);
+  return Array.from(root.querySelectorAll(EMBEDDED))
+    .filter((element) => emojiText(element) === null && range.intersectsNode(element))
+    .map((element) => {
+      const parent = element.parentNode!;
+      const offset = pointToOffset(plain, parent, Array.prototype.indexOf.call(parent.childNodes, element));
+      return `${element.localName}:${element.getAttribute("src") ?? element.getAttribute("data") ?? ""}@${offset}`;
+    });
+}
+
+/** Run lengths and states of the range, and its embedded content; capture hashes it to detect formatting changed since then. */
 export function formatSignature(root: Element, start: number, end: number): string {
-  return JSON.stringify(formatRuns(root, start, end).map((run) => [run.text.length, formatKey(run.format)]));
+  const runs = formatRuns(root, start, end).map((run) => [run.text.length, formatKey(run.format)]);
+  return JSON.stringify([runs, embeddedContent(root, start, end)]);
 }
 
 /** The runs without whitespace, which an editor may restructure. */
@@ -170,10 +188,10 @@ function withContext(format: FormatState, context: FormatState): FormatState {
 
 /** The enclosing formatting at `offset`: of the character there, or the one just before it at the end of a text node. */
 function contextAt(root: Element, offset: number): FormatState {
-  const texts = readPlainText(root).segments.filter((s) => s.kind === "text");
+  const texts = readPlainText(root).segments.filter((s) => s.kind !== "break");
   const segment =
-    texts.find((s) => offset >= s.start && offset < s.start + s.node.data.length) ??
-    texts.find((s) => offset >= s.start && offset <= s.start + s.node.data.length);
+    texts.find((s) => offset >= s.start && offset < s.start + segmentText(s).length) ??
+    texts.find((s) => offset >= s.start && offset <= s.start + segmentText(s).length);
   return segment ? formatState(segment.node, root, new Map()) : PLAIN;
 }
 

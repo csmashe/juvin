@@ -283,7 +283,15 @@ public sealed record CapturedEditor(string Id, string Hash);
 /// <param name="Start">Character offset of the selection within the editor's plain text.</param>
 /// <param name="Markdown">The selection in the protocol's Markdown subset; sent only for a rich editor.</param>
 /// <param name="FormatHash">The extension's opaque fingerprint of the selection's formatting; sent with <paramref name="Markdown" />.</param>
-public sealed record CapturedSelection(string Text, int Start, int End, string? Markdown = null, string? FormatHash = null);
+/// <param name="HasEmbeddedContent">True when the selection holds an image or other content Apply would delete, so Apply is refused.</param>
+public sealed record CapturedSelection(
+    string Text,
+    int Start,
+    int End,
+    string? Markdown = null,
+    string? FormatHash = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool HasEmbeddedContent = false
+);
 
 public sealed record CapturedThread
 {

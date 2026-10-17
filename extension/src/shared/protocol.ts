@@ -23,7 +23,7 @@ export type ContextErrorCode =
   | "browser-not-focused"
   | "internal";
 
-export type ApplyErrorCode = "draft-changed" | "editor-gone" | "internal";
+export type ApplyErrorCode = "draft-changed" | "editor-gone" | "unsupported-content" | "internal";
 
 export type MenuErrorCode = "editor-gone" | "page-not-ready" | "unsupported" | "internal";
 
@@ -54,8 +54,11 @@ export interface Capture {
   capturedAt?: string;
   subject?: string;
   editor: { id: string; hash: string };
-  /** `markdown` is the selection in the Markdown subset and `formatHash` fingerprints its formatting; both only for a rich editor. */
-  selection: { text: string; start: number; end: number; markdown?: string; formatHash?: string };
+  /**
+   * `markdown` is the selection in the Markdown subset and `formatHash` fingerprints its formatting; both only for a rich editor.
+   * `hasEmbeddedContent` is true when the selection holds an image or other content Apply would delete.
+   */
+  selection: { text: string; start: number; end: number; markdown?: string; formatHash?: string; hasEmbeddedContent?: boolean };
   thread: Thread;
 }
 

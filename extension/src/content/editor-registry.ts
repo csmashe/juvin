@@ -17,21 +17,24 @@ export class EditorRegistry {
     if (id === undefined) {
       id = this.newId();
       this.ids.set(editor, id);
+    }
+
+    if (!this.elements.has(id)) {
       this.elements.set(id, new WeakRef(editor));
     }
 
     return id;
   }
 
-  /** The editor for an id, or null when it was collected or removed from the page. */
+  /** The editor for an id, or null when it was collected or is off the page; an editor detached for a moment is found again once back. */
   find(id: string): Editor | null {
     const editor = this.elements.get(id)?.deref();
-    if (!editor || !editor.isConnected) {
+    if (!editor) {
       this.elements.delete(id);
       return null;
     }
 
-    return editor;
+    return editor.isConnected ? editor : null;
   }
 }
 
@@ -51,12 +54,13 @@ export function isPlainEditor(editor: Editor): boolean {
 
 const EDITABLE_VALUES = new Set(["", "true", "plaintext-only"]);
 
-/** True when the editor still accepts input; isContentEditable is not available in every runtime. */
-export function isEditable(editor: Editor): boolean {
-  if (isTextArea(editor)) {
-    return !editor.readOnly && !editor.disabled;
-  }
-
-  const value = editor.getAttribute("contenteditable");
+/** True for an element whose contenteditable attribute makes it editable; isContentEditable is not available in every runtime. */
+export function isEditableHost(element: Element): boolean {
+  const value = element.getAttribute("contenteditable");
   return value !== null && EDITABLE_VALUES.has(value.toLowerCase());
+}
+
+/** True when the editor still accepts input. */
+export function isEditable(editor: Editor): boolean {
+  return isTextArea(editor) ? !editor.readOnly && !editor.disabled : isEditableHost(editor);
 }

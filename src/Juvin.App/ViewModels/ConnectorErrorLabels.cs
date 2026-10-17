@@ -15,6 +15,7 @@ internal static class ConnectorErrorLabels
             "no-selection" => "Panel.Error.NoSelection",
             "page-not-ready" => "Panel.Error.PageNotReady",
             "editor-gone" => "Panel.Error.EditorGone",
+            "unsupported-content" => "Panel.Error.UnsupportedContent",
             ConnectorService.BrowserNotFocusedCode => "Panel.Error.BrowserNotFocused",
             ConnectorService.NoBrowserCode => "Panel.Error.NoBrowser",
             ConnectorErrorCodes.Disconnected => "Panel.Error.Disconnected",

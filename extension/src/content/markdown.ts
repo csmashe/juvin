@@ -1,12 +1,16 @@
 // The Markdown subset shared with the app (docs/connector-protocol.md): bold, italic, links with an allowed
-// scheme, bulleted and numbered list lines, and newlines as line breaks. Anything else is literal text.
+// scheme, bulleted and numbered list lines nested by indentation, and newlines as line breaks. Anything else is
+// literal text.
 
-import { readPlainText } from "./plain-text";
+import { readPlainText, segmentText } from "./plain-text";
 
 const ALLOWED_SCHEMES = new Set(["http:", "https:", "mailto:"]);
 const ESCAPABLE = "\\*_[]-.";
 const SPACE = "[ \\t\\u00a0]";
-const LIST_LINE = new RegExp(`^${SPACE}*(?:([-*])|(-?\\d{1,9})\\.)${SPACE}+(.*)$`);
+const LIST_LINE = new RegExp(`^(${SPACE}*)(?:([-*])|(-?\\d{1,9})\\.)${SPACE}+(.*)$`);
+
+/** Deeper emphasis stays literal and deeper list items join the deepest list, so the trees built stay shallow. */
+const MAX_NESTING = 8;
 
 export function isAllowedHref(href: string): boolean {
   try {
@@ -31,7 +35,7 @@ interface Piece {
 
 const PLAIN: Style = { bold: false, italic: false };
 
-export function styleOf(node: Text, root: Element): Style {
+export function styleOf(node: Node, root: Element): Style {
   const parent = node.parentElement;
   let tagBold = false;
   let tagItalic = false;
@@ -46,7 +50,7 @@ export function styleOf(node: Text, root: Element): Style {
   }
 
   // Computed style covers CSS bold and italic and a tag styled back to normal; tags cover a runtime without styles.
-  const computed = parent ? node.ownerDocument.defaultView?.getComputedStyle(parent) : undefined;
+  const computed = parent ? parent.ownerDocument.defaultView?.getComputedStyle(parent) : undefined;
   const weight = computed?.fontWeight ?? "";
   const fontStyle = computed?.fontStyle ?? "";
   const bold = weight === "" ? tagBold : weight === "bold" || weight === "bolder" || Number(weight) >= 600;
@@ -232,9 +236,17 @@ export function itemNumber(li: Element, list: Element, numbers: ItemNumbers): nu
   return numbers.get(li) ?? 0;
 }
 
-function listPrefix(li: Element, numbers: ItemNumbers): string {
+/** The item's marker, indented two spaces for each list it is nested in. */
+function listPrefix(li: Element, root: Element, numbers: ItemNumbers): string {
   const list = li.parentElement;
-  return list?.tagName === "OL" ? `${itemNumber(li, list, numbers)}. ` : "- ";
+  let depth = 0;
+  for (let element = list?.parentElement; element && element !== root; element = element.parentElement) {
+    if (element.tagName === "UL" || element.tagName === "OL") {
+      depth++;
+    }
+  }
+
+  return "  ".repeat(Math.min(depth, MAX_NESTING - 1)) + (list?.tagName === "OL" ? `${itemNumber(li, list, numbers)}. ` : "- ");
 }
 
 /**
@@ -243,18 +255,23 @@ function listPrefix(li: Element, numbers: ItemNumbers): string {
  */
 export function selectionMarkdown(root: Element, start: number, end: number): string {
   const plain = readPlainText(root);
-  const lines: { start: number; pieces: Piece[]; node?: Text }[] = [{ start, pieces: [] }];
+  const lines: { start: number; pieces: Piece[]; node?: Node }[] = [{ start, pieces: [] }];
   for (const segment of plain.segments) {
     if (segment.kind === "break") {
       if (segment.start >= start && segment.start < end) {
-        lines.push({ start: segment.start + 1, pieces: [] });
+        if (segment.char === "\t") {
+          lines[lines.length - 1]!.pieces.push({ text: "\t", style: PLAIN });
+        } else {
+          lines.push({ start: segment.start + 1, pieces: [] });
+        }
       }
 
       continue;
     }
 
     const from = Math.max(start, segment.start);
-    const to = Math.min(end, segment.start + segment.node.data.length);
+    const data = segmentText(segment);
+    const to = Math.min(end, segment.start + data.length);
     if (from >= to) {
       continue;
     }
@@ -262,7 +279,7 @@ export function selectionMarkdown(root: Element, start: number, end: number): st
     // A text node can hold newlines of its own, under white-space: pre-wrap for example.
     const style = styleOf(segment.node, root);
     let offset = from;
-    segment.node.data
+    data
       .slice(from - segment.start, to - segment.start)
       .split("\n")
       .forEach((part, i) => {
@@ -284,7 +301,7 @@ export function selectionMarkdown(root: Element, start: number, end: number): st
   const itemStarts = new Map<Element, number>();
   const numbers: ItemNumbers = new Map();
   for (const segment of plain.segments) {
-    const li = segment.kind === "text" ? segment.node.parentElement?.closest("li") : null;
+    const li = segment.kind === "break" ? null : segment.node.parentElement?.closest("li");
     if (li && !itemStarts.has(li)) {
       itemStarts.set(li, segment.start);
     }
@@ -295,7 +312,7 @@ export function selectionMarkdown(root: Element, start: number, end: number): st
       const body = lineMarkdown(line.pieces);
       const li = line.node?.parentElement?.closest("li");
       if (li && root.contains(li) && itemStarts.get(li) === line.start) {
-        return listPrefix(li, numbers) + body;
+        return listPrefix(li, root, numbers) + body;
       }
 
       return body
@@ -321,7 +338,15 @@ interface Delimiter {
 
 type Token = Inline | Delimiter;
 
-type Block = { kind: "line"; inlines: Inline[] } | { kind: "list"; ordered: boolean; items: { number: number; inlines: Inline[] }[] };
+interface ListItem {
+  depth: number;
+  ordered: boolean;
+  number: number;
+  inlines: Inline[];
+}
+
+/** A list's items in order; an item one level deeper than the one before it starts a list nested in that item. */
+type Block = { kind: "line"; inlines: Inline[] } | { kind: "list"; items: ListItem[] };
 
 const isSpace = (c: string | undefined): boolean => c === undefined || /\s/.test(c);
 const isWordChar = (c: string | undefined): boolean => c !== undefined && /[\p{L}\p{N}]/u.test(c);
@@ -391,10 +416,13 @@ function resolveEmphasis(tokens: Token[]): Inline[] {
   });
 
   // Matches nest properly, so one pass builds the tree: a delimiter closes its inner matches first, leaves its
-  // unused markers as text, then opens its outer matches first.
+  // unused markers as text, then opens its outer matches first. A match nested deeper than MAX_NESTING keeps its
+  // markers as text in its parent's children.
   const root: Inline[] = [];
-  const frames: { kind: Kind; children: Inline[] }[] = [];
+  const frames: { kind: Kind; children: Inline[]; literal: boolean }[] = [];
+  let depth = 0;
   const current = (): Inline[] => frames[frames.length - 1]?.children ?? root;
+  const marker = (kind: Kind, char: string): Inline => ({ kind: "text", text: char.repeat(kind === "strong" ? 2 : 1) });
   tokens.forEach((token, i) => {
     if (token.kind !== "delim") {
       current().push(token);
@@ -403,7 +431,12 @@ function resolveEmphasis(tokens: Token[]): Inline[] {
 
     for (let n = closes.get(i)?.length ?? 0; n > 0; n--) {
       const frame = frames.pop()!;
-      current().push({ kind: frame.kind, children: frame.children });
+      if (frame.literal) {
+        current().push(marker(frame.kind, token.char));
+      } else {
+        depth--;
+        current().push({ kind: frame.kind, children: frame.children });
+      }
     }
 
     if (token.count > 0) {
@@ -411,7 +444,13 @@ function resolveEmphasis(tokens: Token[]): Inline[] {
     }
 
     for (const kind of [...(opens.get(i) ?? [])].reverse()) {
-      frames.push({ kind, children: [] });
+      if (depth >= MAX_NESTING) {
+        current().push(marker(kind, token.char));
+        frames.push({ kind, children: current(), literal: true });
+      } else {
+        depth++;
+        frames.push({ kind, children: [], literal: false });
+      }
     }
   });
 
@@ -519,8 +558,14 @@ function parseInline(source: string, inLink = false): Inline[] {
   return resolveEmphasis(tokens);
 }
 
+/**
+ * A list line indented past the item before it nests one level under that item; one indented less goes back to
+ * the level whose indent it reaches. Consecutive top-level lines of one kind form one list.
+ */
 function parseBlocks(markdown: string): Block[] {
   const blocks: Block[] = [];
+  // The indent of each open level of the current list, outermost first.
+  let indents: number[] = [];
   for (const line of markdown.replace(/\r\n?/g, "\n").split("\n")) {
     const match = LIST_LINE.exec(line);
     if (!match) {
@@ -528,17 +573,66 @@ function parseBlocks(markdown: string): Block[] {
       continue;
     }
 
-    const ordered = match[2] !== undefined;
+    const indent = match[1]!.replaceAll("\t", "    ").length;
+    const ordered = match[3] !== undefined;
+    const item = { depth: 0, ordered, number: ordered ? Number(match[3]) : 0, inlines: parseInline(match[4]!) };
     const last = blocks[blocks.length - 1];
-    const item = { number: ordered ? Number(match[2]) : 0, inlines: parseInline(match[3]!) };
-    if (last?.kind === "list" && last.ordered === ordered) {
-      last.items.push(item);
-    } else {
-      blocks.push({ kind: "list", ordered, items: [item] });
+    if (last?.kind === "list") {
+      while (indents.length > 1 && indent < indents[indents.length - 1]!) {
+        indents.pop();
+      }
+
+      // Dedented below the list's first item: this indent becomes the top level, so deeper items nest under it.
+      indents[0] = Math.min(indents[0]!, indent);
+
+      if (indent > indents[indents.length - 1]! && indents.length < MAX_NESTING) {
+        indents.push(indent);
+      }
+
+      item.depth = indents.length - 1;
+      if (item.depth > 0 || last.items[0]!.ordered === ordered) {
+        last.items.push(item);
+        continue;
+      }
     }
+
+    indents = [indent];
+    blocks.push({ kind: "list", items: [item] });
   }
 
   return blocks;
+}
+
+/** Builds the list's items as nested `ul` and `ol` elements under `container`. */
+function appendList(doc: Document, container: Node, items: ListItem[]): void {
+  // The list open at each depth, with its last item and that item's number.
+  const levels: { list: HTMLElement; ordered: boolean; item: HTMLElement; number: number }[] = [];
+  for (const item of items) {
+    levels.length = Math.min(levels.length, item.depth + 1);
+    const li = doc.createElement("li");
+    const level = levels[item.depth];
+    if (level && level.ordered === item.ordered) {
+      // Each item keeps the number it was given, so a captured list comes back with its own numbering.
+      if (item.ordered && item.number !== level.number + 1) {
+        li.setAttribute("value", String(item.number));
+      }
+
+      level.list.appendChild(li);
+      level.item = li;
+      level.number = item.number;
+    } else {
+      const list = doc.createElement(item.ordered ? "ol" : "ul");
+      if (item.ordered && item.number !== 1) {
+        list.setAttribute("start", String(item.number));
+      }
+
+      list.appendChild(li);
+      (item.depth === 0 ? container : levels[item.depth - 1]!.item).appendChild(list);
+      levels[item.depth] = { list, ordered: item.ordered, item: li, number: item.number };
+    }
+
+    appendInlines(doc, li, item.inlines);
+  }
 }
 
 function appendInlines(doc: Document, parent: Node, inlines: Inline[]): void {
@@ -568,24 +662,7 @@ export function markdownToElement(doc: Document, markdown: string): HTMLElement 
   );
   blocks.forEach((block, index) => {
     if (block.kind === "list") {
-      const list = doc.createElement(block.ordered ? "ol" : "ul");
-      const first = block.items[0]!.number;
-      if (block.ordered && first !== 1) {
-        list.setAttribute("start", String(first));
-      }
-
-      // Each item keeps the number it was given, so a captured list comes back with its own numbering.
-      block.items.forEach((item, i) => {
-        const li = doc.createElement("li");
-        if (block.ordered && i > 0 && item.number !== block.items[i - 1]!.number + 1) {
-          li.setAttribute("value", String(item.number));
-        }
-
-        appendInlines(doc, li, item.inlines);
-        list.appendChild(li);
-      });
-
-      container.appendChild(list);
+      appendList(doc, container, block.items);
       return;
     }
 
@@ -604,13 +681,13 @@ function inlineText(inlines: Inline[]): string {
   return inlines.map((inline) => (inline.kind === "text" ? inline.text : inlineText(inline.children))).join("");
 }
 
-/** The Markdown as plain text for an editor without formatting: list markers kept, other syntax and link targets removed. */
+/** The Markdown as plain text for an editor without formatting: list markers and nesting kept, other syntax and link targets removed. */
 export function stripMarkdown(markdown: string): string {
   return parseBlocks(markdown)
     .flatMap((block) =>
       block.kind === "line"
         ? [inlineText(block.inlines)]
-        : block.items.map((item) => (block.ordered ? `${item.number}. ` : "- ") + inlineText(item.inlines)),
+        : block.items.map((item) => "  ".repeat(item.depth) + (item.ordered ? `${item.number}. ` : "- ") + inlineText(item.inlines)),
     )
     .join("\n");
 }

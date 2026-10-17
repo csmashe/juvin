@@ -3,25 +3,43 @@ import { isRendered, readPlainText } from "../plain-text";
 import { editorForSelection, type SiteAdapter, type ThreadSnapshot } from "./adapter";
 import { genericAdapter, normalize, PAGE_TEXT_LIMIT, truncate } from "./generic";
 
-// Gmail localizes these; add locales here. A page in a language without an entry is never reported as the whole thread.
-const LABELS = {
+interface Labels {
+  messageBody: string;
+  expandAll: string;
+  olderMessages: RegExp;
+}
+
+const ENGLISH: Labels = {
   messageBody: "Message Body",
   expandAll: "Expand all",
   olderMessages: /^(\d+)\s+older messages?\b/i,
 };
 
+// Gmail localizes these, keyed by the page's primary language subtag; add locales here. A page in a language
+// without an entry is read with the English labels and never reported as the whole thread.
+const LABELS: Record<string, Labels> = { en: ENGLISH };
+
 // Gmail's obfuscated class names; captureThread falls back to the generic capture when the body class is gone.
 const SELECTORS = {
   main: 'div[role="main"]',
   editor: 'div[contenteditable="true"][role="textbox"]',
-  expandAll: `[aria-label="${LABELS.expandAll}"], [data-tooltip="${LABELS.expandAll}"]`,
   message: 'div[role="listitem"]',
-  olderMessages: '[role="button"], [role="link"], span',
+  olderMessages: '[role="button"][aria-label]',
   subject: "h2[data-thread-perm-id], h2.hP",
   sender: "span.gD[email], span[email]",
   date: "span.g3[title]",
   body: "div.a3s",
 };
+
+const expandAllSelector = (labels: Labels): string => `[aria-label="${labels.expandAll}"], [data-tooltip="${labels.expandAll}"]`;
+
+/** The labels for the page's language, English when it declares none, and undefined for a language without an entry. */
+function knownLabels(doc: Document): Labels | undefined {
+  const language = doc.documentElement.lang.split("-")[0]!.toLowerCase();
+  return language === "" ? ENGLISH : Object.hasOwn(LABELS, language) ? LABELS[language] : undefined;
+}
+
+const labelsFor = (doc: Document): Labels => knownLabels(doc) ?? ENGLISH;
 
 /** Polls after "Expand all" until the thread stops changing for this many polls or the deadline passes. */
 const STABLE_POLLS = 3;
@@ -48,7 +66,7 @@ interface ThreadState {
 
 function isGmailEditor(element: Element): boolean {
   return element.matches(SELECTORS.editor)
-    && (element.getAttribute("g_editable") === "true" || element.getAttribute("aria-label") === LABELS.messageBody);
+    && (element.getAttribute("g_editable") === "true" || element.getAttribute("aria-label") === labelsFor(element.ownerDocument).messageBody);
 }
 
 function bodyOf(row: Element, editor: HTMLElement): HTMLElement | null {
@@ -57,8 +75,9 @@ function bodyOf(row: Element, editor: HTMLElement): HTMLElement | null {
 }
 
 function olderMessages(main: Element, editor: HTMLElement): number {
+  const pattern = labelsFor(main.ownerDocument).olderMessages;
   for (const element of main.querySelectorAll(SELECTORS.olderMessages)) {
-    const match = LABELS.olderMessages.exec((element.getAttribute("aria-label") ?? element.textContent ?? "").trim());
+    const match = pattern.exec(element.getAttribute("aria-label")!.trim());
     if (match && !editor.contains(element) && !element.closest(SELECTORS.body) && isRendered(element)) {
       return Number(match[1]);
     }
@@ -151,7 +170,7 @@ function userInteraction(editor: HTMLElement, signal: AbortSignal): { happened: 
 
 /** Clicks Expand all when messages are hidden and waits for them; returns how many are still hidden. */
 async function expandAll(main: Element, editor: HTMLElement, timing: GmailTiming): Promise<number> {
-  const button = Array.from(main.querySelectorAll<HTMLElement>(SELECTORS.expandAll)).find(isRendered);
+  const button = Array.from(main.querySelectorAll<HTMLElement>(expandAllSelector(labelsFor(main.ownerDocument)))).find(isRendered);
   const initial = scan(main, editor);
   if (!button || button.getAttribute("aria-disabled") === "true" || hiddenCount(initial) === 0) {
     return hiddenCount(initial);
@@ -269,8 +288,7 @@ export function createGmailAdapter(timing: GmailTiming = DEFAULT_TIMING): SiteAd
 
       const heading = main.querySelector(SELECTORS.subject);
       const subject = heading ? readPlainText(heading).text.trim() || undefined : undefined;
-      const lang = doc.documentElement.lang;
-      const unchecked = hidden > 0 || (lang !== "" && !/^en(-|$)/i.test(lang));
+      const unchecked = hidden > 0 || knownLabels(doc) === undefined;
       return { subject, messages, completeness: cut ? "truncated" : unchecked ? "loaded-messages-only" : "entire-thread", collapsedCount: hidden };
     },
   };
