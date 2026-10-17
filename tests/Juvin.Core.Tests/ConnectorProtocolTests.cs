@@ -241,6 +241,104 @@ public sealed class ConnectorProtocolTests
         Assert.Equal(ConnectorErrorCodes.BadMessage, ConnectorProtocol.Parse(json).Error?.Error.Code);
     }
 
+    [Theory]
+    [InlineData("\"start\":0,\"end\":118", "\"start\":-1,\"end\":118")]
+    [InlineData("\"start\":0,\"end\":118", "\"start\":5,\"end\":4")]
+    [InlineData("\"collapsedCount\":0", "\"collapsedCount\":-1")]
+    [InlineData("\"to\":[\"me@example.com\"]", "\"to\":[\"me@example.com\",null]")]
+    public void Parse_RejectsACaptureThatBreaksTheSpec(string find, string replace)
+    {
+        var (message, error) = ConnectorProtocol.Parse(CaptureResponse.Replace(find, replace));
+
+        Assert.Null(message);
+        Assert.Equal(ConnectorErrorCodes.BadMessage, error?.Error.Code);
+        Assert.Equal("c1", error?.Id);
+    }
+
+    [Theory]
+    [InlineData("""{"v":1,"type":"config","actions":[null],"adapters":[],"shortcut":"x","health":{"mode":"local","modelReachable":null}}""")]
+    [InlineData("""{"v":1,"type":"config","actions":[],"adapters":["gmail",null],"shortcut":"x","health":{"mode":"local","modelReachable":null}}""")]
+    public void Parse_RejectsANullInAConfigList(string json)
+    {
+        Assert.Equal(ConnectorErrorCodes.BadMessage, ConnectorProtocol.Parse(json).Error?.Error.Code);
+    }
+
+    [Theory]
+    [InlineData("""{"type":"error","error":{"code":"x","message":"y"}}""")]
+    [InlineData("""{"v":"1","type":"error","error":{"code":"x","message":"y"}}""")]
+    [InlineData("""{"v":2,"type":"error","error":{"code":"x","message":"y"}}""")]
+    [InlineData("""{"v":1,"type":"error","id":"x1"}""")]
+    [InlineData("""{"v":1,"type":"error","error":{"code":"\ud800","message":"y"}}""")]
+    public void Parse_FlagsAMalformedErrorSoItIsNotAnswered(string json)
+    {
+        var result = ConnectorProtocol.Parse(json);
+
+        Assert.NotNull(result.Error);
+        Assert.True(result.RejectedErrorReply);
+    }
+
+    [Theory]
+    [InlineData("""{"v":1,"type":"\ud800"}""")]
+    [InlineData("""{"v":1,"type":"ping"}""")]
+    [InlineData("""{"type":"ping","id":"p1"}""")]
+    [InlineData("""{"v":2,"type":"ping","id":"p1"}""")]
+    [InlineData("not json")]
+    public void Parse_OwesAReplyForOtherRejections(string json)
+    {
+        var result = ConnectorProtocol.Parse(json);
+
+        Assert.NotNull(result.Error);
+        Assert.False(result.RejectedErrorReply);
+    }
+
+    [Fact]
+    public void Serialize_WritesNonAsciiTextUnescaped()
+    {
+        const string text = "Привет, 你好, Zoë";
+        var json = ConnectorProtocol.Serialize(new MenuUpdateMessage { MenuId = "menu-1", State = MenuStates.Answer, Text = text });
+
+        Assert.DoesNotContain("\\u", json);
+        Assert.Contains(text, json);
+    }
+
+    [Theory]
+    [InlineData("editor-gone", "editor-gone")]
+    [InlineData(ConnectorErrorCodes.BadMessage, ConnectorErrorCodes.BadMessage)]
+    [InlineData(ConnectorErrorCodes.Timeout, ConnectorErrorCodes.Timeout)]
+    [InlineData(ConnectorErrorCodes.NoBrowser, ConnectorErrorCodes.NoBrowser)]
+    [InlineData("Dear Ana, the draft\a", "unknown")]
+    [InlineData(null, "unknown")]
+    public void Trace_CodeKeepsOnlyListedCodes(string? code, string expected)
+    {
+        Assert.Equal(expected, ConnectorTrace.Code(code));
+    }
+
+    [Theory]
+    [InlineData("firefox", "firefox")]
+    [InlineData("edge", "edge")]
+    [InlineData("Firefox", "unknown")]
+    [InlineData("Dear Ana", "unknown")]
+    [InlineData(null, "unknown")]
+    public void Trace_BrowserNameKeepsOnlyListedNames(string? name, string expected)
+    {
+        Assert.Equal(expected, ConnectorTrace.BrowserName(name));
+    }
+
+    [Theory]
+    [InlineData("157.0", "157.0")]
+    [InlineData("1.2.3.4567890123456789012345678", "1.2.3.4567890123456789012345678")]
+    [InlineData("1.2.3.45678901234567890123456789012", "unknown")]
+    [InlineData("0.1.0-dev.4", "0.1.0-dev.4")]
+    [InlineData("157.0\n", "unknown")]
+    [InlineData("157.0 é", "unknown")]
+    [InlineData("Dear Ana, see the draft", "unknown")]
+    [InlineData("", "unknown")]
+    [InlineData(null, "unknown")]
+    public void Trace_VersionKeepsOnlyAVersionShape(string? version, string expected)
+    {
+        Assert.Equal(expected, ConnectorTrace.Version(version));
+    }
+
     [Fact]
     public void Parse_RejectsAnUnknownCompleteness()
     {

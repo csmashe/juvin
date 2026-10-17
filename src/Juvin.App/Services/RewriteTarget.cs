@@ -19,9 +19,9 @@ public interface IRewriteTarget
 /// <summary>An <see cref="IRewriteTarget" /> over the extension connection that sent the capture.</summary>
 public sealed class ConnectorRewriteTarget : IRewriteTarget
 {
-    public const string TimeoutCode = "timeout";
-    public const string TooLargeCode = "too-large";
-    internal const string FailedCode = "failed";
+    public const string TimeoutCode = ConnectorErrorCodes.Timeout;
+    public const string TooLargeCode = ConnectorErrorCodes.TooLarge;
+    internal const string FailedCode = ConnectorErrorCodes.Failed;
 
     private static readonly TimeSpan s_timeout = TimeSpan.FromSeconds(10);
 

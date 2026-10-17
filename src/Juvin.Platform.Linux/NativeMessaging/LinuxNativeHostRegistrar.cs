@@ -119,10 +119,10 @@ public sealed class LinuxNativeHostRegistrar : INativeHostRegistrar
         var hostPath = _locateHost();
         if (HostCopyPath(definition) is not { } copy)
         {
-            return NativeHostManifest.Check(ManifestPath(definition), hostPath);
+            return NativeHostManifest.Check(ManifestPath(definition), definition.Family, hostPath);
         }
 
-        var state = NativeHostManifest.Check(ManifestPath(definition), hostPath is null ? null : copy);
+        var state = NativeHostManifest.Check(ManifestPath(definition), definition.Family, hostPath is null ? null : copy);
         return state == HostRegistration.Registered && !IsCurrentCopy(copy, hostPath!)
             ? HostRegistration.Stale
             : state;

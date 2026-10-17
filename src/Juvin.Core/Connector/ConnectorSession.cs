@@ -32,6 +32,7 @@ public sealed class ConnectorSession : IAsyncDisposable
 
     private volatile HelloMessage? _client;
     private int _closed;
+    private int _disposed;
     private long _nextId;
 
     /// <param name="channel">The framed channel to the extension; disposed with the session.</param>
@@ -221,8 +222,14 @@ public sealed class ConnectorSession : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) == 1)
+        {
+            return;
+        }
+
         await _lifetime.CancelAsync().ConfigureAwait(false);
         await CloseAsync().ConfigureAwait(false);
+        _lifetime.Dispose();
     }
 
     private static ConnectorError ErrorOf(ConnectorMessage response) =>
@@ -260,7 +267,7 @@ public sealed class ConnectorSession : IAsyncDisposable
         {
             if (message is ErrorMessage early)
             {
-                Trace.WriteLine($"[ConnectorSession] Ignored an error before hello ({early.Error.Code}).");
+                Trace.WriteLine($"[ConnectorSession] Ignored an error before hello ({ConnectorTrace.Code(early.Error.Code)}).");
                 return true;
             }
 
@@ -319,7 +326,7 @@ public sealed class ConnectorSession : IAsyncDisposable
             return;
         }
 
-        var code = response is ErrorMessage error ? error.Error.Code : "-";
+        var code = response is ErrorMessage error ? ConnectorTrace.Code(error.Error.Code) : "-";
         Trace.WriteLine($"[ConnectorSession] Ignored an unmatched {response.Type} (error {code}).");
     }
 

@@ -132,7 +132,7 @@ export class Connection {
     const parsed = parseIncoming(raw);
     if (!parsed.ok) {
       warn("receive.invalid", { code: parsed.reply.error.code });
-      if ((raw as { type?: unknown } | null)?.type !== "error") {
+      if (parsed.replyDue) {
         this.send(parsed.reply);
       }
 

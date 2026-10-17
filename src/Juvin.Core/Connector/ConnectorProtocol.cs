@@ -1,4 +1,7 @@
+using System.Collections.Frozen;
+using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Text.Json.Serialization;
 using Juvin.Core.Rewrite;
 
@@ -58,6 +61,71 @@ public static class ConnectorErrorCodes
 
     /// <summary>Not on the wire: the connection closed before a reply arrived.</summary>
     public const string Disconnected = "disconnected";
+
+    /// <summary>Not on the wire: no response within the request timeout.</summary>
+    public const string Timeout = "timeout";
+
+    /// <summary>Not on the wire: the request would exceed the frame cap.</summary>
+    public const string TooLarge = "too-large";
+
+    /// <summary>Not on the wire: the request could not be sent.</summary>
+    public const string Failed = "failed";
+
+    /// <summary>Not on the wire: no browser is connected.</summary>
+    public const string NoBrowser = "no-browser";
+
+    /// <summary>Every code in <c>docs/connector-protocol.md</c>, the envelope codes above and those of each response, plus the app's own.</summary>
+    public static readonly FrozenSet<string> All = FrozenSet.Create(
+        StringComparer.Ordinal,
+        BadMessage,
+        UnsupportedVersion,
+        UnknownType,
+        HelloRequired,
+        Disconnected,
+        Timeout,
+        TooLarge,
+        Failed,
+        NoBrowser,
+        "no-active-tab",
+        "no-adapter",
+        "no-editor",
+        "no-selection",
+        "page-not-ready",
+        "editor-gone",
+        "browser-not-focused",
+        "draft-changed",
+        "unsupported",
+        "internal"
+    );
+}
+
+/// <summary>Makes peer-supplied values safe to trace: anything outside the spec's known values becomes <c>unknown</c>.</summary>
+public static partial class ConnectorTrace
+{
+    private const string Unknown = "unknown";
+    private const int MaxVersionLength = 32;
+
+    private static readonly FrozenSet<string> s_browserNames = FrozenSet.Create(
+        StringComparer.Ordinal,
+        "firefox",
+        "chrome",
+        "edge",
+        "chromium",
+        "unknown"
+    );
+
+    /// <summary>The code when it is one of <see cref="ConnectorErrorCodes.All" />.</summary>
+    public static string Code(string? code) => code is not null && ConnectorErrorCodes.All.Contains(code) ? code : Unknown;
+
+    /// <summary>The <c>hello</c> browser name when it is one the spec lists.</summary>
+    public static string BrowserName(string? name) => name is not null && s_browserNames.Contains(name) ? name : Unknown;
+
+    /// <summary>A browser or extension version shaped like one: digits and dots, an optional short suffix, at most 32 characters.</summary>
+    public static string Version(string? version) =>
+        version is { Length: > 0 and <= MaxVersionLength } && VersionShape().IsMatch(version) ? version : Unknown;
+
+    [GeneratedRegex(@"^[0-9]+(\.[0-9]+)*([.-][0-9A-Za-z.-]*)?\z")]
+    private static partial Regex VersionShape();
 }
 
 /// <param name="Message">The parsed message, or null when <paramref name="Error" /> is set.</param>
@@ -79,6 +147,8 @@ public static class ConnectorProtocol
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         RespectNullableAnnotations = true,
         RespectRequiredConstructorParameters = true,
+        // Keeps non-ASCII text at its UTF-8 size so the frame cap is not reached early; frames are never embedded in HTML.
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
     private static readonly Dictionary<string, ThreadCompleteness> s_completeness = new(StringComparer.Ordinal)
@@ -120,60 +190,72 @@ public static class ConnectorProtocol
             catch (InvalidOperationException)
             {
                 // An unpaired surrogate passes JsonDocument.Parse but fails GetString.
-                return Reject(null, ConnectorErrorCodes.BadMessage, "The message contains invalid text.");
+                return Reject(null, ConnectorErrorCodes.BadMessage, "The message contains invalid text.", DeclaresError(document.RootElement));
             }
         }
     }
 
     private static ConnectorParseResult ParseEnvelope(JsonElement root)
     {
+        if (root.ValueKind != JsonValueKind.Object)
         {
-            if (root.ValueKind != JsonValueKind.Object)
-            {
-                return Reject(null, ConnectorErrorCodes.BadMessage, "The message is not a JSON object.");
-            }
+            return Reject(null, ConnectorErrorCodes.BadMessage, "The message is not a JSON object.");
+        }
 
-            var id = root.TryGetProperty("id", out var idElement) && idElement.ValueKind == JsonValueKind.String
-                ? idElement.GetString()
-                : null;
+        var isError = DeclaresError(root);
+        var id = root.TryGetProperty("id", out var idElement) && idElement.ValueKind == JsonValueKind.String
+            ? idElement.GetString()
+            : null;
 
-            if (!root.TryGetProperty("v", out var version) || version.ValueKind != JsonValueKind.Number)
-            {
-                return Reject(id, ConnectorErrorCodes.BadMessage, "The message has no numeric v.");
-            }
+        if (!root.TryGetProperty("v", out var version) || version.ValueKind != JsonValueKind.Number)
+        {
+            return Reject(id, ConnectorErrorCodes.BadMessage, "The message has no numeric v.", isError);
+        }
 
-            if (!version.TryGetInt32(out var v) || v != Version)
-            {
-                return Reject(id, ConnectorErrorCodes.UnsupportedVersion, "Only protocol version 1 is supported.");
-            }
+        if (!version.TryGetInt32(out var v) || v != Version)
+        {
+            return Reject(id, ConnectorErrorCodes.UnsupportedVersion, "Only protocol version 1 is supported.", isError);
+        }
 
-            if (!root.TryGetProperty("type", out var typeElement) || typeElement.ValueKind != JsonValueKind.String)
-            {
-                return Reject(id, ConnectorErrorCodes.BadMessage, "The message has no type.");
-            }
+        if (!root.TryGetProperty("type", out var typeElement) || typeElement.ValueKind != JsonValueKind.String)
+        {
+            return Reject(id, ConnectorErrorCodes.BadMessage, "The message has no type.");
+        }
 
-            var messageType = MessageTypeFor(typeElement.GetString()!);
-            if (messageType is null)
-            {
-                return Reject(id, ConnectorErrorCodes.UnknownType, "Unknown message type.");
-            }
+        var messageType = MessageTypeFor(typeElement.GetString()!);
+        if (messageType is null)
+        {
+            return Reject(id, ConnectorErrorCodes.UnknownType, "Unknown message type.");
+        }
 
-            ConnectorMessage? message;
-            try
-            {
-                message = (ConnectorMessage?)root.Deserialize(messageType, s_json);
-            }
-            catch (JsonException)
-            {
-                message = null;
-            }
+        ConnectorMessage? message;
+        try
+        {
+            message = (ConnectorMessage?)root.Deserialize(messageType, s_json);
+        }
+        catch (JsonException)
+        {
+            message = null;
+        }
 
-            return message is { IsWellFormed: true }
-                ? new ConnectorParseResult(message, null)
-                : Reject(id, ConnectorErrorCodes.BadMessage, "The message is missing required fields.") with
-                {
-                    RejectedErrorReply = messageType == typeof(ErrorMessage),
-                };
+        return message is { IsWellFormed: true }
+            ? new ConnectorParseResult(message, null)
+            : Reject(id, ConnectorErrorCodes.BadMessage, "The message is missing required fields.", isError);
+    }
+
+    /// <summary>A type that is not valid text is not <c>error</c>; the rejection that follows owes a reply.</summary>
+    private static bool DeclaresError(JsonElement root)
+    {
+        try
+        {
+            return root.ValueKind == JsonValueKind.Object
+                && root.TryGetProperty("type", out var type)
+                && type.ValueKind == JsonValueKind.String
+                && type.ValueEquals(ConnectorMessageTypes.Error);
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
         }
     }
 
@@ -183,8 +265,8 @@ public static class ConnectorProtocol
     public static ErrorMessage CreateError(string? id, string code, string message) =>
         new() { Id = id, Error = new ConnectorError(code, message) };
 
-    private static ConnectorParseResult Reject(string? id, string code, string message) =>
-        new(null, CreateError(id, code, message));
+    private static ConnectorParseResult Reject(string? id, string code, string message, bool isError = false) =>
+        new(null, CreateError(id, code, message)) { RejectedErrorReply = isError };
 
     private static Type? MessageTypeFor(string type) =>
         type switch

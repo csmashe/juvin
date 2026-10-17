@@ -67,7 +67,7 @@ public sealed class WindowsNativeHostRegistrar : INativeHostRegistrar
         }
 
         // The key without its file is a broken registration, not a missing one.
-        return NativeHostManifest.Check(manifestPath, _locateHost()) is HostRegistration.Registered
+        return NativeHostManifest.Check(manifestPath, definition.Target.Family, _locateHost()) is HostRegistration.Registered
             ? HostRegistration.Registered
             : HostRegistration.Stale;
     }

@@ -41,13 +41,49 @@ public sealed class NativeHostManifestTests : IDisposable
     public void Check_ReportsMissingMatchingAndDifferentPaths()
     {
         var path = _temp.File(NativeHostManifest.FileName);
-        Assert.Equal(HostRegistration.NotRegistered, NativeHostManifest.Check(path, "/a/juvin-host"));
+        Assert.Equal(HostRegistration.NotRegistered, NativeHostManifest.Check(path, BrowserFamily.Firefox, "/a/juvin-host"));
 
         File.WriteAllText(path, NativeHostManifest.Render(BrowserFamily.Firefox, "/a/juvin-host"));
 
-        Assert.Equal(HostRegistration.Registered, NativeHostManifest.Check(path, "/a/juvin-host"));
-        Assert.Equal(HostRegistration.Stale, NativeHostManifest.Check(path, "/b/juvin-host"));
-        Assert.Equal(HostRegistration.Stale, NativeHostManifest.Check(path, null));
+        Assert.Equal(HostRegistration.Registered, NativeHostManifest.Check(path, BrowserFamily.Firefox, "/a/juvin-host"));
+        Assert.Equal(HostRegistration.Stale, NativeHostManifest.Check(path, BrowserFamily.Firefox, "/b/juvin-host"));
+        Assert.Equal(HostRegistration.Stale, NativeHostManifest.Check(path, BrowserFamily.Firefox, null));
+    }
+
+    [Theory]
+    [InlineData(BrowserFamily.Firefox)]
+    [InlineData(BrowserFamily.Chromium)]
+    public void Check_IgnoresWhitespaceInARenderedManifest(BrowserFamily family)
+    {
+        var path = _temp.File(NativeHostManifest.FileName);
+        using var rendered = JsonDocument.Parse(NativeHostManifest.Render(family, "/a/juvin-host"));
+        File.WriteAllText(path, JsonSerializer.Serialize(rendered.RootElement));
+
+        Assert.Equal(HostRegistration.Registered, NativeHostManifest.Check(path, family, "/a/juvin-host"));
+    }
+
+    [Fact]
+    public void Check_TreatsAManifestForTheOtherFamilyAsStale()
+    {
+        var path = _temp.File(NativeHostManifest.FileName);
+        File.WriteAllText(path, NativeHostManifest.Render(BrowserFamily.Chromium, "/a/juvin-host"));
+
+        Assert.Equal(HostRegistration.Stale, NativeHostManifest.Check(path, BrowserFamily.Firefox, "/a/juvin-host"));
+    }
+
+    [Theory]
+    [InlineData("""{"path":"/a/juvin-host"}""")]
+    [InlineData("""{"name":"com.juvin.host","description":"Juvin browser connector","path":"/a/juvin-host","type":"stdio"}""")]
+    [InlineData("""{"name":"com.juvin.host","description":"Juvin browser connector","path":"/a/juvin-host","type":"pipe","allowed_extensions":["extension@juvin.app"]}""")]
+    [InlineData("""{"name":"com.juvin.host","description":"Juvin browser connector","path":"/a/juvin-host","type":"stdio","allowed_extensions":["someone@else.example"]}""")]
+    [InlineData("""{"name":"com.juvin.host","description":"Juvin browser connector","path":"/a/juvin-host","type":"stdio","allowed_extensions":["extension@juvin.app","someone@else.example"]}""")]
+    [InlineData("""{"name":"other.host","description":"Juvin browser connector","path":"/a/juvin-host","type":"stdio","allowed_extensions":["extension@juvin.app"]}""")]
+    public void Check_TreatsAManifestThatDiffersFromTheRenderedOneAsStale(string json)
+    {
+        var path = _temp.File(NativeHostManifest.FileName);
+        File.WriteAllText(path, json);
+
+        Assert.Equal(HostRegistration.Stale, NativeHostManifest.Check(path, BrowserFamily.Firefox, "/a/juvin-host"));
     }
 
     [Fact]
@@ -57,7 +93,17 @@ public sealed class NativeHostManifestTests : IDisposable
         File.WriteAllText(path, "not json");
 
         Assert.Null(NativeHostManifest.ReadHostPath(path));
-        Assert.Equal(HostRegistration.Stale, NativeHostManifest.Check(path, "/a/juvin-host"));
+        Assert.Equal(HostRegistration.Stale, NativeHostManifest.Check(path, BrowserFamily.Firefox, "/a/juvin-host"));
+    }
+
+    [Fact]
+    public void Check_TreatsAPathWithAnUnpairedSurrogateAsStale()
+    {
+        var path = _temp.File(NativeHostManifest.FileName);
+        File.WriteAllText(path, """{"path":"\uD800"}""");
+
+        Assert.Null(NativeHostManifest.ReadHostPath(path));
+        Assert.Equal(HostRegistration.Stale, NativeHostManifest.Check(path, BrowserFamily.Firefox, "/a/juvin-host"));
     }
 
     [Fact]

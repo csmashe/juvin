@@ -166,7 +166,32 @@ describe("parseIncoming", () => {
 
   it("rejects another version as unsupported-version and echoes the id", () => {
     const result = parseIncoming({ v: 2, type: "ping", id: "p9" });
-    expect(result).toEqual({ ok: false, reply: { v: 1, type: "error", id: "p9", error: { code: "unsupported-version", message: "Unsupported protocol version." } } });
+    expect(result).toEqual({
+      ok: false,
+      reply: { v: 1, type: "error", id: "p9", error: { code: "unsupported-version", message: "Unsupported protocol version." } },
+      replyDue: true,
+    });
+  });
+
+  it("rejects a version that is not the integer 1 as unsupported-version", () => {
+    for (const v of [1.5, 0, 2]) {
+      expect(parseIncoming({ v, type: "ping", id: "p1" })).toMatchObject({ ok: false, reply: { error: { code: "unsupported-version" } }, replyDue: true });
+    }
+  });
+
+  it.each([
+    ["no version", { type: "error", error: { code: "x", message: "y" } }],
+    ["another version", { v: 2, type: "error", error: { code: "x", message: "y" } }],
+    ["no error payload", { v: 1, type: "error" }],
+    ["a malformed error payload", { v: 1, type: "error", error: { code: 7 } }],
+  ])("rejects an error with %s without a reply due", (_, raw) => {
+    expect(parseIncoming(raw)).toMatchObject({ ok: false, replyDue: false });
+  });
+
+  it("owes a reply for every other rejected message", () => {
+    for (const raw of [null, { type: "ping", id: "p1" }, { v: 1, type: "ping" }, { v: 1, type: "something.new" }]) {
+      expect(parseIncoming(raw)).toMatchObject({ ok: false, replyDue: true });
+    }
   });
 
   it("rejects a missing or non-numeric version as bad-message", () => {
@@ -233,6 +258,8 @@ describe("parseIncoming for the action menu", () => {
     ["draft-changed without text", { v: 1, type: "menu.update", menuId: "menu-4", state: "draft-changed" }],
     ["an error without canRetry", { v: 1, type: "menu.update", menuId: "menu-4", state: "error", text: "Failed." }],
     ["an error without text", { v: 1, type: "menu.update", menuId: "menu-4", state: "error", canRetry: false }],
+    ["an error with a non-text result", { v: 1, type: "menu.update", menuId: "menu-4", state: "error", text: "Failed.", canRetry: false, result: 7 }],
+    ["applied with a non-text result", { v: 1, type: "menu.update", menuId: "menu-4", state: "applied", result: ["x"] }],
     ["menu.close without a menuId", { v: 1, type: "menu.close" }],
   ])("rejects %s", (_, raw) => {
     expect(parseIncoming(raw)).toMatchObject({ ok: false, reply: { error: { code: "bad-message" } } });

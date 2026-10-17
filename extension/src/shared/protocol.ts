@@ -43,14 +43,15 @@ export interface ThreadMessage {
 
 export interface Thread {
   completeness: Completeness;
-  collapsedCount: number;
+  /** Absent means 0. */
+  collapsedCount?: number;
   messages: ThreadMessage[];
 }
 
 export interface Capture {
   adapter: string;
-  pageUrl: string;
-  capturedAt: string;
+  pageUrl?: string;
+  capturedAt?: string;
   subject?: string;
   editor: { id: string; hash: string };
   /** `markdown` is the selection in the Markdown subset and `formatHash` fingerprints its formatting; both only for a rich editor. */
@@ -282,7 +283,8 @@ export function errorMessage(id: string | undefined, code: string, message: stri
   return id === undefined ? { v: 1, type: "error", error: { code, message } } : { v: 1, type: "error", id, error: { code, message } };
 }
 
-export type ParseResult = { ok: true; message: IncomingMessage } | { ok: false; reply: ErrorMessage };
+/** `replyDue` is false when the rejected message was itself an `error`, which is never answered with another. */
+export type ParseResult = { ok: true; message: IncomingMessage } | { ok: false; reply: ErrorMessage; replyDue: boolean };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -346,23 +348,25 @@ function isErrorPayload(value: unknown): value is ErrorPayload {
 /** Validates a message received from the app. Unknown properties are ignored, as the spec requires. */
 export function parseIncoming(raw: unknown): ParseResult {
   if (!isRecord(raw)) {
-    return { ok: false, reply: errorMessage(undefined, "bad-message", "Message is not a JSON object.") };
+    return { ok: false, reply: errorMessage(undefined, "bad-message", "Message is not a JSON object."), replyDue: true };
   }
 
   const id = isString(raw.id) ? raw.id : undefined;
+  const replyDue = raw.type !== "error";
+  const reject = (code: string, message: string): ParseResult => ({ ok: false, reply: errorMessage(id, code, message), replyDue });
   if (typeof raw.v !== "number") {
-    return { ok: false, reply: errorMessage(id, "bad-message", "Message has no numeric version.") };
+    return reject("bad-message", "Message has no numeric version.");
   }
 
-  if (raw.v !== PROTOCOL_VERSION) {
-    return { ok: false, reply: errorMessage(id, "unsupported-version", "Unsupported protocol version.") };
+  if (!Number.isInteger(raw.v) || raw.v !== PROTOCOL_VERSION) {
+    return reject("unsupported-version", "Unsupported protocol version.");
   }
 
   if (!isString(raw.type)) {
-    return { ok: false, reply: errorMessage(id, "bad-message", "Message has no type.") };
+    return reject("bad-message", "Message has no type.");
   }
 
-  const bad = (what: string): ParseResult => ({ ok: false, reply: errorMessage(id, "bad-message", `Malformed ${what} message.`) });
+  const bad = (what: string): ParseResult => reject("bad-message", `Malformed ${what} message.`);
 
   switch (raw.type) {
     case "config":
@@ -465,7 +469,7 @@ export function parseIncoming(raw: unknown): ParseResult {
         },
       };
     case "menu.update":
-      if (!isString(raw.menuId) || !isMenuUpdate(raw)) {
+      if (!isString(raw.menuId) || !isMenuUpdate(raw) || (raw.result != null && !isString(raw.result))) {
         return bad("menu.update");
       }
 
@@ -483,6 +487,6 @@ export function parseIncoming(raw: unknown): ParseResult {
 
       return { ok: true, message: errorMessage(id, raw.error.code, raw.error.message) };
     default:
-      return { ok: false, reply: errorMessage(id, "unknown-type", "Unknown message type.") };
+      return reject("unknown-type", "Unknown message type.");
   }
 }
