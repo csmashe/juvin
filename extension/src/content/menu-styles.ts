@@ -290,4 +290,10 @@ ${CHIP_CSS}
   transition: opacity 400ms ease;
 }
 .note.fading { opacity: 0; }
+.announcer { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.card .hint { margin-top: 10px; font-size: 13px; line-height: 18px; color: #3B4858; }
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation: none; }
+  .note { transition: none; }
+}
 `;

@@ -1,6 +1,6 @@
 // Draws the action menu the app sends beside the draft editor, in a closed shadow root, and reports what the user picks.
 
-import type { Action, MenuUpdateMessage } from "../shared/protocol";
+import { type Action, MAX_INSTRUCTION_LENGTH, type MenuUpdateMessage } from "../shared/protocol";
 import type { MenuNotice, MenuShowRequest, MenuShowResult } from "../shared/runtime-messages";
 import type { Editor, EditorRegistry } from "./editor-registry";
 import { actionIcon, closeIcon, juvinMark } from "./menu-icons";
@@ -19,6 +19,7 @@ export const MENU_STRINGS = {
   tryAgain: "Try again",
   askPlaceholder: "Ask for a change",
   run: "Run",
+  instructionTooLong: `Shorten the request to ${MAX_INSTRUCTION_LENGTH} characters or fewer.`,
   followUpPlaceholder: "Ask a follow-up",
   ask: "Ask",
   context: "About this draft",
@@ -28,10 +29,14 @@ export const MENU_STRINGS = {
   undoKeyMac: "Cmd+Z",
   disconnected: "The connection to the Juvin app was lost. Press the shortcut again to reconnect.",
   appliedNote: (undoKey: string) => `Draft rewritten. Press ${undoKey} to undo.`,
+  focusedAction: (title: string, key: number) => `${title}, key ${key}`,
+  running: (title: string) => `${title}, running`,
+  answerShown: (text: string): string => "Answer: " + text,
+  errorShown: (text: string) => `Error: ${text}`,
+  draftChangedShown: "Draft changed",
 };
 
 const MAX_SLOTS = 5;
-const MAX_INSTRUCTION_LENGTH = 2000;
 /** The mark's place in the drawn focus, where no bubble is. */
 const MARK = -1;
 const GAP = 12;
@@ -42,7 +47,6 @@ const NOTE_FADE_MS = 3600;
 const NOTE_REMOVE_MS = 4000;
 const MENU_FALLBACK_SIZE = { width: RING_SIZE.width + 40, height: RING_SIZE.height + 40 };
 const NOTE_FALLBACK_SIZE = { width: 280, height: 34 };
-// Screen angles clockwise from 12 o'clock, starting at the lower left so keys 1 to 5 run clockwise.
 // Bubble centres relative to the mark, an arch open at the bottom where the card attaches: keys 1 to 5 run clockwise from the lower left.
 const SLOT_OFFSETS = [
   { x: -156, y: 56 },
@@ -116,6 +120,8 @@ interface OpenMenu {
   slots: Action[];
   more: Action[];
   status: string[];
+  /** Always shown, so screen readers announce each change of its text. */
+  announcer: HTMLElement;
   ring: HTMLElement;
   mark: HTMLButtonElement;
   bubbles: HTMLButtonElement[];
@@ -158,7 +164,7 @@ export class MenuRenderer {
 
   show(request: MenuShowRequest): MenuShowResult {
     const editor = this.registry.find(request.editorId);
-    if (!editor) {
+    if (!editor || !isRendered(editor.getBoundingClientRect())) {
       return { ok: false, error: { code: "editor-gone", message: "The draft editor is no longer on the page." } };
     }
 
@@ -200,7 +206,12 @@ export class MenuRenderer {
     card.className = "card";
     card.hidden = true;
 
-    panel.append(ring, card);
+    const announcer = doc.createElement("div");
+    announcer.className = "announcer";
+    announcer.setAttribute("role", "status");
+    announcer.setAttribute("aria-live", "polite");
+
+    panel.append(ring, card, announcer);
     root.append(panel);
     // Clicks in the menu leave focus and the selection in the editor; only a result block may be selected by hand, and only a text box focused.
     panel.addEventListener("mousedown", (event) => {
@@ -211,7 +222,7 @@ export class MenuRenderer {
     mountPoint(editor).append(host);
 
     const listeners = new AbortController();
-    const menu: OpenMenu = { menuId: request.menuId, editor, host, slots, more: request.more, status: request.status, ring, mark, bubbles, card, focused: null, cardFocused: null, running: false, pending: false, keepsResult: false, timers: new Set(), listeners };
+    const menu: OpenMenu = { menuId: request.menuId, editor, host, slots, more: request.more, status: request.status, announcer, ring, mark, bubbles, card, focused: null, cardFocused: null, running: false, pending: false, keepsResult: false, timers: new Set(), listeners };
     this.menu = menu;
 
     const win = doc.defaultView ?? window;
@@ -225,7 +236,7 @@ export class MenuRenderer {
     win.addEventListener("pointerdown", (event) => this.onPointerDown(event), { capture: true, signal });
     win.addEventListener("scroll", () => this.scheduleReposition(), { capture: true, passive: true, signal });
     win.addEventListener("resize", () => this.scheduleReposition(), { passive: true, signal });
-    const poll = setInterval(() => this.checkEditor(), EDITOR_POLL_MS);
+    const poll = setInterval(() => this.reposition(), EDITOR_POLL_MS);
     signal.addEventListener("abort", () => clearInterval(poll));
 
     this.reposition();
@@ -308,6 +319,7 @@ export class MenuRenderer {
     bubble.type = "button";
     bubble.tabIndex = -1;
     bubble.setAttribute("role", "menuitem");
+    bubble.setAttribute("aria-keyshortcuts", String(index + 1));
     bubble.dataset.action = slot.id;
     const center = slotCenter(index);
     bubble.style.left = `${Math.round(center.x - BUBBLE_SIZE.width / 2)}px`;
@@ -356,12 +368,15 @@ export class MenuRenderer {
     const digit = key.length === 1 && key >= "1" && key <= "9" ? Number(key) : 0;
     if (key === "Escape") {
       this.dismiss();
-    } else if (key === "ContextMenu" || (key === "F10" && event.shiftKey)) {
+    } else if ((key === "ContextMenu" || (key === "F10" && event.shiftKey)) && !menu.running && editorShown(menu.editor)) {
       this.showList();
-    } else if (digit > 0 && digit <= menu.slots.length) {
+    } else if (digit > 0 && digit <= menu.slots.length && editorShown(menu.editor)) {
       this.pick(digit - 1);
     } else if (key === "ArrowLeft" || key === "ArrowRight" || key === "ArrowUp" || key === "ArrowDown") {
-      this.moveFocus(menu, key);
+      // With no drawn focus to move, the arrow moves the caret in the draft.
+      if (!this.moveFocus(menu, key)) {
+        return;
+      }
     } else if (key !== "Enter" || !this.activateFocused(menu)) {
       return;
     }
@@ -378,13 +393,13 @@ export class MenuRenderer {
   }
 
   /** Moves the drawn focus without moving DOM focus: between bubbles toward the arrow, through the card's buttons in order, and between the two. */
-  private moveFocus(menu: OpenMenu, key: string): void {
+  private moveFocus(menu: OpenMenu, key: string): boolean {
     if (menu.running) {
-      return;
+      return false;
     }
 
     const controls = cardControls(menu);
-    const bubblesLive = menu.editor.isConnected;
+    const bubblesLive = editorShown(menu.editor);
     if (menu.cardFocused !== null) {
       const next = menu.cardFocused + (key === "ArrowDown" || key === "ArrowRight" ? 1 : -1);
       if (next < controls.length && next >= 0) {
@@ -393,7 +408,7 @@ export class MenuRenderer {
         this.drawFocus(menu, lowestBubble(menu), null);
       }
 
-      return;
+      return true;
     }
 
     const [dx, dy] = key === "ArrowLeft" ? [-1, 0] : key === "ArrowRight" ? [1, 0] : key === "ArrowUp" ? [0, -1] : [0, 1];
@@ -407,6 +422,9 @@ export class MenuRenderer {
       // Past the outermost bubble the arrow lands on the mark, so Ask is reachable without the mouse.
       this.drawFocus(menu, MARK, null);
     }
+
+    // Entering a card counts as navigation too, so the key does not reach the draft.
+    return menu.focused !== null || menu.cardFocused !== null;
   }
 
   private drawFocus(menu: OpenMenu, bubble: number | null, card: number | null): void {
@@ -419,6 +437,18 @@ export class MenuRenderer {
     const control = cardControls(menu)[card ?? -1];
     control?.classList.add("focused");
     control?.scrollIntoView?.({ block: "nearest" });
+    const slot = menu.slots[bubble ?? -1];
+    if (control) {
+      this.announce(menu, control.getAttribute("aria-label") ?? control.textContent ?? "");
+    } else if (slot) {
+      this.announce(menu, MENU_STRINGS.focusedAction(slot.title, (bubble ?? 0) + 1));
+    } else if (bubble === MARK) {
+      this.announce(menu, MENU_STRINGS.askPlaceholder);
+    }
+  }
+
+  private announce(menu: OpenMenu, text: string): void {
+    menu.announcer.textContent = text;
   }
 
   private activateFocused(menu: OpenMenu): boolean {
@@ -449,7 +479,7 @@ export class MenuRenderer {
 
   private choose(action: string, instruction?: string): boolean {
     const menu = this.menu;
-    if (!menu || menu.running || menu.pending || !menu.editor.isConnected) {
+    if (!menu || menu.running || menu.pending || !editorShown(menu.editor)) {
       return false;
     }
 
@@ -492,6 +522,9 @@ export class MenuRenderer {
     menu.result = undefined;
     menu.running = true;
     menu.ring.classList.add("running");
+    menu.ring.setAttribute("aria-busy", "true");
+    const title = [...menu.slots, ...menu.more].find((a) => a.id === action)?.title ?? (action === "custom" ? MENU_STRINGS.askPlaceholder : MENU_STRINGS.markLabel);
+    this.announce(menu, MENU_STRINGS.running(title));
     const bubble = menu.bubbles.find((b) => b.dataset.action === action);
     if (bubble) {
       bubble.classList.add("active");
@@ -504,6 +537,7 @@ export class MenuRenderer {
   private clearRunning(menu: OpenMenu): void {
     menu.running = false;
     menu.ring.classList.remove("running");
+    menu.ring.removeAttribute("aria-busy");
     for (const bubble of menu.bubbles) {
       bubble.classList.remove("active");
       bubble.querySelector(".spinner")?.remove();
@@ -535,6 +569,8 @@ export class MenuRenderer {
   private showAnswer(menu: OpenMenu, text: string): void {
     menu.answer = text;
     const card = this.openCard(menu);
+    // The advice is only on the card, which is not a live region, so the announcement carries it.
+    this.announce(menu, MENU_STRINGS.answerShown(text));
     const followUp = this.askRow(menu, MENU_STRINGS.followUpPlaceholder, MENU_STRINGS.ask);
     card.append(this.block(menu, "message", text), this.buttons(menu, [this.copyButton(menu, text)]), followUp.row);
     menu.keepsResult = true;
@@ -547,7 +583,7 @@ export class MenuRenderer {
   /** The mark opens Ask for a change; a card that already has a text box keeps it and focuses it. */
   private showAsk(): void {
     const menu = this.menu;
-    if (!menu || menu.running || !menu.editor.isConnected) {
+    if (!menu || menu.running || !editorShown(menu.editor)) {
       return;
     }
 
@@ -586,14 +622,26 @@ export class MenuRenderer {
 
   private submitInstruction(menu: OpenMenu): void {
     const instruction = menu.card.querySelector("input")?.value.trim();
-    if (instruction) {
-      this.choose("custom", instruction);
+    if (!instruction) {
+      return;
     }
+
+    const hint = menu.card.querySelector(".hint");
+    if (instruction.length > MAX_INSTRUCTION_LENGTH) {
+      if (!hint) {
+        menu.card.querySelector(".ask")?.after(this.block(menu, "hint", MENU_STRINGS.instructionTooLong));
+      }
+
+      return;
+    }
+
+    hint?.remove();
+    this.choose("custom", instruction);
   }
 
   private showList(): void {
     const menu = this.menu;
-    if (!menu || menu.running || !menu.editor.isConnected) {
+    if (!menu || menu.running || !editorShown(menu.editor)) {
       return;
     }
 
@@ -650,6 +698,7 @@ export class MenuRenderer {
 
   private showDraftChanged(menu: OpenMenu, text: string): void {
     const card = this.openCard(menu);
+    this.announce(menu, MENU_STRINGS.draftChangedShown);
     const recapture = this.button(menu, MENU_STRINGS.recapture, true, () => this.choose("recapture"));
     card.append(
       this.block(menu, "heading", MENU_STRINGS.draftChangedHeading),
@@ -663,6 +712,7 @@ export class MenuRenderer {
 
   private showError(menu: OpenMenu, text: string, canRetry: boolean, result: string | undefined): void {
     const card = this.openCard(menu);
+    this.announce(menu, MENU_STRINGS.errorShown(text));
     card.append(this.block(menu, "message", text));
     const buttons: HTMLButtonElement[] = [];
     if (result !== undefined) {
@@ -732,7 +782,7 @@ export class MenuRenderer {
     if (!this.menu.keepsResult) {
       this.dismiss();
     } else {
-      this.menu.ring.classList.add("gone");
+      this.markGone(this.menu, true);
       // A modal dialog the menu was mounted in may have closed or left with the editor.
       const host = this.menu.host;
       if (!host.isConnected || host.closest("dialog:not([open])")) {
@@ -764,11 +814,30 @@ export class MenuRenderer {
     }
 
     if (this.checkEditor()) {
-      menu.anchor = menu.editor.getBoundingClientRect();
+      const box = menu.editor.getBoundingClientRect();
+      const rendered = isRendered(box);
+      if (!rendered && (!menu.keepsResult || !menu.anchor)) {
+        this.dismiss();
+        return;
+      }
+
+      if (rendered) {
+        menu.anchor = box;
+      }
+
+      this.markGone(menu, !rendered);
     }
 
     if (this.menu === menu && menu.anchor) {
       placeHost(menu.host, menu.anchor, MENU_FALLBACK_SIZE);
+    }
+  }
+
+  /** A gone editor leaves only the card's Copy and close working. */
+  private markGone(menu: OpenMenu, gone: boolean): void {
+    menu.ring.classList.toggle("gone", gone);
+    if (gone && menu.focused !== null) {
+      this.drawFocus(menu, null, menu.cardFocused);
     }
   }
 
@@ -800,7 +869,8 @@ export class MenuRenderer {
   }
 
   private showNote(editor: Editor): void {
-    if (!editor.isConnected) {
+    const box = editor.getBoundingClientRect();
+    if (!editor.isConnected || !isRendered(box)) {
       return;
     }
 
@@ -812,7 +882,7 @@ export class MenuRenderer {
     note.textContent = MENU_STRINGS.appliedNote((this.options.isMac ?? isMacPlatform()) ? MENU_STRINGS.undoKeyMac : MENU_STRINGS.undoKey);
     root.append(note);
     mountPoint(editor).append(host);
-    placeHost(host, editor.getBoundingClientRect(), NOTE_FALLBACK_SIZE);
+    placeHost(host, box, NOTE_FALLBACK_SIZE);
 
     this.note = {
       host,
@@ -905,6 +975,15 @@ function cardControls(menu: OpenMenu): HTMLButtonElement[] {
 function slotPoint(index: number): { x: number; y: number } {
   const offset = SLOT_OFFSETS[index] ?? { x: 0, y: 0 };
   return { x: offset.x / RING_RADIUS, y: offset.y / RING_RADIUS };
+}
+
+function editorShown(editor: Editor): boolean {
+  return editor.isConnected && isRendered(editor.getBoundingClientRect());
+}
+
+/** False for a hidden editor, such as a minimized Gmail compose, whose box is empty at the viewport origin. */
+function isRendered(box: Box): boolean {
+  return box.right > box.left || box.bottom > box.top;
 }
 
 // Everything outside a modal dialog is inert, so a menu for an editor inside one must live inside it too.

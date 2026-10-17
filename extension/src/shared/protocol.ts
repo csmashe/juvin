@@ -3,6 +3,8 @@
 export const PROTOCOL_VERSION = 1;
 export const HOST_NAME = "com.juvin.host";
 export const FRAME_CAP_BYTES = 1_048_576;
+/** The longest `menu.choose` instruction the app accepts, once trimmed. */
+export const MAX_INSTRUCTION_LENGTH = 2000;
 
 export type BrowserName = "firefox" | "chrome" | "edge" | "chromium" | "unknown";
 
