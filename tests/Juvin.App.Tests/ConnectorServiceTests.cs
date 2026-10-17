@@ -115,6 +115,45 @@ public sealed class ConnectorServiceTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Hello_TracesAnUnlistedBrowserAndAnOverlongVersionAsUnknown()
+    {
+        await _service.StartAsync(CancellationToken.None);
+        using var trace = new TraceRecorder();
+        var stream = await _socket.ConnectAsync(s_timeout);
+        Assert.NotNull(stream);
+        await using var _ = stream;
+
+        var version = "Dear Ana" + new string('9', 40);
+        await WriteAsync(
+            stream,
+            $$$"""{"v":1,"type":"hello","extension":{"id":"extension@juvin.app","version":"0.1.0\u0007"},"browser":{"name":"Dear Ana browser","version":"{{{version}}}"}}"""
+        );
+        Assert.Equal("config", (await ReadAsync(stream)).GetProperty("type").GetString());
+        const string expected = "[ConnectorService] unknown unknown connected (extension unknown).";
+        await WaitUntilAsync(() => trace.Lines.Any(line => line.Contains(expected)));
+
+        Assert.DoesNotContain(trace.Lines, line => line.Contains("Dear Ana") || line.Contains('\a'));
+    }
+
+    [Fact]
+    public async Task CaptureDeclined_TracesAnUnlistedCodeAsUnknown()
+    {
+        await _service.StartAsync(CancellationToken.None);
+        var completed = new TaskCompletionSource<ContextResult>();
+        _service.CaptureCompleted += (_, _, result) => completed.TrySetResult(result);
+        await using var stream = await ConnectAndSayHelloAsync();
+        using var trace = new TraceRecorder();
+
+        await WriteAsync(stream, """{"v":1,"type":"shortcut.pressed"}""");
+        var id = (await ReadAsync(stream)).GetProperty("id").GetString()!;
+        await WriteAsync(stream, ErrorResponse(id, "Dear Ana, see the draft\\u0007"));
+
+        await completed.Task.WaitAsync(s_timeout);
+        await WaitUntilAsync(() => trace.Lines.Any(line => line.Contains("[ConnectorService] Capture declined (unknown).")));
+        Assert.DoesNotContain(trace.Lines, line => line.Contains("Dear Ana") || line.Contains('\a'));
+    }
+
+    [Fact]
     public async Task SettingsChange_ResendsConfigToConnectedClients()
     {
         await _service.StartAsync(CancellationToken.None);

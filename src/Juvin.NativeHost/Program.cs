@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Juvin.Core.Connector;
 using Juvin.Platform;
 using Juvin.Platform.Unix.Ipc;
@@ -64,11 +65,11 @@ public static class Program
     /// <summary>Retries for a short window so a browser started together with the app still connects.</summary>
     private static async Task<Stream?> ConnectAsync(IConnectorSocketClient client)
     {
-        var deadline = DateTime.UtcNow + s_connectWindow;
+        var started = Stopwatch.GetTimestamp();
         while (true)
         {
             var stream = await client.ConnectAsync(s_attemptTimeout).ConfigureAwait(false);
-            if (stream is not null || DateTime.UtcNow >= deadline)
+            if (stream is not null || Stopwatch.GetElapsedTime(started) >= s_connectWindow)
             {
                 return stream;
             }

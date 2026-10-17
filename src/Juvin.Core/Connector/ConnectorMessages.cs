@@ -1,7 +1,7 @@
 // ReSharper disable UnusedAutoPropertyAccessor.Global -- read and written by System.Text.Json
 // ReSharper disable NotAccessedPositionalProperty.Global -- read and written by System.Text.Json
 // ReSharper disable ClassNeverInstantiated.Global -- instantiated by System.Text.Json
-// ReSharper disable UnusedMember.Global -- Version is serialized; CapturedAt is read once the rewrite panel lands
+// ReSharper disable UnusedMember.Global -- Version is serialized; CapturedAt is carried for completeness and the CLI or history may use it
 
 using System.Text.Json.Serialization;
 
@@ -62,6 +62,10 @@ public sealed record ConnectorConfig() : ConnectorMessage(ConnectorMessageTypes.
     public required string Shortcut { get; init; }
 
     public required ConnectorHealth Health { get; init; }
+
+    // ReSharper disable ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract -- System.Text.Json does not enforce element nullability
+    internal override bool IsWellFormed => Actions.All(action => action is not null) && Adapters.All(adapter => adapter is not null);
+    // ReSharper restore ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract
 }
 
 public sealed record PingMessage() : ConnectorMessage(ConnectorMessageTypes.Ping)
@@ -98,15 +102,19 @@ public sealed record ContextResponseMessage() : ConnectorMessage(ConnectorMessag
 
     public ConnectorError? Error { get; init; }
 
+    // ReSharper disable ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract -- System.Text.Json does not enforce element nullability
     internal override bool IsWellFormed =>
         Id is not null
         && (Ok
             ? Capture is not null
+                && Capture.Selection.Start >= 0
+                && Capture.Selection.End >= Capture.Selection.Start
                 && Capture.Selection.Markdown is null == Capture.Selection.FormatHash is null
                 && ConnectorProtocol.TryParseCompleteness(Capture.Thread.Completeness, out _)
-                // ReSharper disable once ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract -- System.Text.Json does not enforce element nullability
-                && Capture.Thread.Messages.All(m => m is not null)
+                && Capture.Thread.CollapsedCount >= 0
+                && Capture.Thread.Messages.All(m => m is not null && (m.To is null || m.To.All(to => to is not null)))
             : Error is not null);
+    // ReSharper restore ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract
 }
 
 public sealed record ApplyRequestMessage() : ConnectorMessage(ConnectorMessageTypes.ApplyRequest)
@@ -168,7 +176,7 @@ public sealed record MenuShowMessage() : ConnectorMessage(ConnectorMessageTypes.
     /// <summary>The five bubbles in key order, 1 to 5.</summary>
     public required IReadOnlyList<ConnectorAction> Slots { get; init; }
 
-    /// <summary>The right-click list; may be empty.</summary>
+    /// <summary>The right-click list: the whole catalog, so never empty.</summary>
     public required IReadOnlyList<ConnectorAction> More { get; init; }
 
     /// <summary>The status line, localized, in display order.</summary>

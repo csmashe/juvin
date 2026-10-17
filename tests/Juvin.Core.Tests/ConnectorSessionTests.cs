@@ -11,6 +11,9 @@ public sealed class ConnectorSessionTests : IAsyncDisposable
     private const string Hello =
         """{"v":1,"type":"hello","extension":{"id":"extension@juvin.app","version":"0.1.0"},"browser":{"name":"firefox","version":"157.0"}}""";
 
+    // Letters, spaces, and a control character (written as a JSON escape): never a listed code.
+    private const string SecretCode = "Dear Ana, see the draft\\u0007";
+
     private static readonly TimeSpan s_timeout = TimeSpan.FromSeconds(5);
 
     private readonly FakeConnectorChannel _channel = new();
@@ -51,6 +54,68 @@ public sealed class ConnectorSessionTests : IAsyncDisposable
 
         AssertError(reply, ConnectorErrorCodes.HelloRequired, "p1");
         Assert.False(_channel.HasSent);
+    }
+
+    [Fact]
+    public async Task ErrorBeforeHello_TracesAnUnlistedCodeAsUnknown()
+    {
+        using var trace = new TraceRecorder();
+
+        _channel.Deliver($$$"""{"v":1,"type":"error","error":{"code":"{{{SecretCode}}}","message":"Bad."}}""");
+        _channel.Deliver("""{"v":1,"type":"ping","id":"p1"}""");
+        AssertError(await _channel.NextSentAsync(), ConnectorErrorCodes.HelloRequired, "p1");
+
+        Assert.Contains(trace.Lines, line => line.Contains("Ignored an error before hello (unknown)."));
+        AssertNoSecret(trace);
+    }
+
+    [Fact]
+    public async Task UnmatchedError_TracesAnUnlistedCodeAsUnknownAndAListedOneAsIs()
+    {
+        await SayHelloAsync();
+        using var trace = new TraceRecorder();
+
+        _channel.Deliver($$$"""{"v":1,"type":"error","id":"x1","error":{"code":"{{{SecretCode}}}","message":"Bad."}}""");
+        _channel.Deliver("""{"v":1,"type":"error","id":"x2","error":{"code":"editor-gone","message":"Gone."}}""");
+        await RoundTripAsync();
+
+        Assert.Contains(trace.Lines, line => line.Contains("Ignored an unmatched error (error unknown)."));
+        Assert.Contains(trace.Lines, line => line.Contains("Ignored an unmatched error (error editor-gone)."));
+        AssertNoSecret(trace);
+    }
+
+    [Fact]
+    public async Task LateResponse_AfterATimeout_IsIgnoredAndTracedByTypeOnly()
+    {
+        await SayHelloAsync();
+        using var trace = new TraceRecorder();
+
+        var request = _session.RequestContextAsync(null, TimeSpan.FromMilliseconds(100), CancellationToken.None);
+        var id = (await _channel.NextSentAsync()).GetProperty("id").GetString()!;
+        await Assert.ThrowsAsync<TimeoutException>(() => request);
+        _channel.Deliver(CaptureJson(id, "entire-thread"));
+        await RoundTripAsync();
+
+        Assert.Contains(trace.Lines, line => line.Contains("Ignored an unmatched context.response (error -)."));
+        Assert.DoesNotContain(trace.Lines, line => line.Contains("Draft text"));
+        Assert.False(_session.IsClosed);
+    }
+
+    [Fact]
+    public async Task DuplicateResponse_ForACompletedRequest_IsIgnoredAndTracedByTypeOnly()
+    {
+        await SayHelloAsync();
+        using var trace = new TraceRecorder();
+
+        var ping = _session.PingAsync(s_timeout, CancellationToken.None);
+        var id = (await _channel.NextSentAsync()).GetProperty("id").GetString();
+        _channel.Deliver($$"""{"v":1,"type":"pong","id":"{{id}}"}""");
+        await ping;
+        _channel.Deliver($$"""{"v":1,"type":"pong","id":"{{id}}"}""");
+        await RoundTripAsync();
+
+        Assert.Single(trace.Lines, line => line.Contains("[ConnectorSession] Ignored an unmatched pong (error -)."));
+        Assert.False(_session.IsClosed);
     }
 
     [Fact]
@@ -121,6 +186,16 @@ public sealed class ConnectorSessionTests : IAsyncDisposable
         await _loop.WaitAsync(s_timeout);
         Assert.True(_session.IsClosed);
         Assert.True(_channel.IsDisposed);
+    }
+
+    [Fact]
+    public async Task ErrorWithAnUnsupportedVersion_ClosesTheConnectionWithoutAReply()
+    {
+        _channel.Deliver("""{"v":2,"type":"error","error":{"code":"bad-message","message":"Bad."}}""");
+
+        await _loop.WaitAsync(s_timeout);
+        Assert.True(_session.IsClosed);
+        Assert.False(_channel.HasSent);
     }
 
     [Fact]
@@ -445,6 +520,18 @@ public sealed class ConnectorSessionTests : IAsyncDisposable
         await session.RunAsync(CancellationToken.None).WaitAsync(s_timeout);
 
         Assert.True(session.IsClosed);
+    }
+
+    /// <summary>Waits until the session has handled everything delivered before it.</summary>
+    private async Task RoundTripAsync()
+    {
+        _channel.Deliver("""{"v":1,"type":"ping","id":"sync"}""");
+        Assert.Equal("sync", (await _channel.NextSentAsync()).GetProperty("id").GetString());
+    }
+
+    private static void AssertNoSecret(TraceRecorder trace)
+    {
+        Assert.DoesNotContain(trace.Lines, line => line.Contains("Dear Ana") || line.Contains('\a'));
     }
 
     private async Task SayHelloAsync()

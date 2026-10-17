@@ -281,7 +281,7 @@ public sealed class ActionMenuService
 
         _post(() =>
         {
-            Trace.WriteLine($"[ActionMenu] {menu.Id} could not be shown ({error.Code}); opening the panel.");
+            Trace.WriteLine($"[ActionMenu] {menu.Id} could not be shown ({ConnectorTrace.Code(error.Code)}); opening the panel.");
             if (!IsCurrent(menu))
             {
                 return;
@@ -442,7 +442,7 @@ public sealed class ActionMenuService
                 return;
             }
 
-            Trace.WriteLine($"[ActionMenu] Apply from {menu.Id} refused ({error.Code}).");
+            Trace.WriteLine($"[ActionMenu] Apply from {menu.Id} refused ({ConnectorTrace.Code(error.Code)}).");
             _ = SendResultAsync(
                 menu,
                 error.Code == DraftChangedCode
@@ -483,7 +483,7 @@ public sealed class ActionMenuService
 
             if (result.Capture is null)
             {
-                Trace.WriteLine($"[ActionMenu] Recapture for {menu.Id} declined ({result.Error?.Code}).");
+                Trace.WriteLine($"[ActionMenu] Recapture for {menu.Id} declined ({ConnectorTrace.Code(result.Error?.Code)}).");
                 _ = SendErrorAsync(menu, ErrorText(result.Error?.Code), canRetry: false);
                 return;
             }

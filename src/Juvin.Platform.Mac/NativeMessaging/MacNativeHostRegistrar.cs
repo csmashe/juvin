@@ -53,7 +53,8 @@ public sealed class MacNativeHostRegistrar : INativeHostRegistrar
 
     public HostRegistration CheckRegistration(BrowserTarget browser)
     {
-        return NativeHostManifest.Check(Find(browser).ManifestPath, _locateHost());
+        var definition = Find(browser);
+        return NativeHostManifest.Check(definition.ManifestPath, definition.Target.Family, _locateHost());
     }
 
     public Task RegisterAsync(BrowserTarget browser, CancellationToken ct)

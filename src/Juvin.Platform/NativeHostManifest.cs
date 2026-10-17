@@ -50,11 +50,11 @@ public static class NativeHostManifest
     }
 
     /// <summary>
-    ///     Compares the <c>path</c> in the manifest at <paramref name="manifestPath" /> with
-    ///     <paramref name="expectedHostPath" />. A manifest that cannot be read, or any manifest
-    ///     when there is no expected path, is <see cref="HostRegistration.Stale" />.
+    ///     Compares the manifest at <paramref name="manifestPath" /> with what <see cref="Render" /> writes for
+    ///     <paramref name="family" /> and <paramref name="expectedHostPath" />, ignoring whitespace. A manifest that
+    ///     cannot be read or differs, or any manifest when there is no expected path, is <see cref="HostRegistration.Stale" />.
     /// </summary>
-    public static HostRegistration Check(string manifestPath, string? expectedHostPath)
+    public static HostRegistration Check(string manifestPath, BrowserFamily family, string? expectedHostPath)
     {
         if (!File.Exists(manifestPath))
         {
@@ -66,10 +66,16 @@ public static class NativeHostManifest
             return HostRegistration.Stale;
         }
 
-        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-        return string.Equals(ReadHostPath(manifestPath), expectedHostPath, comparison)
-            ? HostRegistration.Registered
-            : HostRegistration.Stale;
+        try
+        {
+            using var actual = JsonDocument.Parse(File.ReadAllBytes(manifestPath));
+            using var expected = JsonDocument.Parse(Render(family, expectedHostPath));
+            return Matches(actual.RootElement, expected.RootElement) ? HostRegistration.Registered : HostRegistration.Stale;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException)
+        {
+            return HostRegistration.Stale;
+        }
     }
 
     /// <summary>The manifest's <c>path</c>, or null when the file is missing or not a manifest.</summary>
@@ -84,10 +90,39 @@ public static class NativeHostManifest
                     ? path.GetString()
                     : null;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        // InvalidOperationException: an unpaired surrogate passes JsonDocument.Parse but fails GetString.
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException)
         {
             return null;
         }
+    }
+
+    private static bool Matches(JsonElement actual, JsonElement expected)
+    {
+        if (actual.ValueKind != JsonValueKind.Object || actual.EnumerateObject().Count() != expected.EnumerateObject().Count())
+        {
+            return false;
+        }
+
+        var pathComparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        foreach (var property in expected.EnumerateObject())
+        {
+            if (!actual.TryGetProperty(property.Name, out var value))
+            {
+                return false;
+            }
+
+            var equal = property.Name == "path"
+                ? value.ValueKind == JsonValueKind.String
+                    && string.Equals(value.GetString(), property.Value.GetString(), pathComparison)
+                : JsonElement.DeepEquals(value, property.Value);
+            if (!equal)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>The host path, or a user-readable failure when the app could not find its host executable.</summary>

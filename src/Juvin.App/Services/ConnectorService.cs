@@ -21,7 +21,7 @@ namespace Juvin.App.Services;
 public sealed class ConnectorService
 {
     /// <summary>Not on the wire: the desktop hotkey fired with no browser connected.</summary>
-    public const string NoBrowserCode = "no-browser";
+    public const string NoBrowserCode = ConnectorErrorCodes.NoBrowser;
 
     public const string BrowserNotFocusedCode = "browser-not-focused";
 
@@ -270,7 +270,7 @@ public sealed class ConnectorService
         session.HelloReceived += connected =>
         {
             var client = connected.Client!;
-            Trace.WriteLine($"[ConnectorService] {client.Browser.Name} {client.Browser.Version} connected (extension {client.Extension.Version}).");
+            Trace.WriteLine($"[ConnectorService] {ConnectorTrace.BrowserName(client.Browser.Name)} {ConnectorTrace.Version(client.Browser.Version)} connected (extension {ConnectorTrace.Version(client.Extension.Version)}).");
             ClientsChanged?.Invoke();
         };
         session.ShortcutPressed += pressed => _ = CaptureAsync(pressed);
@@ -296,7 +296,7 @@ public sealed class ConnectorService
 
             if (wasClient)
             {
-                Trace.WriteLine($"[ConnectorService] {session.Client!.Browser.Name} disconnected.");
+                Trace.WriteLine($"[ConnectorService] {ConnectorTrace.BrowserName(session.Client!.Browser.Name)} disconnected.");
                 ClientsChanged?.Invoke();
             }
         }
@@ -392,12 +392,12 @@ public sealed class ConnectorService
             // Lengths and counts only: the draft and thread are private.
             Trace.WriteLine(
                 $"[ConnectorService] Captured {capture.Context.Draft.Length} draft chars, "
-                    + $"{capture.Context.Thread.Count} messages, {capture.Context.Completeness}, adapter {capture.Adapter}."
+                    + $"{capture.Context.Thread.Count} messages, {capture.Context.Completeness}, adapter {(s_adapters.Contains(capture.Adapter) ? capture.Adapter : "unknown")}."
             );
         }
         else
         {
-            Trace.WriteLine($"[ConnectorService] Capture declined ({result.Error?.Code}).");
+            Trace.WriteLine($"[ConnectorService] Capture declined ({ConnectorTrace.Code(result.Error?.Code)}).");
         }
 
         Raise(() => CaptureCompleted?.Invoke(session, number, result));

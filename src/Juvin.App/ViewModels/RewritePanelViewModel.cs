@@ -339,7 +339,7 @@ public sealed partial class RewritePanelViewModel : ObservableObject
             return;
         }
 
-        Trace.WriteLine($"[RewritePanel] Apply refused ({error.Code}).");
+        Trace.WriteLine($"[RewritePanel] Apply refused ({ConnectorTrace.Code(error.Code)}).");
         if (error.Code == DraftChangedCode)
         {
             IsDraftChanged = true;
@@ -403,7 +403,7 @@ public sealed partial class RewritePanelViewModel : ObservableObject
         if (result.Capture is null && _capture is not null)
         {
             // Keep the capture and result so the user can still copy the rewrite.
-            Trace.WriteLine($"[RewritePanel] Recapture declined ({result.Error?.Code}); keeping the current capture.");
+            Trace.WriteLine($"[RewritePanel] Recapture declined ({ConnectorTrace.Code(result.Error?.Code)}); keeping the current capture.");
             if (State == RewritePanelState.Running)
             {
                 Fail(_localizer["Panel.Cancelled"], canRetry: true);
@@ -438,7 +438,7 @@ public sealed partial class RewritePanelViewModel : ObservableObject
 
         if (result.Capture is null)
         {
-            Trace.WriteLine($"[RewritePanel] Capture declined ({result.Error?.Code}).");
+            Trace.WriteLine($"[RewritePanel] Capture declined ({ConnectorTrace.Code(result.Error?.Code)}).");
             Fail(ErrorText(result.Error?.Code), canRetry: false);
             return Task.CompletedTask;
         }
