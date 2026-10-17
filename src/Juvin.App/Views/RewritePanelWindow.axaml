@@ -85,7 +85,7 @@
                         </StackPanel>
                         <Button Grid.Column="1"
                                 Content="{loc:Str Panel.Cancel}"
-                                IsVisible="{Binding IsRunning}"
+                                IsVisible="{Binding CanCancel}"
                                 Command="{Binding CancelCommand}" />
                     </Grid>
 
@@ -102,14 +102,14 @@
                                                  IsVisible="{Binding IsTextVisible}" />
                             <SelectableTextBlock x:Name="ChangesText"
                                                  Classes="panel-result"
+                                                 AutomationProperties.Name="{loc:Str Panel.View.ChangesDescription}"
                                                  IsVisible="{Binding IsChangesVisible}" />
 
-                            <StackPanel Spacing="8" IsVisible="{Binding HasError}">
-                                <TextBlock Classes="panel-error" Text="{Binding ErrorMessage}" />
-                                <Button Content="{loc:Str Panel.Retry}"
-                                        IsVisible="{Binding CanRetry}"
-                                        Command="{Binding RetryCommand}" />
-                            </StackPanel>
+                            <TextBlock Classes="panel-error" Text="{Binding ErrorMessage}" IsVisible="{Binding HasError}" />
+                            <!-- Also offered beside a result put back after a failed follow-up. -->
+                            <Button Content="{loc:Str Panel.Retry}"
+                                    IsVisible="{Binding CanRetry}"
+                                    Command="{Binding RetryCommand}" />
 
                             <Expander Classes="panel-context"
                                       Header="{loc:Str Panel.Context}"

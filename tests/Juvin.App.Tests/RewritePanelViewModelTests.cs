@@ -363,7 +363,7 @@ public sealed class RewritePanelViewModelTests
         _local.Failure = new ProviderException(ProviderFailureKind.Unreachable, "The local model server did not respond in time.");
         vm.FollowUpText = "shorter please";
         await vm.SendFollowUpCommand.ExecuteAsync(null);
-        Assert.True(vm.HasError);
+        Assert.True(vm.CanRetry);
         var shown = vm.ResultText;
 
         _settings.Update(s => s with { ProcessingMode = ProcessingMode.Codex });
@@ -385,7 +385,7 @@ public sealed class RewritePanelViewModelTests
         _local.Failure = new ProviderException(ProviderFailureKind.Unreachable, "The local model server did not respond in time.");
         vm.FollowUpText = "shorter please";
         await vm.SendFollowUpCommand.ExecuteAsync(null);
-        Assert.True(vm.HasError);
+        Assert.True(vm.CanRetry);
 
         _local.Failure = null;
         await vm.RetryCommand.ExecuteAsync(null);
@@ -932,6 +932,196 @@ public sealed class RewritePanelViewModelTests
         Assert.Equal(RewritePanelState.Done, vm.State);
         Assert.Equal("reply 1", vm.ResultText);
         Assert.Single(_target.Applied);
+    }
+
+    [Fact]
+    public async Task AFailedFollowUp_PutsTheEarlierResultBackAndOffersRetry()
+    {
+        var vm = Create();
+        await LoadAndRunAsync(vm, Capture());
+        _local.Failure = new ProviderException(ProviderFailureKind.Unreachable, "The local model server did not respond in time.");
+
+        vm.FollowUpText = "shorter please";
+        await vm.SendFollowUpCommand.ExecuteAsync(null);
+
+        Assert.Equal("reply 1", vm.ResultText);
+        Assert.True(vm.IsTextVisible);
+        Assert.True(vm.CopyCommand.CanExecute(null));
+        Assert.Equal(_localizer.Format("Panel.Notice.FollowUpFailed", "The local model server did not respond in time."), vm.Notice);
+        Assert.Equal(RewritePanelState.Done, vm.State);
+        Assert.False(vm.HasError);
+        Assert.True(vm.CanApply);
+        Assert.True(vm.CanShowChanges);
+        Assert.True(vm.CanRetry);
+    }
+
+    [Fact]
+    public async Task ApplyAfterAFailedFollowUp_SendsTheRestoredResultAndMarksItsEntry()
+    {
+        _settings.Update(s => s with { HistoryEnabled = true });
+        var vm = Create();
+        await LoadAndRunAsync(vm, Capture());
+        _local.Failure = new ProviderException(ProviderFailureKind.Unreachable, "The local model server did not respond in time.");
+        vm.FollowUpText = "shorter please";
+        await vm.SendFollowUpCommand.ExecuteAsync(null);
+
+        await vm.ApplyCommand.ExecuteAsync(null);
+
+        Assert.Equal("reply 1", Assert.Single(_target.Applied).Text);
+        Assert.True(Assert.Single(_history.Entries).Applied);
+    }
+
+    [Fact]
+    public async Task AFollowUpFailingAfterADraftChangedApply_KeepsTheDraftChangedNotice()
+    {
+        _target.ApplyError = new ConnectorError("draft-changed", "The draft changed since it was captured.");
+        var vm = Create();
+        await LoadAndRunAsync(vm, Capture());
+        await vm.ApplyCommand.ExecuteAsync(null);
+        _local.Failure = new ProviderException(ProviderFailureKind.Unreachable, "The local model server did not respond in time.");
+
+        vm.FollowUpText = "shorter please";
+        await vm.SendFollowUpCommand.ExecuteAsync(null);
+
+        Assert.Equal("reply 1", vm.ResultText);
+        Assert.Equal(_localizer["Panel.DraftChanged"], vm.Notice);
+        Assert.False(vm.CanApply);
+        Assert.True(vm.CanRetry);
+        Assert.True(vm.CopyCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task ACancelledFollowUp_PutsTheEarlierResultBack()
+    {
+        var vm = Create();
+        await LoadAndRunAsync(vm, Capture());
+        _local.CompletionGate = new TaskCompletionSource();
+        vm.FollowUpText = "shorter please";
+        var followUp = vm.SendFollowUpCommand.ExecuteAsync(null);
+
+        vm.CancelCommand.Execute(null);
+        await followUp;
+
+        Assert.Equal("reply 1", vm.ResultText);
+        Assert.Equal(_localizer.Format("Panel.Notice.FollowUpFailed", _localizer["Panel.Cancelled"]), vm.Notice);
+        Assert.True(vm.CanRetry);
+    }
+
+    [Fact]
+    public async Task ManyPreviewsBeforeTheUiThreadRuns_ArePostedOnceAndShowTheLatest()
+    {
+        _local = new FakeModelProvider(ProcessingMode.Local)
+        {
+            Previews = ["Hi", "Hi Dana", "Hi Dana, I", "Hi Dana, I can send"],
+            CompletionGate = new TaskCompletionSource(),
+        };
+        var posted = new List<Action>();
+        var vm = new RewritePanelViewModel(new ProviderSelector(_ => _local, _ => _codex), _settings, _history, _localizer, posted.Add);
+
+        var run = LoadAndRunAsync(vm, Capture());
+
+        var post = Assert.Single(posted);
+        Assert.Equal("", vm.ResultText);
+        post();
+        Assert.Equal("Hi Dana, I can send", vm.ResultText);
+
+        _local.CompletionGate.SetResult();
+        await run;
+
+        Assert.Equal("reply 1", vm.ResultText);
+    }
+
+    [Fact]
+    public async Task Recapture_DuringARun_ShowsTheRunCancelledAndCancelStopsTheRecapture()
+    {
+        _local.CompletionGate = new TaskCompletionSource();
+        var vm = Create();
+        var run = LoadAndRunAsync(vm, Capture());
+        _target.RecaptureGate = new TaskCompletionSource<ContextResult>();
+
+        var recapture = vm.RecaptureCommand.ExecuteAsync(null);
+        await run;
+
+        Assert.False(vm.IsRunning);
+        Assert.Equal(_localizer["Panel.Cancelled"], vm.ErrorMessage);
+        Assert.True(vm.IsBusy);
+        Assert.True(vm.CanCancel);
+
+        vm.CancelCommand.Execute(null);
+
+        Assert.True(_target.LastRecaptureToken.IsCancellationRequested);
+        _target.RecaptureGate.SetCanceled(_target.LastRecaptureToken);
+        await recapture;
+        Assert.False(vm.IsBusy);
+        Assert.False(vm.CanCancel);
+    }
+
+    [Fact]
+    public async Task ARecaptureAnsweredAfterCancel_IsDiscardedAndKeepsTheResult()
+    {
+        var vm = Create();
+        await LoadAndRunAsync(vm, Capture());
+        var requests = _local.Requests.Count;
+        _target.RecaptureGate = new TaskCompletionSource<ContextResult>();
+
+        var recapture = vm.RecaptureCommand.ExecuteAsync(null);
+        vm.CancelCommand.Execute(null);
+        _target.RecaptureGate.SetResult(Capture(editorId: "e-2"));
+        await recapture;
+
+        Assert.Equal("reply 1", vm.ResultText);
+        Assert.Equal(RewritePanelState.Done, vm.State);
+        Assert.False(vm.IsBusy);
+        Assert.Equal(requests, _local.Requests.Count);
+    }
+
+    [Fact]
+    public async Task ARecaptureEndingAfterANewCapture_LeavesTheNewOperationBusy()
+    {
+        var vm = Create();
+        await LoadAndRunAsync(vm, Capture());
+        var stale = new TaskCompletionSource<ContextResult>();
+        _target.RecaptureGate = stale;
+        var first = vm.RecaptureCommand.ExecuteAsync(null);
+
+        await vm.LoadAsync(_target, Capture(editorId: "e-2"));
+        Assert.False(vm.IsBusy);
+        _target.RecaptureGate = new TaskCompletionSource<ContextResult>();
+        var second = vm.RecaptureCommand.ExecuteAsync(null);
+
+        stale.SetResult(Capture(editorId: "e-1"));
+        await first;
+
+        Assert.True(vm.IsBusy);
+        Assert.False(vm.RecaptureCommand.CanExecute(null));
+
+        _target.RecaptureGate.SetResult(Capture(editorId: "e-3"));
+        await second;
+        Assert.False(vm.IsBusy);
+    }
+
+    [Fact]
+    public async Task ASettingsChange_RefreshesTheProviderChipBeforeARun()
+    {
+        var vm = Create();
+        await vm.LoadAsync(_target, Capture());
+
+        _settings.Update(s => s with { ProcessingMode = ProcessingMode.Codex });
+
+        Assert.Equal(_localizer["Panel.Provider.Codex"], vm.ProviderLabel);
+    }
+
+    [Fact]
+    public async Task AnUndefinedProcessingMode_ShowsARetryableError()
+    {
+        _settings.Update(s => s with { ProcessingMode = (ProcessingMode)99 });
+        var vm = Create();
+
+        await LoadAndRunAsync(vm, Capture());
+
+        Assert.True(vm.HasError);
+        Assert.True(vm.CanRetry);
+        Assert.Empty(_local.Requests);
     }
 
     /// <summary>Loads a capture, which leaves the panel idle, then picks the action as the user would.</summary>

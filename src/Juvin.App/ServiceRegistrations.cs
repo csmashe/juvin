@@ -8,6 +8,7 @@ using Juvin.Core.Interfaces;
 using Juvin.Core.Localization;
 using Juvin.Core.Providers;
 using Juvin.Core.Services;
+using Juvin.Platform;
 using Juvin.Platform.Hotkeys;
 using Juvin.Platform.Linux;
 using Juvin.Platform.Mac;
@@ -97,7 +98,12 @@ public static class ServiceRegistrations
         ));
         services.AddSingleton<ShortcutsSectionViewModel>();
         services.AddSingleton<RewriteActionsSectionViewModel>();
-        services.AddTransient<BrowserConnectorPanelViewModel>();
+        services.AddTransient(sp => new BrowserConnectorPanelViewModel(
+            sp.GetRequiredService<INativeHostRegistrar>(),
+            sp.GetRequiredService<ConnectorService>(),
+            sp.GetRequiredService<Localizer>(),
+            action => Dispatcher.UIThread.Post(action)
+        ));
         services.AddSingleton<BrowserConnectorSectionViewModel>();
         services.AddSingleton<ModelsSectionViewModel>();
         services.AddSingleton<PrivacyAndDataSectionViewModel>();

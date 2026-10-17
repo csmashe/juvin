@@ -433,7 +433,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
             // A capture that landed while the reply was in flight outranks the failure.
             if (_captureArrivals == arrivalsBefore)
             {
-                TryItStatus = _localizer.Format("Wizard.TryIt.OpenFailed", _localizer[RewritePanelViewModel.ErrorKeyFor(error.Code)]);
+                TryItStatus = _localizer.Format("Wizard.TryIt.OpenFailed", _localizer[ConnectorErrorLabels.KeyFor(error.Code)]);
             }
 
             return;
@@ -641,7 +641,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
             TryItPhase = TryItPhase.CaptureFailed;
         }
 
-        TryItStatus = _localizer.Format("Wizard.TryIt.CaptureFailed", _localizer[RewritePanelViewModel.ErrorKeyFor(result.Error?.Code)]);
+        TryItStatus = _localizer.Format("Wizard.TryIt.CaptureFailed", _localizer[ConnectorErrorLabels.KeyFor(result.Error?.Code)]);
     }
 
     /// <summary>

@@ -38,7 +38,7 @@ The Ubuntu row ran in Flatpak Zen on a copy of the signed-in Zen profile from th
 
 ### Rewrite panel results
 
-Run with the test page or Gmail. Hide and show: close the panel with Escape or its close button, press the shortcut again, and check that it reappears in the same corner above the browser. Both rows below ran on the bundled test page with qwen3.5:27b on the LAN server; the Fedora buttons were driven through AT-SPI and the command fired through Marionette, the Windows run used real key presses and UI Automation from the interactive session. Gmail was not rerun for the panel: the Windows Chrome profile had been signed out again.
+Run with the test page or Gmail. Hide and show: close the panel with Escape or its close button, press the shortcut again, and check that it reappears in the same corner above the browser. On macOS, also check that focus returns to the browser after Apply, since hiding a floating window does not always re-activate the previous app there. Both rows below ran on the bundled test page with qwen3.5:27b on the LAN server; the Fedora buttons were driven through AT-SPI and the command fired through Marionette, the Windows run used real key presses and UI Automation from the interactive session. Gmail was not rerun for the panel: the Windows Chrome profile had been signed out again.
 
 | Date | OS | Browser | Panel shows and streams | Switch action | Follow-up | Changes view | Apply and Undo | Edited draft refused | Hide and show again |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |

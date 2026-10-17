@@ -1,30 +1,39 @@
+using System.Collections.Concurrent;
 using Juvin.App.Services;
 using Juvin.App.Tests.Fakes;
 using Juvin.App.ViewModels;
+using Juvin.Core.Connector;
 using Juvin.Core.Localization;
 using Juvin.Platform;
 
 namespace Juvin.App.Tests;
 
-public sealed class BrowserConnectorPanelViewModelTests : IDisposable
+public sealed class BrowserConnectorPanelViewModelTests : IAsyncDisposable
 {
+    private const string Hello =
+        """{"v":1,"type":"hello","extension":{"id":"extension@juvin.app","version":"0.1.0"},"browser":{"name":"firefox","version":"157.0"}}""";
+
+    private static readonly TimeSpan s_timeout = TimeSpan.FromSeconds(5);
     private static readonly BrowserTarget s_chrome = new("chrome", "Google Chrome", BrowserFamily.Chromium, BrowserPackaging.Native);
     private static readonly BrowserTarget s_firefox = new("firefox-flatpak", "Firefox", BrowserFamily.Firefox, BrowserPackaging.Flatpak);
 
+    private readonly ConnectorService _connector;
     private readonly BrowserConnectorPanelViewModel _panel;
+    private readonly ConcurrentQueue<Action> _posted = new();
     private readonly FakeNativeHostRegistrar _registrar = new();
     private readonly FakeConnectorSocket _socket = new();
 
     public BrowserConnectorPanelViewModelTests()
     {
         var localizer = new Localizer();
-        var connector = new ConnectorService(_socket, _registrar, new FakeSettingsService(), localizer);
-        _panel = new BrowserConnectorPanelViewModel(_registrar, connector, localizer);
+        _connector = new ConnectorService(_socket, _registrar, new FakeSettingsService(), localizer);
+        _panel = new BrowserConnectorPanelViewModel(_registrar, _connector, localizer, _posted.Enqueue);
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         _panel.Dispose();
+        await _connector.StopAsync();
     }
 
     [Fact]
@@ -143,5 +152,35 @@ public sealed class BrowserConnectorPanelViewModelTests : IDisposable
 
         Assert.Equal("No extension connected", _panel.TestResult);
         Assert.False(_panel.HasClients);
+    }
+
+    [Fact]
+    public async Task AConnectingExtension_IsListedThroughThePostedRefresh()
+    {
+        await _connector.StartAsync(CancellationToken.None);
+        await using var stream = await _socket.ConnectAsync(s_timeout);
+        Assert.NotNull(stream);
+
+        await NativeMessagingFraming.WriteFrameAsync(stream, Hello, CancellationToken.None);
+        await WaitUntilAsync(() => !_posted.IsEmpty);
+        Assert.False(_panel.HasClients);
+
+        while (_posted.TryDequeue(out var action))
+        {
+            action();
+        }
+
+        Assert.True(_panel.HasClients);
+        Assert.Equal(["Firefox 157.0, extension 0.1.0"], _panel.ConnectedClients);
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow + s_timeout;
+        while (!condition())
+        {
+            Assert.True(DateTime.UtcNow < deadline, "Timed out waiting for the condition.");
+            await Task.Delay(10);
+        }
     }
 }

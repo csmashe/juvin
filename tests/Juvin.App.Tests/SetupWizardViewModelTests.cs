@@ -761,7 +761,7 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
 
     private SetupWizardViewModel Create(params FakeSetupTask[] tasks)
     {
-        var connectorPanel = new BrowserConnectorPanelViewModel(_registrar, _connector, _localizer);
+        var connectorPanel = new BrowserConnectorPanelViewModel(_registrar, _connector, _localizer, action => action());
         var hotkeys = new HotkeyService([], _settings, _connector);
         var shortcut = new ShortcutPanelViewModel(hotkeys, _settings, _localizer, action => action());
         return new SetupWizardViewModel(

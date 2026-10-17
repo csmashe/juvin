@@ -1,6 +1,5 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
-using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FluentIcons.Common;
@@ -21,6 +20,7 @@ public sealed partial class BrowserConnectorPanelViewModel : ObservableObject, I
     private readonly ConnectorService _connector;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly Localizer _localizer;
+    private readonly Action<Action> _post;
     private readonly INativeHostRegistrar _registrar;
 
     [ObservableProperty]
@@ -34,11 +34,21 @@ public sealed partial class BrowserConnectorPanelViewModel : ObservableObject, I
     [NotifyPropertyChangedFor(nameof(HasTestResult))]
     private string? _testResult;
 
-    public BrowserConnectorPanelViewModel(INativeHostRegistrar registrar, ConnectorService connector, Localizer localizer)
+    /// <param name="registrar">Registers the native host with each detected browser.</param>
+    /// <param name="connector">Lists the extensions connected right now.</param>
+    /// <param name="localizer">Supplies the row and status strings.</param>
+    /// <param name="post">Runs an action on the UI thread; tests pass one that runs it inline.</param>
+    public BrowserConnectorPanelViewModel(
+        INativeHostRegistrar registrar,
+        ConnectorService connector,
+        Localizer localizer,
+        Action<Action> post
+    )
     {
         _registrar = registrar;
         _connector = connector;
         _localizer = localizer;
+        _post = post;
         HostMissingHint = localizer.Format("BrowserConnector.HostMissingHint", NativeHost.PathOverrideVariable);
         _connector.ClientsChanged += OnClientsChanged;
         RefreshClients();
@@ -205,7 +215,7 @@ public sealed partial class BrowserConnectorPanelViewModel : ObservableObject, I
             : _localizer["BrowserConnector.NoAnswer"];
     }
 
-    private void OnClientsChanged() => Dispatcher.UIThread.Post(RefreshClients);
+    private void OnClientsChanged() => _post(RefreshClients);
 
     private void RefreshClients()
     {
