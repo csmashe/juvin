@@ -1,3 +1,7 @@
+using Sentry.Protocol;
+using SentryApp = Sentry.Protocol.App;
+using SentryOperatingSystem = Sentry.Protocol.OperatingSystem;
+
 namespace Juvin.App.Services.CrashReporting;
 
 /// <summary>
@@ -9,14 +13,10 @@ internal static class CrashReportScrubber
     public const string Redacted = "<redacted>";
     public const string OperationTag = "operation";
 
-    private static readonly HashSet<string> s_allowedContexts = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "app",
-        "os",
-        "runtime",
-        ".NET",
-        "Dynamic Code",
-    };
+    private const string DotNetContext = ".NET";
+    private const string DynamicCodeContext = "Dynamic Code";
+
+    private static readonly string[] s_dynamicCodeFlags = ["Compiled", "Supported"];
 
     private static readonly HashSet<string> s_allowedMechanisms = new(StringComparer.Ordinal)
     {
@@ -43,20 +43,14 @@ internal static class CrashReportScrubber
 
         e.ServerName = null;
         e.Message = null;
+        e.Logger = null;
+        e.TransactionName = null;
+        e.Fingerprint = [];
+        e.Distribution = null;
         e.User = new SentryUser();
         e.Request = new SentryRequest();
         ((IDictionary<string, object?>)e.Extra).Clear();
-        foreach (var key in e.Contexts.Keys.Where(key => !s_allowedContexts.Contains(key)).ToArray())
-        {
-            e.Contexts.Remove(key);
-        }
-
-        foreach (var app in e.Contexts.Values.OfType<Sentry.Protocol.App>())
-        {
-            app.Hash = null;
-            app.Identifier = null;
-        }
-
+        RebuildContexts(e.Contexts);
         CrashReportErrorFacts.Apply(e);
         foreach (var key in e.Tags.Keys.Where(key => !s_allowedTags.Contains(key)).ToArray())
         {
@@ -94,6 +88,67 @@ internal static class CrashReportScrubber
         }
 
         return e;
+    }
+
+    // Exception.Data can replace any context with an arbitrary object, so each kept context is rebuilt from approved fields.
+    private static void RebuildContexts(SentryContexts contexts)
+    {
+        var app = Find<SentryApp>(contexts, SentryApp.Type);
+        var os = Find<SentryOperatingSystem>(contexts, SentryOperatingSystem.Type);
+        var runtime = Find<Runtime>(contexts, Runtime.Type);
+        var dotNet = Find<Runtime>(contexts, DotNetContext);
+        var dynamicCode = Find<IDictionary<string, bool>>(contexts, DynamicCodeContext);
+        contexts.Clear();
+        if (app is not null)
+        {
+            contexts[SentryApp.Type] = new SentryApp { StartTime = app.StartTime, BuildType = app.BuildType };
+        }
+
+        if (os is not null)
+        {
+            contexts[SentryOperatingSystem.Type] = new SentryOperatingSystem
+            {
+                Name = os.Name,
+                Version = os.Version,
+                Build = os.Build,
+                KernelVersion = os.KernelVersion,
+                RawDescription = os.RawDescription,
+            };
+        }
+
+        if (runtime is not null)
+        {
+            contexts[Runtime.Type] = CopyRuntime(runtime);
+        }
+
+        if (dotNet is not null)
+        {
+            contexts[DotNetContext] = CopyRuntime(dotNet);
+        }
+
+        if (dynamicCode is not null)
+        {
+            contexts[DynamicCodeContext] = s_dynamicCodeFlags
+                .Where(dynamicCode.ContainsKey)
+                .ToDictionary(flag => flag, flag => dynamicCode[flag]);
+        }
+    }
+
+    private static T? Find<T>(SentryContexts contexts, string key)
+        where T : class
+    {
+        return contexts.TryGetValue(key, out var value) ? value as T : null;
+    }
+
+    private static Runtime CopyRuntime(Runtime runtime)
+    {
+        return new Runtime
+        {
+            Name = runtime.Name,
+            Version = runtime.Version,
+            Build = runtime.Build,
+            RawDescription = runtime.RawDescription,
+        };
     }
 
     private static void ScrubStack(SentryStackTrace? stack)

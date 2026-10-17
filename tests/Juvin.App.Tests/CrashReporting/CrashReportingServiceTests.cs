@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text.Json;
 using Juvin.App.Services.CrashReporting;
 using Juvin.App.Tests.Fakes;
@@ -56,6 +57,113 @@ public sealed class CrashReportingServiceTests
         {
             SentrySdk.Close();
         }
+    }
+
+    [Fact]
+    public void AStaleEnabledNotification_AfterOptOut_DoesNotRestartTheSdk()
+    {
+        _settings.Update(s => s with { CrashReportingEnabled = true });
+        using var handler = new RecordingHttpHandler();
+        using var service = Create(handler);
+        try
+        {
+            service.Start();
+            var stale = _settings.Current;
+            _settings.Update(s => s with { CrashReportingEnabled = false });
+
+            _settings.RaiseSettingsChanged(stale);
+
+            Assert.False(service.IsEnabled);
+        }
+        finally
+        {
+            SentrySdk.Close();
+        }
+    }
+
+    [Fact]
+    public void EnablingAgainAfterOptOut_StillSendsThroughTheInjectedHandler()
+    {
+        using var handler = new RecordingHttpHandler();
+        using var service = Create(handler);
+        try
+        {
+            service.Start();
+            _settings.Update(s => s with { CrashReportingEnabled = true });
+            _settings.Update(s => s with { CrashReportingEnabled = false });
+            _settings.Update(s => s with { CrashReportingEnabled = true });
+
+            service.CaptureException(new InvalidOperationException(Canary), "test");
+            service.Flush(s_flushTimeout);
+
+            Assert.False(handler.IsDisposed);
+            Assert.Single(handler.Bodies);
+        }
+        finally
+        {
+            SentrySdk.Close();
+        }
+    }
+
+    [Fact]
+    public void AnUnobservedCancelledTask_SendsNothing()
+    {
+        _settings.Update(s => s with { CrashReportingEnabled = true });
+        using var handler = new RecordingHttpHandler();
+        using var service = Create(handler);
+        try
+        {
+            service.Start();
+            var cancelled = new AggregateException(new TaskCanceledException(), new AggregateException(new OperationCanceledException()));
+
+            service.CaptureException(cancelled, CrashOperations.UnobservedTask);
+            service.Flush(s_flushTimeout);
+
+            Assert.Empty(handler.Bodies);
+        }
+        finally
+        {
+            SentrySdk.Close();
+        }
+    }
+
+    [Fact]
+    public void AReservedContextFortyLevelsDown_NeverReachesTheEnvelope()
+    {
+        _settings.Update(s => s with { CrashReportingEnabled = true });
+        using var handler = new RecordingHttpHandler();
+        using var service = Create(handler);
+        try
+        {
+            service.Start();
+            Exception exception = new IOException { Data = { ["sentry:context:runtime"] = new Dictionary<string, string> { ["draft"] = Canary } } };
+            for (var depth = 0; depth < 40; depth++)
+            {
+                exception = new InvalidOperationException(null, exception);
+            }
+
+            service.CaptureException(exception, "test");
+            service.Flush(s_flushTimeout);
+
+            var body = Assert.Single(handler.Bodies);
+            Assert.DoesNotContain("merger", body);
+        }
+        finally
+        {
+            SentrySdk.Close();
+        }
+    }
+
+    [Fact]
+    public async Task ACyclicExceptionGraph_IsStrippedWithoutHanging()
+    {
+        var first = new InvalidOperationException { Data = { ["sentry:tag:thread"] = Canary } };
+        var second = new AggregateException(new IOException(null, first));
+        typeof(Exception).GetField("_innerException", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(first, second);
+
+        await Task.Run(() => CrashReportingService.StripReservedData(second)).WaitAsync(s_flushTimeout);
+
+        Assert.Empty(first.Data);
     }
 
     [Fact]

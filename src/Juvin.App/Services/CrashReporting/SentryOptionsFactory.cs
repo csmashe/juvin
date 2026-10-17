@@ -1,3 +1,5 @@
+using Sentry.Extensibility;
+
 namespace Juvin.App.Services.CrashReporting;
 
 internal static class SentryOptionsFactory
@@ -29,6 +31,18 @@ internal static class SentryOptionsFactory
         options.DisableAppDomainUnhandledExceptionCapture();
         options.DisableUnobservedTaskExceptionCapture();
         options.AddExceptionFilterForType<OperationCanceledException>();
+        options.AddExceptionFilter(new CancelledAggregateFilter());
         options.SetBeforeSend(CrashReportScrubber.Scrub);
+    }
+}
+
+/// <summary>Drops the <see cref="AggregateException" /> an unobserved cancelled task raises, which the type filter cannot see.</summary>
+internal sealed class CancelledAggregateFilter : IExceptionFilter
+{
+    public bool Filter(Exception ex)
+    {
+        return ex is AggregateException aggregate
+            && aggregate.Flatten().InnerExceptions is { Count: > 0 } inners
+            && inners.All(inner => inner is OperationCanceledException);
     }
 }

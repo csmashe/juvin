@@ -79,7 +79,7 @@ public sealed class CrashReportingService : ICrashReporter, IDisposable
 
             try
             {
-                StripReservedData(exception, 0);
+                StripReservedData(exception);
                 exception.SetSentryMechanism(operation, handled: !fatal, terminal: fatal);
                 SentrySdk.CaptureException(exception, scope => scope.SetTag(CrashReportScrubber.OperationTag, operation));
             }
@@ -147,13 +147,15 @@ public sealed class CrashReportingService : ICrashReporter, IDisposable
         }
     }
 
-    private void OnSettingsChanged(AppSettings settings)
+    // Reads the current settings rather than the notification's snapshot, so a stale enabled notification
+    // delivered after a newer disabled one cannot restart the SDK.
+    private void OnSettingsChanged(AppSettings _)
     {
         lock (_lock)
         {
             if (!_disposed && !_shutdown)
             {
-                Apply(settings);
+                Apply(_settings.Current);
             }
         }
     }
@@ -166,13 +168,23 @@ public sealed class CrashReportingService : ICrashReporter, IDisposable
             switch (enabled)
             {
                 case true when _sdk is null && IsAvailable:
-                    var gate = new CrashReportConsentGate(_innerHandler ?? new HttpClientHandler());
-                    _gate = gate;
-                    _sdk = SentrySdk.Init(options =>
+                    var gate = new CrashReportConsentGate(_innerHandler ?? new HttpClientHandler(), disposeInner: _innerHandler is null);
+                    try
                     {
-                        SentryOptionsFactory.Configure(options, _info, gate);
-                        _configure?.Invoke(options);
-                    });
+                        // ReSharper disable once AccessToDisposedClosure -- the options callback runs inside Init, before the catch could dispose the gate
+                        _sdk = SentrySdk.Init(options =>
+                        {
+                            SentryOptionsFactory.Configure(options, _info, gate);
+                            _configure?.Invoke(options);
+                        });
+                    }
+                    catch
+                    {
+                        gate.Dispose();
+                        throw;
+                    }
+
+                    _gate = gate;
                     break;
                 case false when _sdk is not null:
                     _gate?.Close();
@@ -186,28 +198,36 @@ public sealed class CrashReportingService : ICrashReporter, IDisposable
         }
     }
 
-    // The SDK promotes "sentry:context:*" and "sentry:tag:*" data entries into the event before BeforeSend runs.
-    private static void StripReservedData(Exception? exception, int depth)
+    // The SDK promotes "sentry:context:*" and "sentry:tag:*" data entries into the event before BeforeSend runs,
+    // at any depth, so the whole graph is walked; the visited set guards against a cycle.
+    internal static void StripReservedData(Exception exception)
     {
-        while (exception is not null && depth <= 32)
+        var visited = new HashSet<Exception>(ReferenceEqualityComparer.Instance);
+        var pending = new Stack<Exception>();
+        pending.Push(exception);
+        while (pending.TryPop(out var current))
         {
-            foreach (var key in exception.Data.Keys.OfType<string>().Where(key => key.StartsWith("sentry:", StringComparison.OrdinalIgnoreCase)).ToArray())
+            if (!visited.Add(current))
             {
-                exception.Data.Remove(key);
+                continue;
             }
 
-            if (exception is AggregateException aggregate)
+            foreach (var key in current.Data.Keys.OfType<string>().Where(key => key.StartsWith("sentry:", StringComparison.OrdinalIgnoreCase)).ToArray())
+            {
+                current.Data.Remove(key);
+            }
+
+            if (current is AggregateException aggregate)
             {
                 foreach (var inner in aggregate.InnerExceptions)
                 {
-                    StripReservedData(inner, depth + 1);
+                    pending.Push(inner);
                 }
-
-                return;
             }
-
-            exception = exception.InnerException;
-            depth++;
+            else if (current.InnerException is { } inner)
+            {
+                pending.Push(inner);
+            }
         }
     }
 

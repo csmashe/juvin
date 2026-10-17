@@ -33,6 +33,17 @@ public sealed class SentryOptionsFactoryTests
     }
 
     [Fact]
+    public void CancelledAggregateFilter_DropsOnlyAnAggregateOfCancellations()
+    {
+        var filter = new CancelledAggregateFilter();
+
+        Assert.True(filter.Filter(new AggregateException(new TaskCanceledException(), new AggregateException(new OperationCanceledException()))));
+        Assert.False(filter.Filter(new AggregateException(new OperationCanceledException(), new IOException())));
+        Assert.False(filter.Filter(new AggregateException()));
+        Assert.False(filter.Filter(new IOException()));
+    }
+
+    [Fact]
     public void BuildInfo_TakesTheEnvironmentOverride()
     {
         var previous = Environment.GetEnvironmentVariable("JUVIN_SENTRY_DSN");
