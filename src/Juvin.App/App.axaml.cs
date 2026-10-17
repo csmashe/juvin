@@ -19,6 +19,7 @@ namespace Juvin.App;
 public class App : Application
 {
     private static readonly TimeSpan s_hotkeyStopTimeout = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan s_menuCloseTimeout = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan s_launcherInstallTimeout = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan s_crashFlushTimeout = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan s_trayRecheckDelay = TimeSpan.FromSeconds(5);
@@ -111,32 +112,39 @@ public class App : Application
             RefreshLoginItem(loginItem);
         }
 
-        var commands = services.GetRequiredService<ControlCommandHandler>();
-        commands.ShowRequested += () => Dispatcher.UIThread.Post(() => ShowMainWindow(main));
-        _ = StartControlSocketAsync(services.GetRequiredService<ILocalSocketServer>(), commands);
-
-        // The menu subscribes before the connector starts so no capture goes unanswered.
+        // The panel and menu subscribe before either socket starts so no early capture or trigger goes unanswered.
         var panel = services.GetRequiredService<RewritePanelService>();
         panel.Start();
         var menu = services.GetRequiredService<ActionMenuService>();
         menu.Start();
+
+        // A desktop environment's own shortcut runs `juvin --trigger`, which arrives as a press here.
+        var commands = services.GetRequiredService<ControlCommandHandler>();
+        var hotkeys = services.GetRequiredService<HotkeyService>();
+        commands.ShowRequested += () => Dispatcher.UIThread.Post(() => ShowMainWindow(main));
+        commands.TriggerRequested += hotkeys.HandleTrigger;
+        _ = StartControlSocketAsync(services.GetRequiredService<ILocalSocketServer>(), commands);
+
         var connector = services.GetRequiredService<ConnectorService>();
         _ = StartConnectorAsync(connector);
 
-        // A desktop environment's own shortcut runs `juvin --trigger`, which arrives as a press here.
-        var hotkeys = services.GetRequiredService<HotkeyService>();
-        commands.TriggerRequested += hotkeys.HandleTrigger;
         _ = StartHotkeysAsync(hotkeys);
 
         desktop.Exit += (_, _) =>
         {
             _exiting = true;
-            menu.Stop();
+            // Bounded: the menu's close frame must go out before the socket closes, but a stalled browser must not hold exit.
+            var menuClosed = menu.Stop();
             panel.Stop();
             // Bounded: a backend may be mid-way through a desktop command, and shutdown must not hang on it.
             if (!hotkeys.StopAsync().Wait(s_hotkeyStopTimeout))
             {
                 Trace.WriteLine("[App] Hotkey backend did not stop in time.");
+            }
+
+            if (!menuClosed.Wait(s_menuCloseTimeout))
+            {
+                Trace.WriteLine("[App] The action menu close was not sent in time.");
             }
 
             _socketLifetime.Cancel();

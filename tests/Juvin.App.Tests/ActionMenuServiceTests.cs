@@ -345,6 +345,66 @@ public sealed class ActionMenuServiceTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task AskingAfterWhatAmIMissing_AfterTheModeChanged_IsRefusedWithoutRunning()
+    {
+        _settings.Update(s => s with { ProcessingMode = ProcessingMode.Codex });
+        var menuId = await OpenMenuAsync();
+        Choose(menuId, "missing");
+        await NextAsync("menu.update");
+        await NextAsync("menu.update");
+
+        _settings.Update(s => s with { ProcessingMode = ProcessingMode.Local });
+        _channel.Deliver($$"""{"v":1,"type":"menu.choose","menuId":"{{menuId}}","action":"custom","instruction":"Which one matters most?"}""");
+
+        var error = await NextAsync("menu.update");
+        Assert.Equal("error", error.GetProperty("state").GetString());
+        Assert.Equal(_localizer["Menu.Error.ProviderChanged"], error.GetProperty("text").GetString());
+        Assert.False(error.GetProperty("canRetry").GetBoolean());
+        await PingAsync();
+        Assert.Single(_codex.Requests);
+        Assert.Empty(_local.Requests);
+        Assert.False(_channel.HasSent);
+
+        // The extension restores the answer card after an error, so a second follow-up must be refused too, not applied.
+        _channel.Deliver($$"""{"v":1,"type":"menu.choose","menuId":"{{menuId}}","action":"custom","instruction":"And the second?"}""");
+        var again = await NextAsync("menu.update");
+        Assert.Equal("error", again.GetProperty("state").GetString());
+        await PingAsync();
+        Assert.Single(_codex.Requests);
+        Assert.Empty(_local.Requests);
+        Assert.False(_channel.HasSent);
+    }
+
+    [Fact]
+    public async Task AnUnknownAction_IsTracedWithoutThePeersText()
+    {
+        var menuId = await OpenMenuAsync();
+        using var trace = new TraceRecorder();
+
+        Choose(menuId, "Dear Ana marker");
+
+        await NextAsync("menu.update");
+        Assert.Contains(trace.Lines, line => line.Contains($"[ActionMenu] {menuId} chose unknown."));
+        Assert.DoesNotContain(trace.Lines, line => line.Contains("Dear Ana"));
+    }
+
+    [Fact]
+    public async Task Stop_EndsOnceTheMenuCloseIsSent()
+    {
+        await OpenMenuAsync();
+        var gate = new TaskCompletionSource();
+        _channel.SendGate = gate;
+
+        var stopped = _service.Stop();
+        await Task.Delay(50);
+        Assert.False(stopped.IsCompleted);
+        gate.SetResult();
+
+        await stopped.WaitAsync(s_timeout);
+        Assert.Equal("menu.close", (await _channel.NextSentAsync()).GetProperty("type").GetString());
+    }
+
+    [Fact]
     public async Task ANewCapture_DismissesWhatThePanelWasWorkingOn()
     {
         _local.CompletionGate = new TaskCompletionSource();

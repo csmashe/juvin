@@ -30,6 +30,8 @@ public abstract record ConnectorMessage
     internal virtual bool IsWellFormed => true;
 }
 
+/// <param name="Code">What the UI maps to its own localized text.</param>
+/// <param name="Message">For logs only on the app side; it is never shown, because the UI maps by <paramref name="Code" />.</param>
 public sealed record ConnectorError(string Code, string Message);
 
 public sealed record ExtensionIdentity(string Id, string Version);

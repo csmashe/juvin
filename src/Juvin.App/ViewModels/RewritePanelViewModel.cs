@@ -61,6 +61,9 @@ public sealed partial class RewritePanelViewModel : ObservableObject
     private RewriteAction? _selectedAction;
     private RewriteSession? _session;
 
+    // Set when a follow-up was refused because Settings now choose another provider; cleared with a new session.
+    private bool _sessionProviderChanged;
+
     // Started the session; follow-ups inherit whether its results can be applied.
     private RewriteAction? _sessionAction;
     private IRewriteTarget? _target;
@@ -182,7 +185,8 @@ public sealed partial class RewritePanelViewModel : ObservableObject
     /// <summary>"What am I missing?" returns advice, never a draft, so neither it nor its follow-ups can replace the selection.</summary>
     private bool IsSessionApplicable => _sessionAction is { IsMissing: false };
     public bool CanRecapture => _target is not null && !IsBusy;
-    public bool CanSendFollowUp => _session is not null && !IsRunning && RewriteActionCatalog.IsValidInstruction(FollowUpText);
+    public bool CanSendFollowUp =>
+        _session is not null && !_sessionProviderChanged && !IsRunning && RewriteActionCatalog.IsValidInstruction(FollowUpText);
 
     /// <summary>Raised when the panel should hide: Close, Escape, or a successful Apply.</summary>
     public event Action? HideRequested;
@@ -213,6 +217,7 @@ public sealed partial class RewritePanelViewModel : ObservableObject
         _capture = capture.Capture;
         _changes = null;
         _session = session;
+        _sessionProviderChanged = false;
         _sessionAction = action;
         _lastAction = action;
         _lastInstruction = null;
@@ -262,6 +267,11 @@ public sealed partial class RewritePanelViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanSendFollowUp), AllowConcurrentExecutions = true)]
     private Task SendFollowUpAsync()
     {
+        if (RefuseChangedProvider())
+        {
+            return Task.CompletedTask;
+        }
+
         var instruction = FollowUpText.Trim();
         FollowUpText = "";
         return RunAsync(RewriteAction.Custom, instruction);
@@ -276,9 +286,31 @@ public sealed partial class RewritePanelViewModel : ObservableObject
         }
 
         // A failed first turn rebuilds the session so a model corrected in Settings is picked up.
-        return _session is null || _session.History.Count == 0
-            ? StartActionAsync(action, _lastInstruction)
-            : RunAsync(action, _lastInstruction);
+        if (_session is null || _session.History.Count == 0)
+        {
+            return StartActionAsync(action, _lastInstruction);
+        }
+
+        return RefuseChangedProvider() ? Task.CompletedTask : RunAsync(action, _lastInstruction);
+    }
+
+    /// <summary>
+    ///     Refuses to continue the session when Settings now choose a different provider, so its conversation never
+    ///     reaches one the user switched away from. The result stays and a notice explains; a new rewrite starts over.
+    /// </summary>
+    private bool RefuseChangedProvider()
+    {
+        if (_session is null || _session.UsesSameProvider(_settings.Current))
+        {
+            return false;
+        }
+
+        Trace.WriteLine("[RewritePanel] Refused a follow-up: the provider changed since the session started.");
+        _sessionProviderChanged = true;
+        CanRetry = false;
+        Notice = _localizer["Panel.Notice.ProviderChanged"];
+        Refresh();
+        return true;
     }
 
     [RelayCommand]
@@ -426,6 +458,7 @@ public sealed partial class RewritePanelViewModel : ObservableObject
         _capture = result.Capture;
         _recaptureEditorId = result.Capture?.EditorId ?? _recaptureEditorId;
         _session = null;
+        _sessionProviderChanged = false;
         _sessionAction = null;
         ResultText = "";
         FollowUpText = "";
@@ -472,6 +505,7 @@ public sealed partial class RewritePanelViewModel : ObservableObject
         }
 
         _session = null;
+        _sessionProviderChanged = false;
         _lastAction = action;
         _lastInstruction = instruction;
         try

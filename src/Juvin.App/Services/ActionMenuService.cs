@@ -93,15 +93,16 @@ public sealed class ActionMenuService
 
     /// <summary>
     ///     Cancels a running action so a Codex child process does not outlive the app, and closes the menu.
-    ///     Called on the UI thread.
+    ///     Called on the UI thread; the returned task ends when the close has been sent or abandoned, and
+    ///     does not need the UI thread to finish.
     /// </summary>
-    public void Stop()
+    public Task Stop()
     {
         _connector.CaptureCompleted -= OnCaptureCompleted;
         _connector.TriggerFailed -= OnTriggerFailed;
         _connector.MenuChosen -= OnMenuChosen;
         _connector.MenuClosed -= OnMenuClosed;
-        Supersede();
+        return Supersede();
     }
 
     // Two captures can post in either order, so the UI thread checks the order again. Recapture never
@@ -114,7 +115,7 @@ public sealed class ActionMenuService
                 return;
             }
 
-            Supersede();
+            _ = Supersede();
             if (result.Capture is null)
             {
                 var answered = ConnectorService.AnsweredByBrowser(result)
@@ -137,7 +138,7 @@ public sealed class ActionMenuService
                 return;
             }
 
-            Supersede();
+            _ = Supersede();
             _panel.Show(null, number, result);
         });
 
@@ -151,13 +152,16 @@ public sealed class ActionMenuService
                 return;
             }
 
+            // The action id comes from the peer, so only a known one is traced.
+            var action = RewriteActionCatalog.Find(_settings.Current, choose.Action);
+            var traced = action?.Id ?? (choose.Action is MenuChoices.Review or MenuChoices.Recapture ? choose.Action : "unknown");
             if (menu.Busy is not null)
             {
-                Trace.WriteLine($"[ActionMenu] Ignored {choose.Action} on {menu.Id} while it is running.");
+                Trace.WriteLine($"[ActionMenu] Ignored {traced} on {menu.Id} while it is running.");
                 return;
             }
 
-            Trace.WriteLine($"[ActionMenu] {menu.Id} chose {choose.Action}.");
+            Trace.WriteLine($"[ActionMenu] {menu.Id} chose {traced}.");
             switch (choose.Action)
             {
                 case MenuChoices.Review:
@@ -169,7 +173,7 @@ public sealed class ActionMenuService
                     _ = RecaptureAsync(menu, menu.StartBusy());
                     break;
                 default:
-                    if (RewriteActionCatalog.Find(_settings.Current, choose.Action) is { } action)
+                    if (action is not null)
                     {
                         Run(menu, action, choose.Instruction);
                     }
@@ -212,16 +216,16 @@ public sealed class ActionMenuService
     private bool IsCurrent(OpenMenu menu) => _menu == menu;
 
     /// <summary>Closes the open menu, cancelling what it was running; a failed close is ignored.</summary>
-    private void Supersede()
+    private Task Supersede()
     {
         if (_menu is not { } menu)
         {
-            return;
+            return Task.CompletedTask;
         }
 
         _menu = null;
         menu.Busy?.Cancel();
-        _ = SendAsync(menu, (session, ct) => session.SendMenuCloseAsync(new MenuCloseMessage { MenuId = menu.Id }, ct));
+        return SendAsync(menu, (session, ct) => session.SendMenuCloseAsync(new MenuCloseMessage { MenuId = menu.Id }, ct));
     }
 
     private void Show(OpenMenu menu)
@@ -316,6 +320,16 @@ public sealed class ActionMenuService
         RewriteSession session;
         if (action.IsCustom && menu.Advice is { } advice)
         {
+            if (!advice.UsesSameProvider(settings))
+            {
+                // Continuing would send the conversation to a provider the user has since switched away from. The
+                // stale session stays, so a follow-up typed into the restored answer card is refused again rather
+                // than run as a quick action that would replace the draft.
+                Trace.WriteLine($"[ActionMenu] Refused a follow-up on {menu.Id}: the provider changed since the advice.");
+                _ = SendErrorAsync(menu, _localizer["Menu.Error.ProviderChanged"], canRetry: false);
+                return;
+            }
+
             // A follow-up to What am I missing? continues that conversation and gets more advice, never a draft.
             session = advice;
         }
@@ -488,7 +502,7 @@ public sealed class ActionMenuService
                 return;
             }
 
-            Supersede();
+            _ = Supersede();
             Show(new OpenMenu(NextMenuId(), menu.Session, menu.Target, menu.Number, result));
         });
     }
@@ -567,7 +581,8 @@ public sealed class ActionMenuService
         using var deadline = new CancellationTokenSource(s_sendTimeout);
         try
         {
-            await send(menu.Session, deadline.Token);
+            // Exit blocks the UI thread on the close, so the continuation must not need it.
+            await send(menu.Session, deadline.Token).ConfigureAwait(false);
             return true;
         }
         catch (Exception ex) when (ex is IOException or OperationCanceledException)

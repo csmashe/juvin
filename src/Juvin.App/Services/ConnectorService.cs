@@ -27,15 +27,15 @@ public sealed class ConnectorService
 
     private static readonly IReadOnlyList<string> s_adapters = ["gmail", "generic", "test-page"];
 
-    private static readonly TimeSpan s_captureTimeout = TimeSpan.FromSeconds(10);
-
     /// <summary>
     ///     On Windows and X11 one press fires both the global hook and the extension's command;
     ///     a capture starting this soon after the previous one is that same press.
     /// </summary>
     internal static TimeSpan CoalesceWindow { get; } = TimeSpan.FromMilliseconds(300);
 
+    private readonly Dictionary<ConnectorSession, ConnectorConfig?> _configSends = [];
     private readonly Lock _gate = new();
+    private readonly CancellationTokenSource _lifetime = new();
     private readonly Localizer _localizer;
     private readonly INativeHostRegistrar _registrar;
     private readonly IConnectorSocketServer _server;
@@ -64,6 +64,12 @@ public sealed class ConnectorService
     }
 
     public string Address => _server.Address;
+
+    /// <summary>How long a capture waits for the extension's answer.</summary>
+    internal TimeSpan CaptureTimeout { get; set; } = TimeSpan.FromSeconds(10);
+
+    /// <summary>How long one config send may wait on a peer that stops reading.</summary>
+    internal TimeSpan ConfigSendTimeout { get; set; } = TimeSpan.FromSeconds(10);
 
     /// <summary>Connected extensions that have sent <c>hello</c>, oldest first.</summary>
     public IReadOnlyList<ConnectorSession> Clients
@@ -135,7 +141,12 @@ public sealed class ConnectorService
         return failed;
     }
 
-    public Task StopAsync() => _server.StopAsync();
+    public async Task StopAsync()
+    {
+        // Exit blocks the UI thread on this call, so nothing here may need that thread to resume.
+        await _lifetime.CancelAsync().ConfigureAwait(false);
+        await _server.StopAsync().ConfigureAwait(false);
+    }
 
     public ConnectorConfig BuildConfig(AppSettings settings) =>
         new()
@@ -244,8 +255,8 @@ public sealed class ConnectorService
     }
 
     /// <summary>
-    ///     True when a browser answered itself; a timeout or broken frame is the app's own verdict and
-    ///     says nothing about which browser has focus.
+    ///     True when a browser answered itself; a timeout, a broken frame, or a closed connection is the app's
+    ///     own verdict and says nothing about which browser has focus.
     /// </summary>
     internal static bool AnsweredByBrowser(ContextResult result) =>
         result.Ok
@@ -254,15 +265,20 @@ public sealed class ConnectorService
                 ConnectorRewriteTarget.TimeoutCode
                 or ConnectorRewriteTarget.TooLargeCode
                 or ConnectorRewriteTarget.FailedCode
+                or ConnectorErrorCodes.Disconnected
                 or NoBrowserCode
             );
 
-    /// <summary>A capture, then a browser's own refusal, then "not focused", then the app's local failures.</summary>
+    /// <summary>
+    ///     A capture, then a browser's own refusal, then a timeout (likely the focused browser hung), then
+    ///     "not focused", then the app's other local failures.
+    /// </summary>
     private static int Rank(ContextResult result) =>
-        result.Ok ? 3
+        result.Ok ? 4
+        : result.Error?.Code == ConnectorRewriteTarget.TimeoutCode ? 2
         : !AnsweredByBrowser(result) ? 0
-        : result.Error!.Code == BrowserNotFocusedCode ? 1
-        : 2;
+        : result.Error?.Code == BrowserNotFocusedCode ? 1
+        : 3;
 
     private async Task HandleConnectionAsync(Stream stream, CancellationToken ct)
     {
@@ -312,22 +328,22 @@ public sealed class ConnectorService
         ContextResult result;
         try
         {
-            result = await session.RequestContextAsync(null, s_captureTimeout, CancellationToken.None);
+            result = await session.RequestContextAsync(null, CaptureTimeout, CancellationToken.None);
         }
         catch (Exception ex) when (ex is TimeoutException or ConnectorException)
         {
             Trace.WriteLine($"[ConnectorService] Capture failed ({ex.GetType().Name}).");
-            return;
+            result = new ContextResult(null, ConnectorRewriteTarget.ErrorOf(ex));
         }
 
         Report(session, number, result);
     }
 
-    private static async Task<ContextResult> RequestFocusedAsync(ConnectorSession session)
+    private async Task<ContextResult> RequestFocusedAsync(ConnectorSession session)
     {
         try
         {
-            return await session.RequestFocusedContextAsync(s_captureTimeout, CancellationToken.None);
+            return await session.RequestFocusedContextAsync(CaptureTimeout, CancellationToken.None);
         }
         catch (Exception ex) when (ex is TimeoutException or ConnectorException)
         {
@@ -420,17 +436,51 @@ public sealed class ConnectorService
         var config = BuildConfig(_settings.Current);
         foreach (var session in Clients)
         {
-            _ = SendConfigAsync(session, config);
+            _ = QueueConfigAsync(session, config);
         }
     }
 
-    private static async Task SendConfigAsync(ConnectorSession session, ConnectorConfig config)
+    /// <summary>
+    ///     Sends <paramref name="config" />, or while a send to this session is still pending, keeps it as the one
+    ///     to send next; a later call replaces it, so a slow reader gets only the latest config.
+    /// </summary>
+    internal async Task QueueConfigAsync(ConnectorSession session, ConnectorConfig config)
     {
+        lock (_gate)
+        {
+            if (!_configSends.TryAdd(session, null))
+            {
+                _configSends[session] = config;
+                return;
+            }
+        }
+
+        while (true)
+        {
+            await SendConfigAsync(session, config);
+            lock (_gate)
+            {
+                if (_configSends[session] is not { } next)
+                {
+                    _configSends.Remove(session);
+                    return;
+                }
+
+                config = next;
+                _configSends[session] = null;
+            }
+        }
+    }
+
+    private async Task SendConfigAsync(ConnectorSession session, ConnectorConfig config)
+    {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        deadline.CancelAfter(ConfigSendTimeout);
         try
         {
-            await session.SendConfigAsync(config, CancellationToken.None);
+            await session.SendConfigAsync(config, deadline.Token);
         }
-        catch (Exception ex) when (ex is IOException)
+        catch (Exception ex) when (ex is IOException or OperationCanceledException or ConnectorException)
         {
             Trace.WriteLine($"[ConnectorService] Could not resend config ({ex.GetType().Name}).");
         }
