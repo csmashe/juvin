@@ -31,35 +31,35 @@ internal sealed record DesktopSession(
         );
     }
 
+    /// <inheritdoc cref="DetectDesktop" />
+    public string? DesktopId => DetectDesktop(GetEnvironment);
+
     /// <summary>
     ///     "gnome", "kde", "hyprland", "sway", or null. The compositors' own session variables win
     ///     over <c>XDG_CURRENT_DESKTOP</c>, which a nested session may have inherited.
     /// </summary>
-    public string? DesktopId
+    public static string? DetectDesktop(Func<string, string?> getEnvironment)
     {
-        get
+        if (!string.IsNullOrEmpty(getEnvironment("HYPRLAND_INSTANCE_SIGNATURE")))
         {
-            if (!string.IsNullOrEmpty(GetEnvironment("HYPRLAND_INSTANCE_SIGNATURE")))
-            {
-                return "hyprland";
-            }
-
-            if (!string.IsNullOrEmpty(GetEnvironment("SWAYSOCK")))
-            {
-                return "sway";
-            }
-
-            // Colon-separated, such as "ubuntu:GNOME".
-            var desktops = (GetEnvironment("XDG_CURRENT_DESKTOP") ?? "").ToLowerInvariant();
-            return desktops switch
-            {
-                _ when desktops.Contains("hyprland") => "hyprland",
-                _ when desktops.Contains("sway") => "sway",
-                _ when desktops.Contains("gnome") || desktops.Contains("ubuntu") => "gnome",
-                _ when desktops.Contains("kde") || desktops.Contains("plasma") => "kde",
-                _ => null,
-            };
+            return "hyprland";
         }
+
+        if (!string.IsNullOrEmpty(getEnvironment("SWAYSOCK")))
+        {
+            return "sway";
+        }
+
+        // Colon-separated, such as "ubuntu:GNOME".
+        var desktops = (getEnvironment("XDG_CURRENT_DESKTOP") ?? "").ToLowerInvariant();
+        return desktops switch
+        {
+            _ when desktops.Contains("hyprland") => "hyprland",
+            _ when desktops.Contains("sway") => "sway",
+            _ when desktops.Contains("gnome") || desktops.Contains("ubuntu") => "gnome",
+            _ when desktops.Contains("kde") || desktops.Contains("plasma") => "kde",
+            _ => null,
+        };
     }
 
     public bool HasExecutable(string name) =>

@@ -1,12 +1,14 @@
 using System.Diagnostics;
 using System.Globalization;
 using Juvin.Core.Services;
+using Juvin.Platform.Linux.Hotkeys.DesktopShortcut;
 
 namespace Juvin.Platform.Linux.Launcher;
 
 /// <summary>
 ///     An XDG autostart entry in <c>$XDG_CONFIG_HOME/autostart</c>, which GNOME, KDE, and most other
-///     desktops start at login. A file there without the marker line is someone else's and is never removed.
+///     desktops start at login. Hyprland and Sway do not read it. Enabling overwrites whatever file is
+///     there; disabling removes only a file with the marker line.
 /// </summary>
 public sealed class XdgAutostartLoginItem : ILoginItem
 {
@@ -31,16 +33,23 @@ public sealed class XdgAutostartLoginItem : ILoginItem
     private readonly string? _executable;
     private readonly string _entryPath;
 
-    /// <param name="getEnvironment">Reads <c>APPDIR</c> and <c>APPIMAGE</c>, so an AppImage entry names the <c>.AppImage</c> file.</param>
+    /// <param name="getEnvironment">
+    ///     Reads <c>APPDIR</c> and <c>APPIMAGE</c>, so an AppImage entry names the <c>.AppImage</c> file, and
+    ///     the session variables that name the desktop.
+    /// </param>
     /// <param name="processPath">The running executable.</param>
     /// <param name="configHome"><c>$XDG_CONFIG_HOME</c>, or <c>~/.config</c>.</param>
     public XdgAutostartLoginItem(Func<string, string?> getEnvironment, string? processPath, string configHome)
     {
         _executable = LinuxProcessPath.Resolve(getEnvironment, processPath);
         _entryPath = Path.Join(configHome, "autostart", "juvin.desktop");
+        // Hyprland and Sway do not read autostart entries; under the dotnet host the entry would start dotnet, not the app.
+        IsSupported = DesktopSession.DetectDesktop(getEnvironment) is not ("hyprland" or "sway")
+            && _executable is not null
+            && !string.Equals(Path.GetFileNameWithoutExtension(_executable), "dotnet", StringComparison.Ordinal);
     }
 
-    public bool IsSupported => _executable is not null;
+    public bool IsSupported { get; }
 
     public Task EnableAsync(CancellationToken ct) => Task.Run(Enable, ct);
 

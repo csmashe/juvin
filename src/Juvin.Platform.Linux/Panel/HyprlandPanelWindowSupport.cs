@@ -34,9 +34,9 @@ public sealed class HyprlandPanelWindowSupport : IPanelWindowSupport
         _retryDelay = retryDelay;
     }
 
-    public void ShowOnAllWorkspaces(nint windowHandle, string title)
+    public void ShowOnAllWorkspaces(nint windowHandle, string? handleDescriptor, string title)
     {
-        _inner.ShowOnAllWorkspaces(windowHandle, title);
+        _inner.ShowOnAllWorkspaces(windowHandle, handleDescriptor, title);
         if (_session.DesktopId == "hyprland" && _session.HasExecutable("hyprctl"))
         {
             _ = PinAsync(title);

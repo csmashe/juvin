@@ -10,25 +10,31 @@ namespace Juvin.App.Services;
 /// <summary>
 ///     The tray icon with Open and Exit. Avalonia's tray icon does nothing on desktops without a
 ///     tray host, so <see cref="IsTrayAvailable" /> also requires the platform probe to find one.
+///     A tray host can start after the app, so <see cref="RefreshAsync" /> probes again.
 /// </summary>
 public sealed class TrayIconService : IDisposable
 {
     private const string IconFileName = "juvin-mark-color-32.png";
 
     private readonly Localizer _localizer;
-    private readonly ITrayHostProbe _probe;
+    private readonly TrayHostAvailability _host;
     private TrayIcon? _trayIcon;
+    private bool _iconShown;
 
     public TrayIconService(Localizer localizer, ITrayHostProbe probe)
     {
         _localizer = localizer;
-        _probe = probe;
+        _host = new TrayHostAvailability(probe);
+        _host.Changed += (_, _) => AvailabilityChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public event EventHandler? ShowSettingsRequested;
     public event EventHandler? ExitRequested;
 
-    public bool IsTrayAvailable { get; private set; }
+    /// <summary>Raised on the thread that called <see cref="RefreshAsync" /> when the answer changes.</summary>
+    public event EventHandler? AvailabilityChanged;
+
+    public bool IsTrayAvailable => _iconShown && _host.IsAvailable;
 
     public void Initialize()
     {
@@ -37,7 +43,7 @@ public sealed class TrayIconService : IDisposable
             return;
         }
 
-        var hostPresent = _probe.IsTrayHostAvailable();
+        _host.ProbeBlocking();
         try
         {
             _trayIcon = new TrayIcon
@@ -49,15 +55,29 @@ public sealed class TrayIconService : IDisposable
             };
             _trayIcon.Clicked += (_, _) => ShowSettingsRequested?.Invoke(this, EventArgs.Empty);
             TrayIcon.SetIcons(app, [_trayIcon]);
-            IsTrayAvailable = hostPresent;
+            _iconShown = true;
         }
         catch (Exception ex)
         {
-            IsTrayAvailable = false;
             Trace.WriteLine($"[TrayIconService] Tray init failed: {ex.Message}");
         }
 
         Trace.WriteLine($"[TrayIconService] Tray available: {IsTrayAvailable}");
+    }
+
+    /// <summary>
+    ///     Probes for a tray host again and returns <see cref="IsTrayAvailable" />; an unknown answer keeps
+    ///     the last one. Stays false when the tray icon itself could not be created.
+    /// </summary>
+    public async Task<bool> RefreshAsync()
+    {
+        if (!_iconShown)
+        {
+            return false;
+        }
+
+        await _host.RefreshAsync();
+        return IsTrayAvailable;
     }
 
     public void Dispose()
@@ -74,6 +94,7 @@ public sealed class TrayIconService : IDisposable
 
         _trayIcon.Dispose();
         _trayIcon = null;
+        _iconShown = false;
     }
 
     private static WindowIcon? LoadIcon()

@@ -96,6 +96,30 @@ public sealed class XdgAutostartLoginItemTests : IDisposable
         await Assert.ThrowsAsync<LoginItemException>(() => item.EnableAsync(CancellationToken.None));
     }
 
+    [LinuxTheory]
+    [InlineData("XDG_CURRENT_DESKTOP", "Hyprland")]
+    [InlineData("SWAYSOCK", "/run/user/1000/sway-ipc.sock")]
+    public void HyprlandAndSway_AreUnsupportedBecauseTheyIgnoreAutostart(string variable, string value)
+    {
+        _environment[variable] = value;
+
+        Assert.False(Create().IsSupported);
+    }
+
+    [LinuxFact]
+    public void Gnome_IsSupported()
+    {
+        _environment["XDG_CURRENT_DESKTOP"] = "ubuntu:GNOME";
+
+        Assert.True(Create().IsSupported);
+    }
+
+    [LinuxFact]
+    public void TheDotnetHost_IsUnsupported()
+    {
+        Assert.False(Create("/usr/lib/dotnet/dotnet").IsSupported);
+    }
+
     [LinuxFact]
     public async Task UnwritableConfigHome_Throws()
     {

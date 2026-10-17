@@ -88,6 +88,18 @@ public sealed class WindowsNativeHostRegistrarTests : IDisposable
     }
 
     [WindowsFact]
+    public async Task Unregister_LeavesARegistrationThatNamesAnotherInstallation()
+    {
+        var firefox = new BrowserTarget("firefox", "Firefox", BrowserFamily.Firefox, BrowserPackaging.Native);
+        await CreateRegistrar().RegisterAsync(firefox, CancellationToken.None);
+
+        await CreateRegistrar(_temp.File("other.exe")).UnregisterAsync(firefox, CancellationToken.None);
+
+        Assert.Equal(HostRegistration.Registered, CreateRegistrar().CheckRegistration(firefox));
+        Assert.True(File.Exists(Path.Join(ManifestDirectory, "com.juvin.host.firefox.json")));
+    }
+
+    [WindowsFact]
     public async Task Register_ThrowsWhenTheHostWasNotFound()
     {
         var registrar = new WindowsNativeHostRegistrar(() => null, ManifestDirectory, Registry.CurrentUser, null);

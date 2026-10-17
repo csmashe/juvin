@@ -6,5 +6,9 @@ namespace Juvin.Platform;
 /// </summary>
 public interface ITrayHostProbe
 {
-    bool IsTrayHostAvailable();
+    /// <summary>
+    ///     True or false when the desktop answered; null when it could not tell, such as a busy
+    ///     session bus, so the caller can keep its last answer.
+    /// </summary>
+    Task<bool?> IsTrayHostAvailableAsync(CancellationToken ct);
 }

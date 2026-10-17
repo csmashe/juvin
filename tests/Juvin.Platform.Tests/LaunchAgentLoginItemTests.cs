@@ -73,4 +73,10 @@ public sealed class LaunchAgentLoginItemTests : IDisposable
         Assert.False(item.IsSupported);
         await Assert.ThrowsAsync<LoginItemException>(() => item.EnableAsync(CancellationToken.None));
     }
+
+    [Fact]
+    public void TheDotnetHost_IsUnsupported()
+    {
+        Assert.False(Create("/usr/local/share/dotnet/dotnet").IsSupported);
+    }
 }

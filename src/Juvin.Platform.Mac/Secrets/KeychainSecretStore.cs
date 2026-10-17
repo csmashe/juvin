@@ -9,26 +9,13 @@ namespace Juvin.Platform.Mac.Secrets;
 /// </summary>
 public sealed class KeychainSecretStore : ISecretStore
 {
-    private const string DefaultService = "Juvin";
-
-    private readonly string _service;
-
-    public KeychainSecretStore()
-        : this(DefaultService)
-    {
-    }
-
-    // ReSharper disable once MemberCanBePrivate.Global -- test seam so a Mac test run can use a throwaway Keychain service
-    internal KeychainSecretStore(string service)
-    {
-        _service = service;
-    }
+    private const string Service = "Juvin";
 
     public Task<string?> GetAsync(string name)
     {
         SecretName.ThrowIfInvalid(name);
 
-        var bytes = Keychain.Find(_service, name);
+        var bytes = Keychain.Find(Service, name);
         if (bytes is null)
         {
             return Task.FromResult<string?>(null);
@@ -52,7 +39,7 @@ public sealed class KeychainSecretStore : ISecretStore
         var bytes = Encoding.UTF8.GetBytes(value);
         try
         {
-            Keychain.Upsert(_service, name, bytes);
+            Keychain.Upsert(Service, name, bytes);
         }
         finally
         {
@@ -66,7 +53,7 @@ public sealed class KeychainSecretStore : ISecretStore
     {
         SecretName.ThrowIfInvalid(name);
 
-        Keychain.Delete(_service, name);
+        Keychain.Delete(Service, name);
         return Task.CompletedTask;
     }
 }

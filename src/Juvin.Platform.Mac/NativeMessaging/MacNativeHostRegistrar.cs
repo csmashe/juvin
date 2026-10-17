@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Juvin.Core.Localization;
 using Juvin.Core.Services;
 
 namespace Juvin.Platform.Mac.NativeMessaging;
@@ -10,18 +11,20 @@ namespace Juvin.Platform.Mac.NativeMessaging;
 public sealed class MacNativeHostRegistrar : INativeHostRegistrar
 {
     private readonly Func<string?> _locateHost;
+    private readonly Localizer _localizer;
     private readonly string _home;
     private readonly string _systemApplications;
     private readonly IReadOnlyList<MacBrowser> _browsers;
 
-    public MacNativeHostRegistrar(Func<string?> locateHost)
-        : this(locateHost, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "/Applications")
+    public MacNativeHostRegistrar(Func<string?> locateHost, Localizer localizer)
+        : this(locateHost, localizer, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "/Applications")
     {
     }
 
-    internal MacNativeHostRegistrar(Func<string?> locateHost, string home, string systemApplications)
+    internal MacNativeHostRegistrar(Func<string?> locateHost, Localizer localizer, string home, string systemApplications)
     {
         _locateHost = locateHost;
+        _localizer = localizer;
         _home = home;
         _systemApplications = systemApplications;
 
@@ -61,6 +64,12 @@ public sealed class MacNativeHostRegistrar : INativeHostRegistrar
     {
         var hostPath = NativeHostManifest.RequireHost(_locateHost());
         var definition = Find(browser);
+        // Gatekeeper runs an app that was never moved from a random read-only path that is gone on the next launch.
+        if (hostPath.Contains("/AppTranslocation/", StringComparison.Ordinal))
+        {
+            throw new NativeHostRegistrationException(_localizer["BrowserConnector.RegisterTranslocated"]);
+        }
+
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(definition.ManifestPath)!);
@@ -75,9 +84,22 @@ public sealed class MacNativeHostRegistrar : INativeHostRegistrar
         return Task.CompletedTask;
     }
 
+    /// <remarks>A manifest that names another installation's host is left in place.</remarks>
     public Task UnregisterAsync(BrowserTarget browser, CancellationToken ct)
     {
         var definition = Find(browser);
+        var registered = NativeHostManifest.ReadHostPath(definition.ManifestPath);
+        if (registered is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        if (registered != _locateHost())
+        {
+            Trace.WriteLine($"[MacNativeHostRegistrar] Left {definition.Target.Id}: it is registered to another installation.");
+            return Task.CompletedTask;
+        }
+
         try
         {
             File.Delete(definition.ManifestPath);

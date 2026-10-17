@@ -1,4 +1,5 @@
 using System.Runtime.Versioning;
+using Juvin.Core.Localization;
 using Juvin.Platform.Mac.NativeMessaging;
 
 namespace Juvin.Platform.Tests;
@@ -26,7 +27,11 @@ public sealed class MacNativeHostRegistrarTests : IDisposable
 
     private string HostPath => _temp.File("juvin-host");
 
-    private MacNativeHostRegistrar CreateRegistrar(string? hostPath = null) => new(() => hostPath ?? HostPath, Home, SystemApplications);
+    private MacNativeHostRegistrar CreateRegistrar(string? hostPath = null) => new(() => hostPath ?? HostPath, new Localizer(), Home, SystemApplications);
+
+    private string ChromeManifestPath => Path.Join(Home, "Library", "Application Support", "Google", "Chrome", "NativeMessagingHosts", NativeHostManifest.FileName);
+
+    private static BrowserTarget Chrome => new("chrome", "Google Chrome", BrowserFamily.Chromium, BrowserPackaging.Native);
 
     [Fact]
     public void DetectBrowsers_FindsSystemAndUserApplications()
@@ -73,9 +78,31 @@ public sealed class MacNativeHostRegistrarTests : IDisposable
     [Fact]
     public async Task Register_ThrowsWhenTheHostWasNotFound()
     {
-        var registrar = new MacNativeHostRegistrar(() => null, Home, SystemApplications);
+        var registrar = new MacNativeHostRegistrar(() => null, new Localizer(), Home, SystemApplications);
         var edge = new BrowserTarget("edge", "Microsoft Edge", BrowserFamily.Chromium, BrowserPackaging.Native);
 
         await Assert.ThrowsAsync<NativeHostRegistrationException>(() => registrar.RegisterAsync(edge, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Unregister_LeavesAManifestThatNamesAnotherInstallation()
+    {
+        await CreateRegistrar(_temp.File("other")).RegisterAsync(Chrome, CancellationToken.None);
+
+        await CreateRegistrar().UnregisterAsync(Chrome, CancellationToken.None);
+
+        Assert.Equal(_temp.File("other"), NativeHostManifest.ReadHostPath(ChromeManifestPath));
+    }
+
+    [Fact]
+    public async Task Register_RefusesATranslocatedApp()
+    {
+        const string translocated = "/private/var/folders/xy/T/AppTranslocation/1A2B/d/Juvin.app/Contents/MacOS/juvin-host";
+        var registrar = CreateRegistrar(translocated);
+
+        var error = await Assert.ThrowsAsync<NativeHostRegistrationException>(() => registrar.RegisterAsync(Chrome, CancellationToken.None));
+
+        Assert.Contains("Applications", error.Message);
+        Assert.False(File.Exists(ChromeManifestPath));
     }
 }
