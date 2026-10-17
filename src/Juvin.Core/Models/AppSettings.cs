@@ -3,6 +3,8 @@
 // ReSharper disable UnusedMember.Global -- settings consumed by the app once the UI lands
 
 using System.Collections.Immutable;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Juvin.Core.Models;
 
@@ -14,11 +16,18 @@ namespace Juvin.Core.Models;
 public sealed record AppSettings
 {
     private const int CurrentSchemaVersion = 1;
+    private const string DefaultLocalServerUrl = "http://localhost:11434";
+    private const string DefaultRewriteShortcut = "Ctrl+Shift+F";
 
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
 
     public ProcessingMode ProcessingMode { get; init; } = ProcessingMode.Local;
-    public string LocalServerUrl { get; init; } = "http://localhost:11434";
+    public string LocalServerUrl
+    {
+        get;
+        // ReSharper disable once NullCoalescingConditionIsAlwaysNotNullAccordingToAPIContract -- the settings file can hold null
+        init => field = value ?? DefaultLocalServerUrl;
+    } = DefaultLocalServerUrl;
     public string? LocalModel { get; init; }
     public bool LocalThinkingDisabled { get; init; } = true;
     public string? CodexBinaryPath { get; init; }
@@ -27,7 +36,12 @@ public sealed record AppSettings
     /// <summary>The name rewrites sign with; null leaves sign-offs as the draft has them.</summary>
     public string? SenderName { get; init; }
 
-    public string RewriteShortcut { get; init; } = "Ctrl+Shift+F";
+    public string RewriteShortcut
+    {
+        get;
+        // ReSharper disable once NullCoalescingConditionIsAlwaysNotNullAccordingToAPIContract -- the settings file can hold null
+        init => field = value ?? DefaultRewriteShortcut;
+    } = DefaultRewriteShortcut;
 
     /// <summary>
     ///     The key position the user pressed when recording the shortcut, as a canonical key name, when it differs
@@ -64,4 +78,8 @@ public sealed record AppSettings
     public string? UiLanguage { get; init; }
 
     public bool HasCompletedOnboarding { get; init; }
+
+    /// <summary>Settings this build does not know, such as those a newer Juvin wrote, kept so a save does not drop them.</summary>
+    [JsonExtensionData]
+    public IDictionary<string, JsonElement>? Extra { get; init; }
 }

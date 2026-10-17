@@ -239,4 +239,61 @@ public sealed class HistoryServiceTests : IDisposable
         Assert.Empty(new HistoryService(path).Entries);
         Assert.Empty(Directory.GetFiles(_temp.Path, "history.json.broken-*"));
     }
+
+    [Fact]
+    public void MarkApplied_WithAnUnknownIdDoesNotWrite()
+    {
+        var path = _temp.File("history.json");
+        var service = new HistoryService(path);
+        service.Add(Entry("a", s_now));
+        var written = File.GetLastWriteTimeUtc(path);
+        var content = File.ReadAllText(path);
+        var changes = 0;
+        service.Changed += () => changes++;
+
+        service.MarkApplied("missing");
+
+        Assert.Equal(0, changes);
+        Assert.Equal(content, File.ReadAllText(path));
+        Assert.Equal(written, File.GetLastWriteTimeUtc(path));
+    }
+
+    [Fact]
+    public void Delete_KeepsPreservedCopiesForClear()
+    {
+        var path = _temp.File("history.json");
+        var service = new HistoryService(path);
+        service.Add(Entry("a", s_now));
+        File.WriteAllText(path + ".broken-1", "draft text");
+
+        service.Delete("a");
+
+        Assert.Empty(service.Entries);
+        Assert.True(File.Exists(path + ".broken-1"));
+    }
+
+    [Fact]
+    public void Prune_RemovesTheCopyOfAnExpiredCorruptFile()
+    {
+        var path = _temp.File("history.json");
+        File.WriteAllText(path, "[{ not json");
+        File.SetLastWriteTimeUtc(path, s_now.AddDays(-90).UtcDateTime);
+        var service = new HistoryService(path);
+
+        service.Prune(30, s_now);
+
+        Assert.Empty(Directory.GetFiles(_temp.Path, "history.json.broken-*"));
+    }
+
+    [Fact]
+    public void AnIntegerEnumValue_CountsAsCorruption()
+    {
+        var path = _temp.File("history.json");
+        File.WriteAllText(path, "[{\"id\":\"a\",\"mode\":99}]");
+
+        var service = new HistoryService(path);
+
+        Assert.Empty(service.Entries);
+        Assert.Single(Directory.GetFiles(_temp.Path, "history.json.broken-*"));
+    }
 }

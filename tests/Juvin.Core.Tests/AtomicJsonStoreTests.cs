@@ -99,6 +99,73 @@ public sealed class AtomicJsonStoreTests : IDisposable
         Assert.ThrowsAny<System.Text.Json.JsonException>(() => store.Current);
     }
 
+    [Fact]
+    public void Update_RemovesStagingFilesAnInterruptedWriteLeft()
+    {
+        var path = _temp.File("data.json");
+        var token = Guid.NewGuid().ToString("N");
+        var staging = _temp.File($".data.json.{token}.tmp");
+        var backupStaging = _temp.File($".data.json.bak.{token}.tmp");
+        var fresh = _temp.File($".data.json.{Guid.NewGuid():N}.tmp");
+        var other = _temp.File($".data.json.other.{token}.tmp");
+        foreach (var file in new[] { staging, backupStaging, fresh, other })
+        {
+            File.WriteAllText(file, "old");
+        }
+
+        var abandoned = DateTime.UtcNow - TimeSpan.FromMinutes(5);
+        File.SetLastWriteTimeUtc(staging, abandoned);
+        File.SetLastWriteTimeUtc(backupStaging, abandoned);
+        File.SetLastWriteTimeUtc(other, abandoned);
+        var store = new AtomicJsonStore<Sample>(path, () => new Sample("default", 0));
+
+        store.Update(s => s with { Count = 1 });
+
+        Assert.False(File.Exists(staging));
+        Assert.False(File.Exists(backupStaging));
+        // A writer in another process may be between writing and publishing this one.
+        Assert.True(File.Exists(fresh));
+        // Another store's file, whose name the wildcard also matches.
+        Assert.True(File.Exists(other));
+    }
+
+    [Fact]
+    public void Load_PreservedCopyKeepsTheOriginalWriteTime()
+    {
+        var path = _temp.File("data.json");
+        File.WriteAllText(path, "{ not json");
+        var written = new DateTime(2026, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(path, written);
+        var store = new AtomicJsonStore<Sample>(
+            path,
+            () => new Sample("default", 0),
+            new AtomicJsonStoreOptions<Sample> { CorruptFilePolicy = AtomicJsonCorruptFilePolicy.PreserveAndReset }
+        );
+
+        _ = store.Current;
+
+        var preserved = Assert.Single(Directory.GetFiles(_temp.Path, "data.json.broken-*"));
+        Assert.Equal(written, File.GetLastWriteTimeUtc(preserved));
+    }
+
+    [Fact]
+    public void Update_CreatesAMissingFolderOwnerOnly()
+    {
+        var folder = _temp.File("Juvin");
+        var store = new AtomicJsonStore<Sample>(Path.Join(folder, "data.json"), () => new Sample("default", 0));
+
+        store.Update(s => s with { Count = 1 });
+
+        Assert.True(Directory.Exists(folder));
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Equal(
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute,
+                File.GetUnixFileMode(folder)
+            );
+        }
+    }
+
     // ReSharper disable once NotAccessedPositionalProperty.Local -- compared through record equality and serialized by System.Text.Json
     private sealed record Sample(string Name, int Count);
 }

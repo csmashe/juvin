@@ -210,4 +210,61 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.False(File.Exists(path + ".bak.broken-1"));
         Assert.Null(new SettingsService(path).Current.LocalModel);
     }
+
+    [Fact]
+    public void Load_UsesTheDefaultForANullString()
+    {
+        var path = _temp.File("settings.json");
+        File.WriteAllText(path, """{ "localServerUrl": null, "rewriteShortcut": null }""");
+
+        var loaded = new SettingsService(path).Current;
+
+        Assert.Equal("http://localhost:11434", loaded.LocalServerUrl);
+        Assert.Equal("Ctrl+Shift+F", loaded.RewriteShortcut);
+    }
+
+    [Fact]
+    public void Load_TreatsAnIntegerEnumValueAsCorruption()
+    {
+        var path = _temp.File("settings.json");
+        File.WriteAllText(path, """{ "processingMode": 99 }""");
+
+        var loaded = new SettingsService(path).Current;
+
+        Assert.Equal(ProcessingMode.Local, loaded.ProcessingMode);
+        var preserved = Assert.Single(Directory.GetFiles(_temp.Path, "settings.json.broken-*"));
+        Assert.Equal("""{ "processingMode": 99 }""", File.ReadAllText(preserved));
+    }
+
+    [Fact]
+    public void Load_WithACorruptBackupToo_ReturnsDefaultsAndPreservesBoth()
+    {
+        var path = _temp.File("settings.json");
+        File.WriteAllText(path, "{ not json");
+        File.WriteAllText(path + ".bak", "{ also not json");
+
+        var loaded = new SettingsService(path).Current;
+
+        Assert.Null(loaded.LocalModel);
+        Assert.Equal("{ not json", File.ReadAllText(Assert.Single(Directory.GetFiles(_temp.Path, "settings.json.broken-*"))));
+        Assert.Equal("{ also not json", File.ReadAllText(Assert.Single(Directory.GetFiles(_temp.Path, "settings.json.bak.broken-*"))));
+    }
+
+    [Fact]
+    public void Update_KeepsUnknownSettingsInThePrimaryAndTheBackup()
+    {
+        var path = _temp.File("settings.json");
+        File.WriteAllText(path, """{ "historyRetentionDays": 7, "someFutureSetting": { "nested": [1, 2] } }""");
+        var service = new SettingsService(path);
+
+        service.Update(s => s with { LocalModel = "llama3" });
+        service.Update(s => s with { HistoryEnabled = true });
+
+        foreach (var file in new[] { path, path + ".bak" })
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(file));
+            var future = document.RootElement.GetProperty("someFutureSetting");
+            Assert.Equal([1, 2], future.GetProperty("nested").EnumerateArray().Select(n => n.GetInt32()));
+        }
+    }
 }

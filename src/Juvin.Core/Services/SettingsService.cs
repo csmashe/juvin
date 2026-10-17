@@ -12,8 +12,7 @@ public sealed class SettingsService : ISettingsService
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = true,
-        UnmappedMemberHandling = JsonUnmappedMemberHandling.Skip,
-        Converters = { new JsonStringEnumConverter() },
+        Converters = { new JsonStringEnumConverter(allowIntegerValues: false) },
     };
 
     private readonly AtomicJsonStore<AppSettings> _store;
