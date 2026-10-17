@@ -12,10 +12,21 @@ public sealed class SwayPanelWindowSupportTests : IDisposable
 
     private const string Tree =
         """
-        {"id":1,"type":"root","nodes":[{"id":2,"type":"output","nodes":[
+        {"id":1,"type":"root","focus":[2],"nodes":[{"id":2,"type":"output","name":"Virtual-1","focus":[3],"nodes":[
           {"id":3,"type":"workspace","name":"1","rect":{"x":0,"y":23,"width":1280,"height":777},
            "nodes":[{"id":7,"type":"con","name":"Juvin","rect":{"x":0,"y":48,"width":1280,"height":752},"window_properties":{"class":"juvin"}}],
            "floating_nodes":[{"id":8,"type":"floating_con","name":"Juvin rewrite","rect":{"x":410,"y":91,"width":460,"height":640},"window_properties":{"class":"juvin"}}]}]}]}
+        """;
+
+    private const string TwoOutputs =
+        """
+        {"id":1,"type":"root","focus":[4,2],"nodes":[
+          {"id":2,"type":"output","name":"Virtual-1","focus":[3],"nodes":[
+            {"id":3,"type":"workspace","name":"1","rect":{"x":0,"y":23,"width":1280,"height":777},
+             "floating_nodes":[{"id":8,"type":"floating_con","name":"Juvin rewrite","rect":{"x":410,"y":91,"width":460,"height":640},"window_properties":{"class":"juvin"}}]}]},
+          {"id":4,"type":"output","name":"Virtual-2","focus":[6,5],"nodes":[
+            {"id":5,"type":"workspace","name":"2","rect":{"x":1280,"y":23,"width":1920,"height":1057}},
+            {"id":6,"type":"workspace","name":"3","rect":{"x":1280,"y":23,"width":1920,"height":1057}}]}]}
         """;
 
     private readonly RecordingSupport _inner = new();
@@ -32,7 +43,7 @@ public sealed class SwayPanelWindowSupportTests : IDisposable
         await Support().PlaceAsync(Title);
 
         Assert.Equal(["swaymsg", "swaymsg"], _runner.Calls.Select(call => call.FileName));
-        Assert.Equal(["[con_id=8] sticky enable, move absolute position 804 39"], _runner.Calls[1].Arguments);
+        Assert.Equal(["[con_id=8] move container to output \"Virtual-1\", sticky enable, move absolute position 804 39"], _runner.Calls[1].Arguments);
     }
 
     [LinuxFact]
@@ -63,7 +74,13 @@ public sealed class SwayPanelWindowSupportTests : IDisposable
     {
         Assert.Null(SwayPanelWindowSupport.FindPanel("[]", Title));
         Assert.Null(SwayPanelWindowSupport.FindPanel(Tree, "Set up Juvin"));
-        Assert.Equal((8L, 804, 39), SwayPanelWindowSupport.FindPanel(Tree, Title));
+        Assert.Equal((8L, "Virtual-1", 804, 39), SwayPanelWindowSupport.FindPanel(Tree, Title));
+    }
+
+    [LinuxFact]
+    public void FindPanel_PlacesThePanelOnTheFocusedOutput()
+    {
+        Assert.Equal((8L, "Virtual-2", 2724, 39), SwayPanelWindowSupport.FindPanel(TwoOutputs, Title));
     }
 
     private SwayPanelWindowSupport Support()
