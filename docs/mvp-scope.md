@@ -95,10 +95,11 @@ No automatic fallback between modes. A local failure is reported, never silently
 **How the Codex provider works.** It runs the installed `codex` executable as a child process, the same approach TypeWhisper's Authenticated CLIs plugin uses:
 
 ```
-codex exec --json --ephemeral --sandbox read-only --skip-git-repo-check -m <model> -
+codex exec --json --ephemeral --sandbox read-only --skip-git-repo-check \
+  -c mcp_servers.<name>.enabled=false ... --disable <feature> ... -m <model> -
 ```
 
-The prompt goes in on stdin and the response comes back as JSONL events on stdout. Juvin parses the final agent message and ignores everything else. `--sandbox read-only` and `--ephemeral` keep Codex from touching files or persisting a session. The wizard verifies the binary with `codex exec --help` and surfaces sign-in state. Codex also accepts `--image`, which matters for the screen-conversation workflow later. Spike result (October 8, 2026): the JSONL stream carries only the completed message, no per-token deltas, so Codex mode shows progress rather than a live preview.
+The prompt goes in on stdin and the response comes back as JSONL events on stdout. Juvin parses the final agent message and ignores everything else. `--sandbox read-only` and `--ephemeral` keep Codex from touching files or persisting a session, but a read-only sandbox still lets a shell read any file, and an instruction injected through the thread could ask Codex to quote one. So Juvin runs `codex features list` first and disables each of Codex's shell, exec, browser, computer-use, image, sub-agent, app, plugin, and hook features that the installed Codex reports, and runs `codex mcp list --json` to disable every MCP server the user's Codex configuration lists. A Codex that cannot list its features or MCP servers, or has no shell feature to turn off, is reported as too old. The wizard verifies the binary with `codex exec --help`, `codex features list`, and `codex mcp list` and surfaces sign-in state. Codex also accepts `--image`, which matters for the screen-conversation workflow later. Spike result (October 8, 2026): the JSONL stream carries only the completed message, no per-token deltas, so Codex mode shows progress rather than a live preview.
 
 Providers implement an interface shaped like TypeWhisper's `ILlmProviderRole` so Anthropic, OpenAI, and other API-key providers, or a plugin loader, can be added later without changing callers.
 

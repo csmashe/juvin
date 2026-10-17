@@ -41,6 +41,6 @@ First token on the no-thinking route is mostly prompt processing of the roughly 
 
 ## Not covered
 
-- LM Studio and llama.cpp servers, which name the reasoning field differently.
+- LM Studio and llama.cpp servers, which name the reasoning field differently. They truncate an over-long prompt themselves, so Juvin refuses a conversation over the character budget before sending it to them.
 - Longer threads near the context limit and the truncation state.
 - Non-English threads.

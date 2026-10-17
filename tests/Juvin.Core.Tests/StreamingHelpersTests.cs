@@ -55,6 +55,20 @@ public sealed class StreamingHelpersTests
         Assert.Equal(expected, visible);
     }
 
+    [Theory]
+    [InlineData("<think>never closed", true)]
+    [InlineData("<think>closed</think>Hi", false)]
+    [InlineData("Hi <thi", false)]
+    public void ThinkFilter_ReportsTextThatEndsInsideABlock(string delta, bool expected)
+    {
+        var filter = new ThinkingBlockStreamFilter();
+
+        filter.Push(delta);
+        filter.Flush();
+
+        Assert.Equal(expected, filter.EndedInsideBlock);
+    }
+
     [Fact]
     public async Task Pump_CoalescesDeltasAndAlwaysFlushesTheFinalText()
     {

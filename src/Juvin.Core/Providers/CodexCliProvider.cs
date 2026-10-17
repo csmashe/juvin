@@ -13,7 +13,23 @@ namespace Juvin.Core.Providers;
 /// </summary>
 public sealed class CodexCliProvider : IModelProvider
 {
-    private static readonly string[] s_requiredExecFlags = ["--json", "--ephemeral", "--sandbox", "--skip-git-repo-check"];
+    private static readonly string[] s_requiredExecFlags = ["--json", "--ephemeral", "--sandbox", "--skip-git-repo-check", "--disable"];
+    // The read-only sandbox still lets a shell or exec tool read any file, and the thread can carry
+    // an injected instruction to quote one; the others reach the network, the screen, or more agents.
+    private static readonly string[] s_disabledFeatures =
+    [
+        "shell_tool",
+        "unified_exec",
+        "browser_use",
+        "computer_use",
+        "in_app_browser",
+        "view_image",
+        "multi_agent",
+        "apps",
+        "plugins",
+        "hooks",
+    ];
+
     private static readonly TimeSpan s_defaultTimeout = TimeSpan.FromMinutes(3);
     private static readonly TimeSpan s_probeTimeout = TimeSpan.FromSeconds(30);
 
@@ -21,6 +37,9 @@ public sealed class CodexCliProvider : IModelProvider
     private readonly string? _model;
     private readonly IProcessRunner _runner;
     private readonly TimeSpan _timeout;
+
+    private IReadOnlySet<string>? _features;
+    private IReadOnlyList<string>? _mcpServers;
 
     public CodexCliProvider(AppSettings settings, IProcessRunner runner)
         : this(
@@ -74,9 +93,19 @@ public sealed class CodexCliProvider : IModelProvider
 
             // An older Codex passes the version and sign-in checks but lacks the flags every rewrite uses.
             var help = await _runner.RunAsync(_binary, ["exec", "--help"], null, null, timeout.Token);
-            if (help.ExitCode != 0 || s_requiredExecFlags.Any(flag => !help.StandardOutput.Contains(flag, StringComparison.Ordinal)))
+            if (
+                help.ExitCode != 0
+                || s_requiredExecFlags.Any(flag => !help.StandardOutput.Contains(flag, StringComparison.Ordinal))
+                || await FeaturesAsync(_binary, timeout.Token) is null
+                || await McpServersAsync(_binary, timeout.Token) is not { } mcpServers
+            )
             {
                 return new ProviderStatus(ProviderStatusKind.Incompatible, "Provider.Status.CodexNeedsUpdate", models, versionText);
+            }
+
+            if (!mcpServers.All(CanDisable))
+            {
+                return new ProviderStatus(ProviderStatusKind.Incompatible, "Provider.Status.CodexMcpServerName", models, versionText);
             }
 
             var login = await _runner.RunAsync(_binary, ["login", "status"], null, null, timeout.Token);
@@ -121,27 +150,26 @@ public sealed class CodexCliProvider : IModelProvider
                 "The Codex CLI was not found. Install it or set its path in Models."
             );
         var model = request.Model ?? _model;
-        List<string> arguments =
-        [
-            "exec",
-            "--json",
-            "--ephemeral",
-            "--sandbox",
-            "read-only",
-            "--skip-git-repo-check",
-        ];
-        if (model is not null)
-        {
-            arguments.AddRange(["-m", model]);
-        }
-
-        arguments.Add("-");
+        var arguments = await ExecArgumentsAsync(binary, model, ct);
 
         var prompt = FlattenPrompt(request);
         var stopwatch = Stopwatch.StartNew();
 
         // An empty working directory keeps Codex from reading project files or AGENTS.md.
-        var workingDirectory = Directory.CreateTempSubdirectory("juvin-codex-");
+        DirectoryInfo workingDirectory;
+        try
+        {
+            workingDirectory = Directory.CreateTempSubdirectory("juvin-codex-");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new ProviderException(
+                ProviderFailureKind.Configuration,
+                "Juvin could not create a temporary folder for Codex.",
+                ex
+            );
+        }
+
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(_timeout);
         ProcessResult result;
@@ -164,7 +192,7 @@ public sealed class CodexCliProvider : IModelProvider
         catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
         {
             throw new ProviderException(
-                ProviderFailureKind.Cancelled,
+                ProviderFailureKind.Unreachable,
                 $"Codex did not answer within {_timeout.TotalMinutes:0} minutes and was stopped.",
                 ex
             );
@@ -180,6 +208,12 @@ public sealed class CodexCliProvider : IModelProvider
             Trace.WriteLine(
                 $"[CodexCliProvider] Failed: exit={result.ExitCode}, message={output.Text is not null}, stderrChars={result.StandardError.Length}"
             );
+            // A backstop: only features Codex listed are disabled, so it should know every name.
+            if ((output.Error + result.StandardError).Contains("Unknown feature flag", StringComparison.OrdinalIgnoreCase))
+            {
+                throw TooOld();
+            }
+
             throw new ProviderException(
                 ProviderFailureKind.ProcessFailed,
                 FailureMessage(result, output.Error, model)
@@ -194,6 +228,155 @@ public sealed class CodexCliProvider : IModelProvider
         return new ChatResult(text, model ?? IModelProvider.DefaultModelLabel, output.InputTokens, output.OutputTokens);
     }
 
+    private async Task<List<string>> ExecArgumentsAsync(string binary, string? model, CancellationToken ct)
+    {
+        IReadOnlySet<string>? features;
+        IReadOnlyList<string>? mcpServers;
+        using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct))
+        {
+            timeout.CancelAfter(s_probeTimeout);
+            try
+            {
+                features = await FeaturesAsync(binary, timeout.Token);
+                mcpServers = features is null ? null : await McpServersAsync(binary, timeout.Token);
+            }
+            catch (Exception ex) when (ex is Win32Exception or ArgumentException)
+            {
+                throw new ProviderException(ProviderFailureKind.Configuration, "The Codex CLI could not be started.", ex);
+            }
+            catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
+            {
+                throw new ProviderException(ProviderFailureKind.Unreachable, "Codex did not respond and was stopped.", ex);
+            }
+        }
+
+        if (features is null || mcpServers is null)
+        {
+            throw TooOld();
+        }
+
+        List<string> arguments =
+        [
+            "exec",
+            "--json",
+            "--ephemeral",
+            "--sandbox",
+            "read-only",
+            "--skip-git-repo-check",
+        ];
+        // Codex merges config tables, so an empty mcp_servers table would not remove the user's
+        // servers; each is switched off by name.
+        foreach (var server in mcpServers)
+        {
+            if (!CanDisable(server))
+            {
+                Trace.WriteLine($"[CodexCliProvider] MCP server name not disableable: chars={server.Length}");
+                throw new ProviderException(
+                    ProviderFailureKind.Configuration,
+                    "An MCP server in the Codex configuration has a name Juvin cannot disable. Rename it or remove it."
+                );
+            }
+
+            arguments.AddRange(["-c", $"mcp_servers.{server}.enabled=false"]);
+        }
+
+        // Codex refuses a feature name it does not know, and a feature it lacks is a tool it cannot offer.
+        foreach (var feature in s_disabledFeatures.Where(features.Contains))
+        {
+            arguments.AddRange(["--disable", feature]);
+        }
+
+        if (model is not null)
+        {
+            arguments.AddRange(["-m", model]);
+        }
+
+        arguments.Add("-");
+        return arguments;
+    }
+
+    /// <summary>
+    ///     The feature names the installed Codex reports, cached per instance; null when it cannot
+    ///     list them or has no shell tool to turn off, which means it is too old to run safely.
+    /// </summary>
+    private async Task<IReadOnlySet<string>?> FeaturesAsync(string binary, CancellationToken ct)
+    {
+        if (_features is not null)
+        {
+            return _features;
+        }
+
+        var result = await _runner.RunAsync(binary, ["features", "list"], null, null, ct);
+        if (result.ExitCode != 0)
+        {
+            return null;
+        }
+
+        var names = result.StandardOutput
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(line => line.Split((char[]?)null, 2, StringSplitOptions.RemoveEmptyEntries)[0])
+            .ToHashSet(StringComparer.Ordinal);
+        if (!names.Contains("shell_tool"))
+        {
+            return null;
+        }
+
+        _features = names;
+        return names;
+    }
+
+    /// <summary>
+    ///     The names of every MCP server the Codex configuration lists, enabled or not, cached per
+    ///     instance; null when Codex cannot list them.
+    /// </summary>
+    private async Task<IReadOnlyList<string>?> McpServersAsync(string binary, CancellationToken ct)
+    {
+        if (_mcpServers is not null)
+        {
+            return _mcpServers;
+        }
+
+        var result = await _runner.RunAsync(binary, ["mcp", "list", "--json"], null, null, ct);
+        if (result.ExitCode != 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(result.StandardOutput);
+            if (document.RootElement.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+
+            List<string> names = [];
+            foreach (var server in document.RootElement.EnumerateArray())
+            {
+                if (GetString(server, "name") is not { } name)
+                {
+                    return null;
+                }
+
+                names.Add(name);
+            }
+
+            _mcpServers = names;
+            return names;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>The name lands in a TOML key path, so only a bare key is passed.</summary>
+    private static bool CanDisable(string server) =>
+        server.Length > 0 && server.All(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '-');
+
+    private static ProviderException TooOld() =>
+        new(ProviderFailureKind.Incompatible, "The Codex CLI is too old for Juvin. Update it and check again.");
+
     internal static string? ResolveBinary(string? configured, string? pathVariable, bool isWindows)
     {
         // Rewrites run in a temporary directory, so a relative path has to be pinned down here.
@@ -204,12 +387,13 @@ public sealed class CodexCliProvider : IModelProvider
 
         // On Windows the bare "codex" npm shim is a shell script that cannot be started directly.
         string[] names = isWindows ? ["codex.exe", "codex.cmd"] : ["codex"];
-        var directories = (pathVariable ?? "").Split(
-            Path.PathSeparator,
-            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries
-        );
+        // A relative entry such as "." (or "C:bin" on Windows) resolves against the current directory.
+        var directories = (pathVariable ?? "")
+            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(directory => directory.Trim('"'))
+            .Where(Path.IsPathFullyQualified);
         var found = directories
-            .SelectMany(directory => names.Select(name => Path.Join(directory.Trim('"'), name)))
+            .SelectMany(directory => names.Select(name => Path.Join(directory, name)))
             .FirstOrDefault(File.Exists);
         return found is null ? null : Path.GetFullPath(found);
     }

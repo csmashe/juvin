@@ -6,6 +6,7 @@ public enum ProviderFailureKind
     Unreachable,
     Protocol,
     ProcessFailed,
+    Incompatible,
     Cancelled,
 }
 

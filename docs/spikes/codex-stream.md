@@ -13,6 +13,8 @@ Throwaway files live in `spikes/codex-stream/` (prompt, captured events, stderr)
 codex exec --json --ephemeral --sandbox read-only --skip-git-repo-check -m gpt-6.1-sol -
 ```
 
+Juvin now also disables the shell, exec, browser, computer-use, image, sub-agent, app, plugin, and hook features the installed Codex reports, and disables every MCP server the installed Codex lists; see section 2.4 of the scope document.
+
 - Same rough draft as the local model spike, without the thread, to keep the prompt short.
 
 ## Results

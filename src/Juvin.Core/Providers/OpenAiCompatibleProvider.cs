@@ -170,6 +170,18 @@ public sealed partial class OpenAiCompatibleProvider : IModelProvider
             );
         }
 
+        // Early feedback for an address literal; ModelHttpClient checks resolved host names on connect.
+        if (
+            uri.HostNameType is UriHostNameType.IPv4 or UriHostNameType.IPv6
+            && !LocalNetwork.IsLocalAddress(IPAddress.Parse(uri.DnsSafeHost))
+        )
+        {
+            throw new ProviderException(
+                ProviderFailureKind.Configuration,
+                "The local server address must be on this machine or your local network."
+            );
+        }
+
         var path = uri.AbsolutePath.TrimEnd('/');
         if (path.EndsWith("/v1", StringComparison.OrdinalIgnoreCase))
         {
@@ -220,8 +232,8 @@ public sealed partial class OpenAiCompatibleProvider : IModelProvider
     /// <summary>
     ///     <see cref="HttpClient.Timeout" /> only covers the headers once a response is streamed, so
     ///     the same budget is applied through this token: whole for a probe, and as an idle limit
-    ///     for a chat, re-armed by <see cref="Touch" /> on every delta so a slow but live reply is
-    ///     never cut off.
+    ///     for a chat, re-armed by <see cref="Touch" /> on every chunk, reasoning included, so a slow
+    ///     but live reply is never cut off.
     /// </summary>
     private CancellationTokenSource Deadline(CancellationToken ct)
     {
@@ -249,20 +261,21 @@ public sealed partial class OpenAiCompatibleProvider : IModelProvider
     {
         var ct = deadline.Token;
         var model = ResolveModel(request);
+        var contextWindow = ContextWindowFor(request);
         var isOllama = await IsOllamaAsync(ct);
         if (isOllama)
         {
             await CheckOllamaModelAsync(model, ct);
         }
 
+        var touch = () => Touch(deadline);
         var deltas = isOllama
-            ? ReadOllamaChatAsync(request, model, usage, ct)
-            : ReadOpenAiChatAsync(request, model, usage, ct);
+            ? ReadOllamaChatAsync(request, model, contextWindow, usage, touch, ct)
+            : ReadOpenAiChatAsync(request, model, usage, touch, ct);
 
         var filter = new ThinkingBlockStreamFilter();
         await foreach (var delta in deltas.WithCancellation(ct))
         {
-            Touch(deadline);
             var visible = filter.Push(delta);
             if (visible.Length > 0)
             {
@@ -271,6 +284,14 @@ public sealed partial class OpenAiCompatibleProvider : IModelProvider
         }
 
         var rest = filter.Flush();
+        if (filter.EndedInsideBlock)
+        {
+            throw new ProviderException(
+                ProviderFailureKind.Protocol,
+                "The model's reply ended inside a reasoning block."
+            );
+        }
+
         if (rest.Length > 0)
         {
             yield return rest;
@@ -280,7 +301,9 @@ public sealed partial class OpenAiCompatibleProvider : IModelProvider
     private async IAsyncEnumerable<string> ReadOllamaChatAsync(
         ChatRequest request,
         string model,
+        int contextWindow,
         StreamUsage usage,
+        Action touch,
         [EnumeratorCancellation] CancellationToken ct
     )
     {
@@ -292,7 +315,7 @@ public sealed partial class OpenAiCompatibleProvider : IModelProvider
             ["options"] = new JsonObject
             {
                 ["temperature"] = request.Temperature,
-                ["num_ctx"] = ContextWindowFor(request),
+                ["num_ctx"] = contextWindow,
             },
         };
         if (request.DisableThinking)
@@ -310,6 +333,7 @@ public sealed partial class OpenAiCompatibleProvider : IModelProvider
             }
 
             var chunk = ParseOllamaChunk(line, usage);
+            touch();
             if (chunk.Content.Length > 0)
             {
                 yield return chunk.Content;
@@ -330,6 +354,7 @@ public sealed partial class OpenAiCompatibleProvider : IModelProvider
         ChatRequest request,
         string model,
         StreamUsage usage,
+        Action touch,
         [EnumeratorCancellation] CancellationToken ct
     )
     {
@@ -358,6 +383,7 @@ public sealed partial class OpenAiCompatibleProvider : IModelProvider
             }
 
             var chunk = ParseOpenAiChunk(sseEvent.Data, usage);
+            touch();
             if (chunk.Content.Length > 0)
             {
                 yield return chunk.Content;
@@ -382,7 +408,7 @@ public sealed partial class OpenAiCompatibleProvider : IModelProvider
     ///     Ollama silently drops the oldest messages, and with them the draft and thread, when a
     ///     conversation outgrows its context window. The window is sized to the conversation in
     ///     steps, so a growing follow-up chat rarely forces a model reload; one too long for the
-    ///     largest step is refused.
+    ///     largest step is refused, on every server, since the others truncate a prompt themselves.
     /// </summary>
     internal static int ContextWindowFor(ChatRequest request)
     {
@@ -723,9 +749,14 @@ public sealed partial class OpenAiCompatibleProvider : IModelProvider
 
     private async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
     {
+        HttpResponseMessage response;
         try
         {
-            return await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+            response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        }
+        catch (HttpRequestException ex) when (FindOutsideLocalNetwork(ex) is { } outside)
+        {
+            throw new ProviderException(ProviderFailureKind.Unreachable, outside.Message, ex);
         }
         catch (HttpRequestException ex)
         {
@@ -747,6 +778,33 @@ public sealed partial class OpenAiCompatibleProvider : IModelProvider
         {
             request.Dispose();
         }
+
+        // ModelHttpClient never follows redirects. With a client that does, the prompt has already gone
+        // to the other host by now; this check cannot stop that, only refuse to treat the answer as the server's.
+        // ReSharper disable once InvertIf -- a guard that reads top-down like the ones above it
+        if (
+            response.RequestMessage?.RequestUri is { } answered
+            && Uri.Compare(answered, _root, UriComponents.SchemeAndServer, UriFormat.SafeUnescaped, StringComparison.OrdinalIgnoreCase) != 0
+        )
+        {
+            response.Dispose();
+            throw new ProviderException(
+                ProviderFailureKind.Protocol,
+                "The local model server redirected the request to another host."
+            );
+        }
+
+        return response;
+    }
+
+    private static OutsideLocalNetworkException? FindOutsideLocalNetwork(Exception? ex)
+    {
+        while (ex is not null and not OutsideLocalNetworkException)
+        {
+            ex = ex.InnerException;
+        }
+
+        return ex as OutsideLocalNetworkException;
     }
 
     /// <summary>Reports the status code only; an error body could echo the prompt.</summary>
@@ -778,6 +836,10 @@ public sealed partial class OpenAiCompatibleProvider : IModelProvider
             return await response.Content.ReadAsStreamAsync(ct);
         }
         catch (Exception ex) when (ex is IOException or HttpRequestException)
+        {
+            throw SseEventDecoder.MapBodyReadFailure(ex, ct);
+        }
+        catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
         {
             throw SseEventDecoder.MapBodyReadFailure(ex, ct);
         }
