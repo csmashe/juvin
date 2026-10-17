@@ -84,9 +84,9 @@ public sealed class HyprlandPanelWindowSupportTests : IDisposable
         _session.With("XDG_CURRENT_DESKTOP", "GNOME");
         var support = new HyprlandPanelWindowSupport(_inner, _runner, _session.Session, TimeSpan.Zero);
 
-        support.ShowOnAllWorkspaces(42, Title);
+        support.ShowOnAllWorkspaces(42, "XID", Title);
 
-        Assert.Equal([(42, Title)], _inner.Calls);
+        Assert.Equal([(42, "XID", Title)], _inner.Calls);
         Assert.Empty(_runner.Calls);
     }
 
@@ -109,8 +109,8 @@ public sealed class HyprlandPanelWindowSupportTests : IDisposable
 
     private sealed class RecordingSupport : IPanelWindowSupport
     {
-        public List<(nint Handle, string Title)> Calls { get; } = [];
+        public List<(nint Handle, string? Descriptor, string Title)> Calls { get; } = [];
 
-        public void ShowOnAllWorkspaces(nint windowHandle, string title) => Calls.Add((windowHandle, title));
+        public void ShowOnAllWorkspaces(nint windowHandle, string? handleDescriptor, string title) => Calls.Add((windowHandle, handleDescriptor, title));
     }
 }

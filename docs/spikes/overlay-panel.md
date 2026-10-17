@@ -55,7 +55,7 @@ Windows, overlay above a maximized Firefox:
 
 - The rewrite panel is a plain Avalonia `Window` with the properties above, placed from `Screens` and `RenderScaling`. No layer-shell, no portal, no native code for the MVP.
 - Show the panel once and drive visibility with opacity or position rather than repeated `Show` and `Hide`; the reference project found `Show` after `Hide` unreliable for utility windows on Mutter, and this spike did not test that path.
-- Make the window sticky across workspaces on X11 (`_NET_WM_STATE_STICKY`) as the reference project does, otherwise the panel stays on the workspace it was first mapped on.
+- On X11, put the window on every workspace with `_NET_WM_DESKTOP` set to `0xFFFFFFFF`, otherwise the panel stays on the workspace it was first mapped on; `_NET_WM_STATE_STICKY` alone only keeps it fixed while a large desktop's viewport scrolls, so the app sends both.
 - Keep the X11 backend explicitly configured (rendering mode list with GLX first) when the panel gets a transparent background; this spike used an opaque background.
 
 ## Not covered

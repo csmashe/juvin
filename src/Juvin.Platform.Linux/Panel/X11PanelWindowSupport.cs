@@ -4,9 +4,11 @@ using System.Runtime.InteropServices;
 namespace Juvin.Platform.Linux.Panel;
 
 /// <summary>
-///     Sets <c>_NET_WM_STATE_STICKY</c> on the panel's X11 window, which Avalonia uses under
-///     XWayland too, so the window manager shows it on every workspace. Does nothing when no X
-///     display opens and traces any failure; the panel still works on a single workspace.
+///     Asks the window manager to put the panel's X11 window, which Avalonia uses under XWayland
+///     too, on every desktop (<c>_NET_WM_DESKTOP</c> 0xFFFFFFFF) and to keep it fixed when a large
+///     desktop's viewport scrolls (<c>_NET_WM_STATE_STICKY</c>). Does nothing when the handle is not
+///     an X window or no X display opens, and traces any failure; the panel still works on a single
+///     workspace.
 /// </summary>
 public sealed partial class X11PanelWindowSupport : IPanelWindowSupport
 {
@@ -15,8 +17,9 @@ public sealed partial class X11PanelWindowSupport : IPanelWindowSupport
     private const int Format32 = 32;
     private const long NetWmStateAdd = 1;
     private const long SourceApplication = 1;
+    private const long AllDesktops = 0xFFFFFFFF;
 
-    // EWMH requires both masks on the root window for a _NET_WM_STATE request.
+    // EWMH requires both masks on the root window for _NET_WM_STATE and _NET_WM_DESKTOP requests.
     private const long SubstructureNotifyMask = 1L << 19;
     private const long SubstructureRedirectMask = 1L << 20;
 
@@ -29,24 +32,24 @@ public sealed partial class X11PanelWindowSupport : IPanelWindowSupport
     private const int OffFormat = 48;
     private const int OffData = 56;
 
-    public void ShowOnAllWorkspaces(nint windowHandle, string title)
+    public void ShowOnAllWorkspaces(nint windowHandle, string? handleDescriptor, string title)
     {
-        if (windowHandle == 0)
+        if (windowHandle == 0 || handleDescriptor != "XID")
         {
             return;
         }
 
         try
         {
-            SendSticky(windowHandle);
+            SendHints(windowHandle);
         }
         catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or ExternalException)
         {
-            Trace.WriteLine($"[X11PanelWindowSupport] Could not make the panel sticky ({ex.GetType().Name}).");
+            Trace.WriteLine($"[X11PanelWindowSupport] Could not show the panel on every workspace ({ex.GetType().Name}).");
         }
     }
 
-    private static void SendSticky(nint window)
+    private static void SendHints(nint window)
     {
         var display = XOpenDisplay(null);
         if (display == 0)
@@ -54,14 +57,27 @@ public sealed partial class X11PanelWindowSupport : IPanelWindowSupport
             return;
         }
 
-        nint ev = 0;
         try
         {
             var root = XRootWindow(display, XDefaultScreen(display));
-            var wmState = XInternAtom(display, "_NET_WM_STATE", false);
-            var sticky = XInternAtom(display, "_NET_WM_STATE_STICKY", false);
+            var sticky = (long)XInternAtom(display, "_NET_WM_STATE_STICKY", false);
+            // data.l: action, first property, second property (none), source indication.
+            SendClientMessage(display, root, window, "_NET_WM_STATE", [NetWmStateAdd, sticky, 0, SourceApplication]);
+            // data.l: desktop, source indication.
+            SendClientMessage(display, root, window, "_NET_WM_DESKTOP", [AllDesktops, SourceApplication]);
+            _ = XFlush(display);
+        }
+        finally
+        {
+            _ = XCloseDisplay(display);
+        }
+    }
 
-            ev = Marshal.AllocHGlobal(XEventSize);
+    private static void SendClientMessage(nint display, nuint root, nint window, string messageType, long[] data)
+    {
+        var ev = Marshal.AllocHGlobal(XEventSize);
+        try
+        {
             for (var i = 0; i < XEventSize; i += 8)
             {
                 Marshal.WriteInt64(ev, i, 0);
@@ -70,25 +86,18 @@ public sealed partial class X11PanelWindowSupport : IPanelWindowSupport
             Marshal.WriteInt32(ev, OffType, ClientMessage);
             Marshal.WriteIntPtr(ev, OffDisplay, display);
             Marshal.WriteInt64(ev, OffWindow, window);
-            Marshal.WriteInt64(ev, OffMessageType, (long)wmState);
+            Marshal.WriteInt64(ev, OffMessageType, (long)XInternAtom(display, messageType, false));
             Marshal.WriteInt32(ev, OffFormat, Format32);
-
-            // data.l: action, first property, second property (none), source indication.
-            Marshal.WriteInt64(ev, OffData, NetWmStateAdd);
-            Marshal.WriteInt64(ev, OffData + 8, (long)sticky);
-            Marshal.WriteInt64(ev, OffData + 24, SourceApplication);
+            for (var i = 0; i < data.Length; i++)
+            {
+                Marshal.WriteInt64(ev, OffData + i * 8, data[i]);
+            }
 
             _ = XSendEvent(display, root, false, (nint)(SubstructureNotifyMask | SubstructureRedirectMask), ev);
-            _ = XFlush(display);
         }
         finally
         {
-            if (ev != 0)
-            {
-                Marshal.FreeHGlobal(ev);
-            }
-
-            _ = XCloseDisplay(display);
+            Marshal.FreeHGlobal(ev);
         }
     }
 

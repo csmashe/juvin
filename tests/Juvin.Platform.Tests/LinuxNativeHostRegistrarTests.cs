@@ -1,4 +1,5 @@
 using System.Runtime.Versioning;
+using Juvin.Core.Localization;
 using Juvin.Platform.Linux.NativeMessaging;
 using Juvin.Platform.Tests.Fakes;
 
@@ -42,22 +43,30 @@ public sealed class LinuxNativeHostRegistrarTests : IDisposable
 
     private string StableHost => Path.Join(DataPath, "juvin-host");
 
-    private LinuxNativeHostRegistrar CreateRegistrar(string? hostPath = null, string? runtimeDirectory = null)
+    private LinuxNativeHostRegistrar CreateRegistrar(string? hostPath = null, string? runtimeDirectory = null, TimeSpan? commandTimeout = null)
     {
         var paths = new LinuxBrowserPaths(Home, Path.Join(Home, ".config"), runtimeDirectory, [Bin, SnapBin], [FlatpakApps], Snap);
-        return new LinuxNativeHostRegistrar(() => hostPath ?? HostPath, paths, _runner, _runsFromAppImage, DataPath);
+        return new LinuxNativeHostRegistrar(
+            () => hostPath ?? HostPath,
+            new Localizer(),
+            paths,
+            _runner,
+            _runsFromAppImage,
+            DataPath,
+            commandTimeout ?? TimeSpan.FromSeconds(30)
+        );
     }
 
     private void CreateHomeDirectory(string relative) => Directory.CreateDirectory(Path.Join(Home, relative));
 
     private void InstallFlatpak(string flatpakId) => Directory.CreateDirectory(Path.Join(FlatpakApps, flatpakId));
 
-    private void CreateExecutable(string name, string? directory = null)
+    private void CreateExecutable(string name, string? directory = null, string contents = "")
     {
         directory ??= Bin;
         Directory.CreateDirectory(directory);
         var path = Path.Join(directory, name);
-        File.WriteAllText(path, "");
+        File.WriteAllText(path, contents);
         File.SetUnixFileMode(path, Executable);
     }
 
@@ -118,14 +127,82 @@ public sealed class LinuxNativeHostRegistrarTests : IDisposable
     }
 
     [LinuxFact]
-    public void DetectBrowsers_ReportsSnapFirefox()
+    public void DetectBrowsers_ReportsSnapFirefoxFromItsLauncher()
     {
-        CreateExecutable("firefox");
-        Directory.CreateDirectory(Path.Join(Snap, "firefox", "current"));
+        CreateExecutable("firefox", SnapBin);
 
         var firefox = Assert.Single(CreateRegistrar().DetectBrowsers());
 
         Assert.Equal(new BrowserTarget("firefox", "Firefox", BrowserFamily.Firefox, BrowserPackaging.Snap), firefox);
+    }
+
+    [LinuxFact]
+    public void DetectBrowsers_ANativeBrowserBesideItsSnapIsNative()
+    {
+        CreateExecutable("brave-browser");
+        CreateExecutable("brave", SnapBin);
+        Directory.CreateDirectory(Path.Join(Snap, "brave", "current"));
+
+        var brave = Assert.Single(CreateRegistrar().DetectBrowsers());
+
+        Assert.Equal(BrowserPackaging.Native, brave.Packaging);
+    }
+
+    [LinuxFact]
+    public void DetectBrowsers_UbuntuWrapperScriptIsSnap()
+    {
+        CreateExecutable("firefox", contents: "#!/bin/sh\n# Transitional package: Firefox is a snap.\nexec /snap/bin/firefox \"$@\"\n");
+
+        Assert.Equal(BrowserPackaging.Snap, Assert.Single(CreateRegistrar().DetectBrowsers()).Packaging);
+    }
+
+    [LinuxFact]
+    public void DetectBrowsers_ALauncherUnderAnAliasedSnapRootIsSnap()
+    {
+        // Fedora: /snap is a symlink to /var/lib/snapd/snap, and PATH names the mount, not the link.
+        var mount = Path.Join(Home, "var-lib-snapd-snap");
+        Directory.CreateDirectory(Path.Join(mount, "bin"));
+        var link = Path.Join(Home, "snap-link");
+        Directory.CreateSymbolicLink(link, mount);
+        CreateExecutable("snap");
+        File.CreateSymbolicLink(Path.Join(mount, "bin", "chromium"), Path.Join(Bin, "snap"));
+        var registrar = new LinuxNativeHostRegistrar(
+            () => HostPath,
+            new Localizer(),
+            new LinuxBrowserPaths(Home, Path.Join(Home, ".config"), null, [Path.Join(mount, "bin")], [FlatpakApps], link),
+            _runner,
+            runsFromAppImage: false,
+            DataPath,
+            TimeSpan.FromSeconds(30)
+        );
+
+        Assert.Equal(BrowserPackaging.Snap, Assert.Single(registrar.DetectBrowsers()).Packaging);
+    }
+
+    [LinuxFact]
+    public void DetectBrowsers_SymlinkIntoTheSnapRootIsSnap()
+    {
+        CreateExecutable("chromium", SnapBin);
+        File.CreateSymbolicLink(Path.Join(Bin, "chromium"), Path.Join(SnapBin, "chromium"));
+        var registrar = new LinuxNativeHostRegistrar(
+            () => HostPath,
+            new Localizer(),
+            new LinuxBrowserPaths(Home, Path.Join(Home, ".config"), null, [Bin], [FlatpakApps], Snap),
+            _runner,
+            runsFromAppImage: false,
+            DataPath,
+            TimeSpan.FromSeconds(30)
+        );
+
+        Assert.Equal(BrowserPackaging.Snap, Assert.Single(registrar.DetectBrowsers()).Packaging);
+    }
+
+    [LinuxFact]
+    public void DetectBrowsers_AScriptThatDoesNotMentionSnapIsNative()
+    {
+        CreateExecutable("firefox", contents: "#!/bin/sh\nexec /usr/lib/firefox/firefox \"$@\"\n");
+
+        Assert.Equal(BrowserPackaging.Native, Assert.Single(CreateRegistrar().DetectBrowsers()).Packaging);
     }
 
     [LinuxFact]
@@ -291,7 +368,7 @@ public sealed class LinuxNativeHostRegistrarTests : IDisposable
     public async Task Register_ThrowsWhenTheHostWasNotFound()
     {
         var paths = new LinuxBrowserPaths(Home, Path.Join(Home, ".config"), null, [Bin], [FlatpakApps]);
-        var registrar = new LinuxNativeHostRegistrar(() => null, paths, _runner, _runsFromAppImage, DataPath);
+        var registrar = new LinuxNativeHostRegistrar(() => null, new Localizer(), paths, _runner, _runsFromAppImage, DataPath, TimeSpan.FromSeconds(30));
         var chrome = new BrowserTarget("chrome", "Google Chrome", BrowserFamily.Chromium, BrowserPackaging.Native);
 
         await Assert.ThrowsAsync<NativeHostRegistrationException>(() => registrar.RegisterAsync(chrome, CancellationToken.None));
@@ -346,5 +423,74 @@ public sealed class LinuxNativeHostRegistrarTests : IDisposable
 
         Assert.True(File.Exists(Path.Join(Home, ".var/app/org.mozilla.firefox/data/juvin/juvin-host")));
         Assert.False(File.Exists(StableHost));
+    }
+
+    [LinuxFact]
+    public async Task Register_AfterSwitchingFromTheAppImageRemovesItsUnusedCopy()
+    {
+        var chrome = new BrowserTarget("chrome", "Google Chrome", BrowserFamily.Chromium, BrowserPackaging.Native);
+        var firefox = new BrowserTarget("firefox", "Firefox", BrowserFamily.Firefox, BrowserPackaging.Native);
+        _runsFromAppImage = true;
+        await CreateRegistrar().RegisterAsync(chrome, CancellationToken.None);
+        await CreateRegistrar().RegisterAsync(firefox, CancellationToken.None);
+        _runsFromAppImage = false;
+
+        await CreateRegistrar().RegisterAsync(chrome, CancellationToken.None);
+        Assert.True(File.Exists(StableHost));
+
+        await CreateRegistrar().RegisterAsync(firefox, CancellationToken.None);
+        Assert.False(File.Exists(StableHost));
+    }
+
+    [LinuxFact]
+    public async Task Unregister_LeavesAManifestThatNamesAnotherInstallation()
+    {
+        var chrome = new BrowserTarget("chrome", "Google Chrome", BrowserFamily.Chromium, BrowserPackaging.Native);
+        var other = _temp.File("other/juvin-host");
+        await CreateRegistrar(other).RegisterAsync(chrome, CancellationToken.None);
+
+        await CreateRegistrar().UnregisterAsync(chrome, CancellationToken.None);
+
+        var manifestPath = Path.Join(Home, ".config/google-chrome/NativeMessagingHosts", NativeHostManifest.FileName);
+        Assert.Equal(other, NativeHostManifest.ReadHostPath(manifestPath));
+    }
+
+    [LinuxFact]
+    public async Task Unregister_FlatpakLeavesAnotherInstallationsManifestAndTheCopy()
+    {
+        var flatpak = new BrowserTarget("firefox-flatpak", "Firefox", BrowserFamily.Firefox, BrowserPackaging.Flatpak);
+        await CreateRegistrar().RegisterAsync(flatpak, CancellationToken.None);
+        var manifestPath = Path.Join(Home, ".var/app/org.mozilla.firefox/.mozilla/native-messaging-hosts", NativeHostManifest.FileName);
+        await File.WriteAllTextAsync(manifestPath, NativeHostManifest.Render(BrowserFamily.Firefox, "/elsewhere/juvin-host"));
+
+        await CreateRegistrar().UnregisterAsync(flatpak, CancellationToken.None);
+
+        Assert.True(File.Exists(manifestPath));
+        Assert.True(File.Exists(Path.Join(Home, ".var/app/org.mozilla.firefox/data/juvin/juvin-host")));
+    }
+
+    [LinuxFact]
+    public async Task Register_AFlatpakCommandThatHangsTimesOut()
+    {
+        CreateExecutable("flatpak");
+        _runner.NeverCompletes = true;
+        var zen = new BrowserTarget("zen-flatpak", "Zen", BrowserFamily.Firefox, BrowserPackaging.Flatpak);
+
+        var error = await Assert.ThrowsAsync<NativeHostRegistrationException>(() =>
+            CreateRegistrar(commandTimeout: TimeSpan.FromMilliseconds(50)).RegisterAsync(zen, CancellationToken.None)
+        );
+
+        Assert.Contains("did not finish", error.Message);
+    }
+
+    [LinuxFact]
+    public async Task Register_CancellingAHungFlatpakCommandStaysACancellation()
+    {
+        CreateExecutable("flatpak");
+        _runner.NeverCompletes = true;
+        var zen = new BrowserTarget("zen-flatpak", "Zen", BrowserFamily.Firefox, BrowserPackaging.Flatpak);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => CreateRegistrar().RegisterAsync(zen, cancellation.Token));
     }
 }

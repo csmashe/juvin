@@ -7,8 +7,8 @@ namespace Juvin.Platform.Mac.Launcher;
 
 /// <summary>
 ///     A per-user LaunchAgent in <c>~/Library/LaunchAgents</c>. launchd reads it at the next login,
-///     so enabling does not start a second copy now. A plist there without the marker key is
-///     someone else's and is never removed.
+///     so enabling does not start a second copy now. Enabling overwrites whatever plist is there;
+///     disabling removes only a plist with the marker key.
 /// </summary>
 public sealed class LaunchAgentLoginItem : ILoginItem
 {
@@ -52,7 +52,9 @@ public sealed class LaunchAgentLoginItem : ILoginItem
         _plistPath = Path.Join(home, "Library", "LaunchAgents", Label + ".plist");
     }
 
-    public bool IsSupported => _processPath is not null;
+    /// <remarks>Under the <c>dotnet</c> host the agent would start <c>dotnet --background</c>, which is not the app.</remarks>
+    public bool IsSupported =>
+        _processPath is not null && !string.Equals(Path.GetFileNameWithoutExtension(_processPath), "dotnet", StringComparison.Ordinal);
 
     public Task EnableAsync(CancellationToken ct) => Task.Run(Enable, ct);
 

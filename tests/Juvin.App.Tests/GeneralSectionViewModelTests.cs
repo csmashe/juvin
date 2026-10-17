@@ -150,6 +150,6 @@ public sealed class GeneralSectionViewModelTests
 
     private sealed class NoTrayHost : ITrayHostProbe
     {
-        public bool IsTrayHostAvailable() => false;
+        public Task<bool?> IsTrayHostAvailableAsync(CancellationToken ct) => Task.FromResult<bool?>(false);
     }
 }

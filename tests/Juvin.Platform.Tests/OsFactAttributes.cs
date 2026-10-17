@@ -44,6 +44,17 @@ public sealed class WindowsFactAttribute : FactAttribute
     }
 }
 
+public sealed class MacFactAttribute : FactAttribute
+{
+    public MacFactAttribute()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            Skip = "macOS only.";
+        }
+    }
+}
+
 public sealed class UnixTheoryAttribute : TheoryAttribute
 {
     public UnixTheoryAttribute()

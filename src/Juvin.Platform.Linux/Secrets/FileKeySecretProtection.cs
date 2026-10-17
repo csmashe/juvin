@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
+using Juvin.Core;
 using Juvin.Core.Services;
 using Juvin.Platform.Unix;
 using Microsoft.Win32.SafeHandles;
@@ -114,7 +115,7 @@ internal static partial class FileKeySecretProtection
         var directory = Path.GetDirectoryName(keyFilePath);
         if (!string.IsNullOrWhiteSpace(directory))
         {
-            Directory.CreateDirectory(directory);
+            JuvinEnvironment.CreatePrivateDirectory(directory);
         }
 
         var existingKey = TryReadExistingKeyFile(keyFilePath);

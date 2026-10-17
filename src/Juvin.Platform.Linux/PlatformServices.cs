@@ -29,7 +29,7 @@ public static class PlatformServices
             var runner = sp.GetRequiredService<IProcessRunner>();
             return new SwayPanelWindowSupport(new HyprlandPanelWindowSupport(new X11PanelWindowSupport(), runner), runner);
         });
-        services.AddSingleton<INativeHostRegistrar>(_ => new LinuxNativeHostRegistrar(NativeHost.Locate));
+        services.AddSingleton<INativeHostRegistrar>(sp => new LinuxNativeHostRegistrar(NativeHost.Locate, sp.GetRequiredService<Localizer>()));
         services.AddSingleton<ILauncherIntegration>(_ => new AppImageLauncherIntegration(
             Environment.GetEnvironmentVariable,
             Environment.ProcessPath,

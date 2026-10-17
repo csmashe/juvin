@@ -93,10 +93,29 @@ public sealed class WindowsNativeHostRegistrar : INativeHostRegistrar
         return Task.CompletedTask;
     }
 
+    /// <remarks>A key whose manifest names another installation's host is left in place.</remarks>
     public Task UnregisterAsync(BrowserTarget browser, CancellationToken ct)
     {
         var definition = Find(browser);
         var manifestPath = ManifestPath(definition.Target.Family);
+        if (ReadRegisteredManifest(definition) is not { } registered)
+        {
+            return Task.CompletedTask;
+        }
+
+        // Another installation of the same user shares the manifest location, so only the host it
+        // names proves ownership; a broken manifest there works for nobody and may go.
+        var hostPath = _locateHost();
+        var registeredHost = NativeHostManifest.ReadHostPath(registered);
+        var ours = registeredHost is null
+            ? string.Equals(registered, manifestPath, StringComparison.OrdinalIgnoreCase)
+            : hostPath is not null && string.Equals(registeredHost, hostPath, StringComparison.OrdinalIgnoreCase);
+        if (!ours)
+        {
+            Trace.WriteLine($"[WindowsNativeHostRegistrar] Left {definition.Target.Id}: it is registered to another installation.");
+            return Task.CompletedTask;
+        }
+
         try
         {
             _userRoot.DeleteSubKeyTree(HostKey(definition), throwOnMissingSubKey: false);

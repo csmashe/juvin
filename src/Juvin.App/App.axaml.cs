@@ -21,8 +21,11 @@ public class App : Application
     private static readonly TimeSpan s_hotkeyStopTimeout = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan s_launcherInstallTimeout = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan s_crashFlushTimeout = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan s_trayRecheckDelay = TimeSpan.FromSeconds(5);
+    private const int TrayRecheckAttempts = 12;
     private readonly CancellationTokenSource _socketLifetime = new();
     private bool _exiting;
+    private bool _hidingToTray;
 
     public override void Initialize()
     {
@@ -60,9 +63,8 @@ public class App : Application
         InstallLauncher(services.GetRequiredService<ILauncherIntegration>());
         var main = services.GetRequiredService<MainWindow>();
         // A login start stays in the tray. The lifetime shows MainWindow before its loop runs, so it is assigned once the loop starts.
-        var startHidden = desktop.Args?.Contains(ILoginItem.BackgroundArgument) == true
-            && tray.IsTrayAvailable
-            && settings.Current.HasCompletedOnboarding;
+        var backgroundStart = desktop.Args?.Contains(ILoginItem.BackgroundArgument) == true;
+        var startHidden = backgroundStart && tray.IsTrayAvailable && settings.Current.HasCompletedOnboarding;
         if (startHidden)
         {
             Dispatcher.UIThread.Post(() => desktop.MainWindow = main);
@@ -72,23 +74,28 @@ public class App : Application
             desktop.MainWindow = main;
         }
 
+        // At login the tray host may start after the app, sometimes well after.
+        if (backgroundStart && !tray.IsTrayAvailable)
+        {
+            _ = RefreshTrayLaterAsync(tray);
+        }
+
         // The rewrite panel stays open while hidden, so it must not keep the app alive.
         desktop.ShutdownMode = ShutdownMode.OnMainWindowClose;
 
-        main.Closing += (_, e) =>
+        main.Closing += (sender, e) =>
         {
-            if (_exiting || e.CloseReason != WindowCloseReason.WindowClosing)
+            if (_exiting || e.CloseReason != WindowCloseReason.WindowClosing || !settings.Current.CloseToTray)
             {
                 return;
             }
 
-            if (!settings.Current.CloseToTray || !tray.IsTrayAvailable)
-            {
-                return;
-            }
-
+            // The tray host may have started or stopped since the last probe, which answers asynchronously.
             e.Cancel = true;
-            main.Hide();
+            if (!_hidingToTray)
+            {
+                _ = HideToTrayOrCloseAsync((MainWindow)sender!, tray);
+            }
         };
 
         tray.ShowSettingsRequested += (_, _) => ShowMainWindow(main);
@@ -98,9 +105,10 @@ public class App : Application
             desktop.Shutdown();
         };
 
-        if (settings.Current.LaunchAtLogin)
+        var loginItem = services.GetRequiredService<ILoginItem>();
+        if (settings.Current.LaunchAtLogin && loginItem.IsSupported)
         {
-            RefreshLoginItem(services.GetRequiredService<ILoginItem>());
+            RefreshLoginItem(loginItem);
         }
 
         var commands = services.GetRequiredService<ControlCommandHandler>();
@@ -278,6 +286,40 @@ public class App : Application
         if (!launcher.EnsureInstalledAsync(CancellationToken.None).Wait(s_launcherInstallTimeout))
         {
             Trace.WriteLine("[App] Launcher entry install did not finish in time.");
+        }
+    }
+
+    private async Task HideToTrayOrCloseAsync(MainWindow main, TrayIconService tray)
+    {
+        _hidingToTray = true;
+        try
+        {
+            // A probe that cannot tell keeps the last answer, so a busy session bus does not turn this into a quit.
+            if (await tray.RefreshAsync())
+            {
+                main.Hide();
+                return;
+            }
+        }
+        finally
+        {
+            _hidingToTray = false;
+        }
+
+        _exiting = true;
+        main.Close();
+    }
+
+    /// <summary>A tray host that starts after a login start is picked up within the first minute.</summary>
+    private static async Task RefreshTrayLaterAsync(TrayIconService tray)
+    {
+        for (var attempt = 0; attempt < TrayRecheckAttempts; attempt++)
+        {
+            await Task.Delay(s_trayRecheckDelay);
+            if (await tray.RefreshAsync())
+            {
+                return;
+            }
         }
     }
 

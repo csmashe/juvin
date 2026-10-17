@@ -38,9 +38,9 @@ public sealed class SwayPanelWindowSupport : IPanelWindowSupport
         _retryDelay = retryDelay;
     }
 
-    public void ShowOnAllWorkspaces(nint windowHandle, string title)
+    public void ShowOnAllWorkspaces(nint windowHandle, string? handleDescriptor, string title)
     {
-        _inner.ShowOnAllWorkspaces(windowHandle, title);
+        _inner.ShowOnAllWorkspaces(windowHandle, handleDescriptor, title);
         if (_session.DesktopId == "sway" && _session.HasExecutable("swaymsg"))
         {
             _ = PlaceAsync(title);

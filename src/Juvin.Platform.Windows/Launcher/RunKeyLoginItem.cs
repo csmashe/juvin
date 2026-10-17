@@ -5,8 +5,8 @@ using Microsoft.Win32;
 namespace Juvin.Platform.Windows.Launcher;
 
 /// <summary>
-///     A <c>Juvin</c> value under the per-user <c>Run</c> key, which Windows starts at sign-in. A value
-///     that names another executable is someone else's and is never removed.
+///     A <c>Juvin</c> value under the per-user <c>Run</c> key, which Windows starts at sign-in. Enabling
+///     overwrites whatever value is there; disabling removes only a value that names this executable.
 /// </summary>
 public sealed class RunKeyLoginItem : ILoginItem
 {

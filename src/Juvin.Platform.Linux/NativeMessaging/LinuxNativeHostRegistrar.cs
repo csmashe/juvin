@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using Juvin.Core;
+using Juvin.Core.Localization;
 using Juvin.Core.Providers;
 using Juvin.Core.Services;
 using Juvin.Platform.Unix.Ipc;
@@ -22,37 +23,47 @@ public sealed class LinuxNativeHostRegistrar : INativeHostRegistrar
         UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
 
     private readonly Func<string?> _locateHost;
+    private readonly Localizer _localizer;
+    private readonly TimeSpan _commandTimeout;
     private readonly bool _runsFromAppImage;
     private readonly string _stableHostPath;
     private readonly LinuxBrowserPaths _paths;
     private readonly IProcessRunner _processRunner;
     private readonly IReadOnlyList<LinuxBrowser> _browsers;
 
-    public LinuxNativeHostRegistrar(Func<string?> locateHost)
+    public LinuxNativeHostRegistrar(Func<string?> locateHost, Localizer localizer)
         : this(
             locateHost,
+            localizer,
             LinuxBrowserPaths.FromEnvironment(),
             new ProcessRunner(),
             LinuxProcessPath.RunsFromAppImage(Environment.GetEnvironmentVariable, Environment.ProcessPath),
-            JuvinEnvironment.DataPath
+            JuvinEnvironment.DataPath,
+            TimeSpan.FromSeconds(30)
         )
     {
     }
 
     /// <param name="locateHost">Resolved on every call, so a host that appears after startup is picked up without a restart.</param>
+    /// <param name="localizer">Supplies the user-readable registration errors.</param>
     /// <param name="paths">The directories detection and registration read and write.</param>
     /// <param name="processRunner">Runs <c>flatpak</c> for the sandbox setup some browsers need.</param>
     /// <param name="runsFromAppImage">Whether the host sits in an AppImage mount, so manifests need a copy of it.</param>
     /// <param name="dataPath">Where the host copy for an AppImage goes.</param>
+    /// <param name="commandTimeout">How long each <c>flatpak</c> command may run.</param>
     internal LinuxNativeHostRegistrar(
         Func<string?> locateHost,
+        Localizer localizer,
         LinuxBrowserPaths paths,
         IProcessRunner processRunner,
         bool runsFromAppImage,
-        string dataPath
+        string dataPath,
+        TimeSpan commandTimeout
     )
     {
         _locateHost = locateHost;
+        _localizer = localizer;
+        _commandTimeout = commandTimeout;
         _runsFromAppImage = runsFromAppImage;
         _stableHostPath = Path.Join(dataPath, "juvin-host");
         _paths = paths;
@@ -69,13 +80,13 @@ public sealed class LinuxNativeHostRegistrar : INativeHostRegistrar
                 Path.Join(home, ".mozilla", "native-messaging-hosts"),
                 FlatpakId: null,
                 Executables: ["firefox"],
-                SnapName: "firefox"
+                HasSnap: true
             ),
             Flatpak("firefox-flatpak", "Firefox", "org.mozilla.firefox"),
             Flatpak("zen-flatpak", "Zen", ZenFlatpakId),
             Chromium("chrome", "Google Chrome", Path.Join(config, "google-chrome"), ["google-chrome", "google-chrome-stable"]),
-            Chromium("chromium", "Chromium", Path.Join(config, "chromium"), ["chromium", "chromium-browser"], "chromium"),
-            Chromium("brave", "Brave", Path.Join(config, "BraveSoftware", "Brave-Browser"), ["brave-browser", "brave"], "brave"),
+            Chromium("chromium", "Chromium", Path.Join(config, "chromium"), ["chromium", "chromium-browser"], hasSnap: true),
+            Chromium("brave", "Brave", Path.Join(config, "BraveSoftware", "Brave-Browser"), ["brave-browser", "brave"], hasSnap: true),
             Chromium("edge", "Microsoft Edge", Path.Join(config, "microsoft-edge"), ["microsoft-edge", "microsoft-edge-stable"]),
         ];
     }
@@ -108,7 +119,7 @@ public sealed class LinuxNativeHostRegistrar : INativeHostRegistrar
             return null;
         }
 
-        return browser.SnapName is not null && _paths.IsSnap(executable, browser.SnapName)
+        return browser.HasSnap && _paths.IsSnap(executable)
             ? browser.Target with { Packaging = BrowserPackaging.Snap }
             : browser.Target;
     }
@@ -161,6 +172,19 @@ public sealed class LinuxNativeHostRegistrar : INativeHostRegistrar
             throw new NativeHostRegistrationException($"Could not write the connector files for {definition.DisplayName}: {ex.Message}", ex);
         }
 
+        if (definition.FlatpakId is null && !_runsFromAppImage)
+        {
+            // An earlier AppImage run may have left its copy; once no manifest names it, it is unused.
+            try
+            {
+                RemoveStableCopyIfUnused();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Trace.WriteLine($"[LinuxNativeHostRegistrar] Could not remove the unused host copy ({ex.GetType().Name}).");
+            }
+        }
+
         if (browser.Packaging == BrowserPackaging.Snap)
         {
             await PreApprovePortalAsync(ct).ConfigureAwait(false);
@@ -169,22 +193,32 @@ public sealed class LinuxNativeHostRegistrar : INativeHostRegistrar
         Trace.WriteLine($"[LinuxNativeHostRegistrar] Registered {definition.Id}.");
     }
 
+    /// <remarks>A manifest that names another installation's host is left in place, and so is anything it uses.</remarks>
     public Task UnregisterAsync(BrowserTarget browser, CancellationToken ct)
     {
         var definition = Find(browser);
+        var manifestPath = ManifestPath(definition);
+        var registered = NativeHostManifest.ReadHostPath(manifestPath);
+        if (registered is not null && !IsOwnHost(definition, registered))
+        {
+            Trace.WriteLine($"[LinuxNativeHostRegistrar] Left {definition.Id}: it is registered to another installation.");
+            return Task.CompletedTask;
+        }
+
         try
         {
-            File.Delete(ManifestPath(definition));
+            if (registered is not null)
+            {
+                File.Delete(manifestPath);
+            }
+
             if (definition.FlatpakId is not null)
             {
                 File.Delete(SandboxHostPath(definition));
             }
-            else if (
-                File.Exists(_stableHostPath)
-                && !_browsers.Any(b => b.FlatpakId is null && NativeHostManifest.ReadHostPath(ManifestPath(b)) == _stableHostPath)
-            )
+            else
             {
-                File.Delete(_stableHostPath);
+                RemoveStableCopyIfUnused();
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -194,6 +228,26 @@ public sealed class LinuxNativeHostRegistrar : INativeHostRegistrar
 
         Trace.WriteLine($"[LinuxNativeHostRegistrar] Unregistered {definition.Id}.");
         return Task.CompletedTask;
+    }
+
+    /// <summary>Whether a manifest naming <paramref name="registered" /> belongs to this installation: its host, or a copy it keeps.</summary>
+    private bool IsOwnHost(LinuxBrowser browser, string registered) =>
+        browser.FlatpakId is not null
+            ? registered == SandboxHostPath(browser)
+            : registered == _stableHostPath || registered == _locateHost();
+
+    private void RemoveStableCopyIfUnused()
+    {
+        if (
+            !File.Exists(_stableHostPath)
+            || _browsers.Any(b => b.FlatpakId is null && NativeHostManifest.ReadHostPath(ManifestPath(b)) == _stableHostPath)
+        )
+        {
+            return;
+        }
+
+        File.Delete(_stableHostPath);
+        Trace.WriteLine("[LinuxNativeHostRegistrar] Removed the unused host copy.");
     }
 
     /// <summary>
@@ -274,14 +328,28 @@ public sealed class LinuxNativeHostRegistrar : INativeHostRegistrar
         }
 
         int exitCode;
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(_commandTimeout);
         try
         {
-            exitCode = (await _processRunner.RunAsync(flatpak, arguments, null, null, ct).ConfigureAwait(false)).ExitCode;
+            exitCode = (await _processRunner.RunAsync(flatpak, arguments, null, null, timeout.Token).ConfigureAwait(false)).ExitCode;
         }
         catch (Win32Exception ex)
         {
             Trace.WriteLine($"[LinuxNativeHostRegistrar] flatpak {arguments[0]} could not start: {ex.NativeErrorCode}.");
             exitCode = -1;
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            Trace.WriteLine($"[LinuxNativeHostRegistrar] flatpak {arguments[0]} timed out.");
+            if (required)
+            {
+                throw new NativeHostRegistrationException(
+                    _localizer.Format("BrowserConnector.RegisterFlatpakTimedOut", Math.Round(_commandTimeout.TotalSeconds))
+                );
+            }
+
+            return;
         }
 
         if (exitCode == 0)
@@ -352,7 +420,7 @@ public sealed class LinuxNativeHostRegistrar : INativeHostRegistrar
             Path.Join(appDirectory, ".mozilla", "native-messaging-hosts"),
             flatpakId,
             Executables: [],
-            SnapName: null
+            HasSnap: false
         );
     }
 
@@ -361,7 +429,7 @@ public sealed class LinuxNativeHostRegistrar : INativeHostRegistrar
         string displayName,
         string userDataDirectory,
         IReadOnlyList<string> executables,
-        string? snapName = null
+        bool hasSnap = false
     )
     {
         return new LinuxBrowser(
@@ -371,11 +439,11 @@ public sealed class LinuxNativeHostRegistrar : INativeHostRegistrar
             Path.Join(userDataDirectory, "NativeMessagingHosts"),
             FlatpakId: null,
             executables,
-            snapName
+            hasSnap
         );
     }
 
-    /// <param name="SnapName">The browser's Snap, when it has one; a Snap is detected by its launcher or data directory.</param>
+    /// <param name="HasSnap">Whether the browser ships as a Snap, so a found executable may be its launcher.</param>
     private sealed record LinuxBrowser(
         string Id,
         string DisplayName,
@@ -383,7 +451,7 @@ public sealed class LinuxNativeHostRegistrar : INativeHostRegistrar
         string ManifestDirectory,
         string? FlatpakId,
         IReadOnlyList<string> Executables,
-        string? SnapName
+        bool HasSnap
     )
     {
         public BrowserTarget Target =>

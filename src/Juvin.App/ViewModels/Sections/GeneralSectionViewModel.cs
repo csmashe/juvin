@@ -30,17 +30,19 @@ public sealed partial class GeneralSectionViewModel : ObservableObject
     [ObservableProperty]
     private string _senderName = "";
 
+    [ObservableProperty]
+    private bool _isTrayAvailable;
+
     public GeneralSectionViewModel(ISettingsService settings, TrayIconService tray, ILoginItem loginItem)
     {
         _settings = settings;
         _loginItem = loginItem;
         IsTrayAvailable = tray.IsTrayAvailable;
+        tray.AvailabilityChanged += (_, _) => IsTrayAvailable = tray.IsTrayAvailable;
         IsLoginItemSupported = loginItem.IsSupported;
         ApplySettings(settings.Current);
         settings.SettingsChanged += ApplySettings;
     }
-
-    public bool IsTrayAvailable { get; }
 
     public bool IsLoginItemSupported { get; }
 
