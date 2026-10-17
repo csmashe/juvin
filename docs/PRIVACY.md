@@ -37,7 +37,7 @@ Exporting history writes a Markdown or JSON file wherever you choose; that file 
 
 ## What Juvin writes outside its data folder
 
-Setup registers the native messaging host with Firefox and Chrome by writing a small manifest in each browser's per-user folder (a registry key on Windows), and registers the shortcut with your desktop environment where one is needed. Launch at login, off by default, adds an autostart entry, a launch agent, or a Run key, and turning the switch off removes it. None of these files holds email content.
+Setup registers the native messaging host with Firefox and Chrome by writing a small manifest in each browser's per-user folder (a registry key on Windows), and registers the shortcut with your desktop environment where one is needed. On Linux, allowing keyboard access adds a udev rule (`/etc/udev/rules.d/70-juvin-input.rules`) that lets the signed-in user read keyboards; that access covers every program running as you, not only Juvin, which uses it only to watch for its shortcut. Launch at login, off by default, adds an autostart entry, a launch agent, or a Run key, and turning the switch off removes it. None of these files holds email content.
 
 ## Crash reports
 

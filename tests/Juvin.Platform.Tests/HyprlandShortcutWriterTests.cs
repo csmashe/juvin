@@ -20,6 +20,8 @@ public sealed class HyprlandShortcutWriterTests : IDisposable
 
     private string JuvinConfig => Path.Join(_session.ConfigHome, "hypr", "juvin.conf");
 
+    private string ReloadMarker => Path.Join(_session.ConfigHome, "hypr", "juvin.conf.reload-pending");
+
     public void Dispose() => _session.Dispose();
 
     [LinuxFact]
@@ -55,7 +57,63 @@ public sealed class HyprlandShortcutWriterTests : IDisposable
 
         Assert.Equal(2, _runner.Calls.Count);
         Assert.True(await _writer.IsInstalledAsync(DesktopShortcutTestSession.Spec(), CancellationToken.None));
-        Assert.False(File.Exists(Path.Join(_session.ConfigHome, "hypr", "juvin.conf.reload-pending")));
+        Assert.False(File.Exists(ReloadMarker));
+    }
+
+    [LinuxFact]
+    public async Task Write_ACancelledReloadLeavesTheMarker_SoTheNextWriteReloads()
+    {
+        _session.WriteConfig("hypr/hyprland.conf", "bind = SUPER, Q, exec, kitty\n");
+        using var cancel = new CancellationTokenSource();
+        var token = cancel.Token;
+        _runner.Handler = (_, _) =>
+        {
+            // ReSharper disable once AccessToDisposedClosure -- the handler runs inside the awaited write
+            cancel.Cancel();
+            throw new OperationCanceledException(token);
+        };
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => _writer.WriteAsync(DesktopShortcutTestSession.Spec(), cancel.Token));
+        Assert.True(File.Exists(ReloadMarker));
+        Assert.False(await _writer.IsInstalledAsync(DesktopShortcutTestSession.Spec(), CancellationToken.None));
+
+        _runner.Handler = null;
+        await _writer.WriteAsync(DesktopShortcutTestSession.Spec(), CancellationToken.None);
+
+        Assert.Equal(2, _runner.Calls.Count);
+        Assert.False(File.Exists(ReloadMarker));
+        Assert.True(await _writer.IsInstalledAsync(DesktopShortcutTestSession.Spec(), CancellationToken.None));
+    }
+
+    [LinuxTheory]
+    [InlineData("source = ~/config/hypr/*.conf")]
+    [InlineData("source=$HOME/config/hypr/*")]
+    [InlineData("  source = ~/config/hypr/juvin.conf  ")]
+    public async Task Write_DoesNotAddASourceLineWhenAGlobOrHomePathAlreadyCoversJuvinConf(string sourceLine)
+    {
+        _session.With("HOME", Path.GetDirectoryName(_session.ConfigHome)!);
+        var main = $"bind = SUPER, Q, exec, kitty\n{sourceLine}\n";
+        _session.WriteConfig("hypr/hyprland.conf", main);
+
+        await _writer.WriteAsync(DesktopShortcutTestSession.Spec(), CancellationToken.None);
+
+        Assert.Equal(main, await File.ReadAllTextAsync(MainConfig));
+        Assert.True(await _writer.IsInstalledAsync(DesktopShortcutTestSession.Spec(), CancellationToken.None));
+    }
+
+    [LinuxTheory]
+    [InlineData("source = ~/config/hypr/themes/*.conf")]
+    [InlineData("source = ~/config/hypr/*.theme")]
+    [InlineData("# source = ~/config/hypr/*.conf")]
+    public async Task Write_AddsTheSourceLineWhenNoLineCoversJuvinConf(string sourceLine)
+    {
+        _session.With("HOME", Path.GetDirectoryName(_session.ConfigHome)!);
+        var main = $"{sourceLine}\n";
+        _session.WriteConfig("hypr/hyprland.conf", main);
+
+        await _writer.WriteAsync(DesktopShortcutTestSession.Spec(), CancellationToken.None);
+
+        Assert.Equal($"{main}source = {JuvinConfig}\n", await File.ReadAllTextAsync(MainConfig));
     }
 
     [LinuxFact]

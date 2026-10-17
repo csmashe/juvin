@@ -6,5 +6,8 @@ namespace Juvin.Platform.Hotkeys;
 /// </summary>
 public interface IHotkeyRestart
 {
+    /// <summary>Whether a backend is listening for the shortcut right now.</summary>
+    bool IsListening { get; }
+
     Task RestartAsync(CancellationToken ct);
 }

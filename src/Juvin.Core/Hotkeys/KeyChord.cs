@@ -22,7 +22,7 @@ public enum ChordModifiers
 }
 
 /// <summary>
-///     A global shortcut: at least one modifier and exactly one key, such as <c>Ctrl+Shift+F</c>.
+///     A global shortcut: Ctrl, Alt, or Super, optionally Shift, and exactly one key, such as <c>Ctrl+Shift+F</c>.
 ///     <see cref="ChordModifiers.Ctrl" /> is Command on macOS, so one stored shortcut means the
 ///     same keys as the browser extension's command on every OS.
 /// </summary>
@@ -30,6 +30,13 @@ public sealed record KeyChord
 {
     private const ChordModifiers AllModifiers =
         ChordModifiers.Ctrl | ChordModifiers.Alt | ChordModifiers.Shift | ChordModifiers.Super;
+
+    // Shift alone would fire on every capital letter typed anywhere.
+    private const ChordModifiers RequiredModifiers = ChordModifiers.Ctrl | ChordModifiers.Alt | ChordModifiers.Super;
+
+    // The system's own shortcuts, by canonical form; on macOS Ctrl is Command.
+    private static readonly HashSet<string> s_reserved = ["Alt+Tab", "Alt+F4", "Ctrl+Alt+Delete", "Super+L", "Ctrl+Escape", "Alt+Escape"];
+    private static readonly HashSet<string> s_reservedMac = ["Ctrl+Tab", "Ctrl+Q", "Ctrl+Space", "Ctrl+H", "Ctrl+M"];
 
     private static readonly Dictionary<string, ChordModifiers> s_modifierAliases = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -74,7 +81,10 @@ public sealed record KeyChord
     /// <summary>Every key a chord can use, by canonical name.</summary>
     public static IReadOnlyCollection<string> KeyNames => s_keys.Values;
 
-    /// <summary>Parses text such as <c>Ctrl+Shift+F</c>; names are case-insensitive and accept common aliases.</summary>
+    /// <summary>
+    ///     Parses text such as <c>Ctrl+Shift+F</c>; names are case-insensitive and accept common aliases. Reserved
+    ///     chords still parse, so a hand-edited setting loads.
+    /// </summary>
     public static bool TryParse(string? text, [NotNullWhen(true)] out KeyChord? chord)
     {
         chord = null;
@@ -109,17 +119,29 @@ public sealed record KeyChord
         return key is not null && TryCreate(modifiers, key, out chord);
     }
 
-    /// <summary>Builds a chord from modifiers and a key name or alias; fails without a modifier or for an unknown key.</summary>
+    /// <summary>Builds a chord from modifiers and a key name or alias; fails without Ctrl, Alt, or Super or for an unknown key.</summary>
     public static bool TryCreate(ChordModifiers modifiers, string key, [NotNullWhen(true)] out KeyChord? chord)
     {
         chord = null;
-        if (modifiers == ChordModifiers.None || (modifiers & ~AllModifiers) != 0 || !TryNormalizeKey(key, out var name))
+        if ((modifiers & RequiredModifiers) == 0 || (modifiers & ~AllModifiers) != 0 || !TryNormalizeKey(key, out var name))
         {
             return false;
         }
 
         chord = new KeyChord(modifiers, name);
         return true;
+    }
+
+    /// <summary>As <see cref="TryCreate(ChordModifiers, string, out KeyChord)" />, and also fails for a shortcut the OS keeps for itself.</summary>
+    public static bool TryCreate(ChordModifiers modifiers, string key, bool isMac, [NotNullWhen(true)] out KeyChord? chord)
+    {
+        if (TryCreate(modifiers, key, out chord) && !(isMac ? s_reservedMac : s_reserved).Contains(chord.ToString()))
+        {
+            return true;
+        }
+
+        chord = null;
+        return false;
     }
 
     /// <summary>A copy matching the key position <paramref name="name" />; null, blank, or unknown names leave the chord unchanged.</summary>

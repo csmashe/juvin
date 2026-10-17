@@ -45,6 +45,13 @@ public sealed class EvdevHotkeyBackend : IHotkeyBackend
 
     public event Action? Pressed;
 
+    // Never raised: with every keyboard gone it keeps listening and the rescan reattaches them.
+    public event Action<string>? Stopped
+    {
+        add { }
+        remove { }
+    }
+
     public async Task StartAsync(KeyChord chord, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(chord);

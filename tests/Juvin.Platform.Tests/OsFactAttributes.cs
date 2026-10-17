@@ -11,6 +11,17 @@ public sealed class LinuxFactAttribute : FactAttribute
     }
 }
 
+public sealed class LinuxTheoryAttribute : TheoryAttribute
+{
+    public LinuxTheoryAttribute()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            Skip = "Linux only.";
+        }
+    }
+}
+
 public sealed class UnixFactAttribute : FactAttribute
 {
     public UnixFactAttribute()

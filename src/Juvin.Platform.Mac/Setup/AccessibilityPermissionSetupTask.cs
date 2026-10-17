@@ -17,13 +17,20 @@ public sealed class AccessibilityPermissionSetupTask : ISetupTask
     private readonly IProcessRunner _runner;
     private readonly IAccessibilityTrust _trust;
     private readonly Func<CancellationToken, Task> _hotkeyRestart;
+    private readonly Func<bool> _hotkeyListening;
     private bool? _lastTrusted;
 
     /// <param name="localizer">Supplies the row text.</param>
     /// <param name="runner">Opens System Settings at the Accessibility pane.</param>
     /// <param name="hotkeyRestart">Called once the permission turns up granted, so the hook that failed without it starts.</param>
-    public AccessibilityPermissionSetupTask(Localizer localizer, IProcessRunner runner, Func<CancellationToken, Task> hotkeyRestart)
-        : this(localizer, runner, new AccessibilityTrust(), hotkeyRestart)
+    /// <param name="hotkeyListening">Whether the shortcut is already listening, in which case no restart is needed.</param>
+    public AccessibilityPermissionSetupTask(
+        Localizer localizer,
+        IProcessRunner runner,
+        Func<CancellationToken, Task> hotkeyRestart,
+        Func<bool> hotkeyListening
+    )
+        : this(localizer, runner, new AccessibilityTrust(), hotkeyRestart, hotkeyListening)
     {
     }
 
@@ -31,13 +38,15 @@ public sealed class AccessibilityPermissionSetupTask : ISetupTask
         Localizer localizer,
         IProcessRunner runner,
         IAccessibilityTrust trust,
-        Func<CancellationToken, Task> hotkeyRestart
+        Func<CancellationToken, Task> hotkeyRestart,
+        Func<bool> hotkeyListening
     )
     {
         _localizer = localizer;
         _runner = runner;
         _trust = trust;
         _hotkeyRestart = hotkeyRestart;
+        _hotkeyListening = hotkeyListening;
     }
 
     public string Id => "accessibility";
@@ -55,7 +64,7 @@ public sealed class AccessibilityPermissionSetupTask : ISetupTask
     {
         // Also on the first look: the hook may have failed at startup before the user granted trust.
         var trusted = _trust.IsTrusted();
-        if (trusted && _lastTrusted != true)
+        if (trusted && _lastTrusted != true && !_hotkeyListening())
         {
             await RestartHotkeyAsync(ct).ConfigureAwait(false);
         }

@@ -4,7 +4,6 @@ using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Juvin.App.Services;
-using Juvin.Core.Hotkeys;
 using Juvin.Core.Interfaces;
 using Juvin.Core.Localization;
 using Juvin.Core.Models;
@@ -171,8 +170,7 @@ public sealed partial class HomeSectionViewModel : ObservableObject
 
     private void RefreshShortcutStatus()
     {
-        var shortcut = _settings.Current.RewriteShortcut;
-        var chord = KeyChord.TryParse(shortcut, out var parsed) ? parsed.ToDisplayString(_isMac) : shortcut;
+        var chord = HotkeyService.EffectiveShortcut(_settings.Current.RewriteShortcut).ToDisplayString(_isMac);
         ShortcutStatus = _localizer.Format(
             _hotkeys.Status.Kind == HotkeyStatusKind.Active ? "Home.Status.Listening" : "Home.Status.NotListening",
             chord

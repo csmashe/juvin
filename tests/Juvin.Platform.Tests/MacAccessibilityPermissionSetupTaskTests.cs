@@ -13,7 +13,7 @@ public sealed class MacAccessibilityPermissionSetupTaskTests
     private readonly FakeTrust _trust = new();
     private readonly FakeProcessRunner _runner = new();
 
-    private AccessibilityPermissionSetupTask CreateTask() => new(new Localizer(), _runner, _trust, _ => Task.CompletedTask);
+    private AccessibilityPermissionSetupTask CreateTask() => new(new Localizer(), _runner, _trust, _ => Task.CompletedTask, () => false);
 
     [Fact]
     public async Task Trusted_process_is_satisfied()
@@ -51,7 +51,7 @@ public sealed class MacAccessibilityPermissionSetupTaskTests
     [Fact]
     public async Task Failed_open_reports_failure()
     {
-        var task = new AccessibilityPermissionSetupTask(new Localizer(), new FakeProcessRunner(exitCode: 1), _trust, _ => Task.CompletedTask);
+        var task = new AccessibilityPermissionSetupTask(new Localizer(), new FakeProcessRunner(exitCode: 1), _trust, _ => Task.CompletedTask, () => false);
 
         var outcome = await task.RunActionAsync(CancellationToken.None);
 
@@ -72,11 +72,17 @@ public sealed class MacAccessibilityPermissionSetupTaskTests
     public async Task Evaluate_RestartsTheHotkeyOnceWhenTrustTurnsUpGranted()
     {
         var restarts = 0;
-        var task = new AccessibilityPermissionSetupTask(new Localizer(), _runner, _trust, _ =>
-        {
-            restarts++;
-            return Task.CompletedTask;
-        });
+        var task = new AccessibilityPermissionSetupTask(
+            new Localizer(),
+            _runner,
+            _trust,
+            _ =>
+            {
+                restarts++;
+                return Task.CompletedTask;
+            },
+            () => false
+        );
 
         _trust.Trusted = true;
         await task.EvaluateAsync(CancellationToken.None);
@@ -87,6 +93,36 @@ public sealed class MacAccessibilityPermissionSetupTaskTests
         await task.EvaluateAsync(CancellationToken.None);
 
         Assert.Equal(2, restarts);
+    }
+
+    [Fact]
+    public async Task Evaluate_DoesNotRestartTheHotkeyWhenItAlreadyListens()
+    {
+        var restarts = 0;
+        var listening = true;
+        var task = new AccessibilityPermissionSetupTask(
+            new Localizer(),
+            _runner,
+            _trust,
+            _ =>
+            {
+                restarts++;
+                return Task.CompletedTask;
+            },
+            // ReSharper disable once AccessToModifiedClosure -- the test flips the flag between evaluations on purpose
+            () => listening
+        );
+
+        _trust.Trusted = true;
+        await task.EvaluateAsync(CancellationToken.None);
+        Assert.Equal(0, restarts);
+
+        _trust.Trusted = false;
+        await task.EvaluateAsync(CancellationToken.None);
+        listening = false;
+        _trust.Trusted = true;
+        await task.EvaluateAsync(CancellationToken.None);
+        Assert.Equal(1, restarts);
     }
 
     private sealed class FakeTrust : IAccessibilityTrust

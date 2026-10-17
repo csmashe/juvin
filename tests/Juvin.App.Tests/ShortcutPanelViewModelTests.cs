@@ -93,6 +93,8 @@ public sealed class ShortcutPanelViewModelTests
     [InlineData(Key.CapsLock, KeyModifiers.Control)]
     [InlineData(Key.LeftCtrl, KeyModifiers.Control)]
     [InlineData(Key.LeftShift, KeyModifiers.Shift)]
+    [InlineData(Key.A, KeyModifiers.Shift)]
+    [InlineData(Key.Tab, KeyModifiers.Alt)]
     public void Recording_RefusesAKeyWithoutModifiersAModifierAloneOrAnUnusableKey(Key key, KeyModifiers modifiers)
     {
         var vm = Create();
@@ -103,6 +105,49 @@ public sealed class ShortcutPanelViewModelTests
         Assert.Equal(0, _settings.SaveCount);
         Assert.True(vm.IsRecording);
         Assert.True(vm.HasRecordHint);
+    }
+
+    [Theory]
+    [InlineData(false, "Shortcuts.Recorder.NeedsModifier")]
+    [InlineData(true, "Shortcuts.Recorder.NeedsModifierMac")]
+    public void Recording_ShiftAlone_AsksForAnotherModifier(bool isMac, string hint)
+    {
+        var vm = Create(isMac: isMac);
+        vm.BeginRecording();
+
+        vm.HandleKey(Key.A, KeyModifiers.Shift, PhysicalKey.None);
+
+        Assert.Equal(_localizer[hint], vm.RecordHint);
+        Assert.Equal(0, _settings.SaveCount);
+    }
+
+    [Theory]
+    [InlineData(false, Key.Tab, KeyModifiers.Alt)]
+    [InlineData(false, Key.L, KeyModifiers.Meta)]
+    [InlineData(false, Key.Delete, KeyModifiers.Control | KeyModifiers.Alt)]
+    [InlineData(true, Key.Q, KeyModifiers.Meta)]
+    [InlineData(true, Key.Space, KeyModifiers.Meta)]
+    public void Recording_RefusesAShortcutTheSystemKeeps(bool isMac, Key key, KeyModifiers modifiers)
+    {
+        var vm = Create(isMac: isMac);
+        vm.BeginRecording();
+
+        vm.HandleKey(key, modifiers, PhysicalKey.None);
+
+        Assert.Equal(_localizer["Shortcuts.Recorder.Reserved"], vm.RecordHint);
+        Assert.True(vm.IsRecording);
+        Assert.Equal(0, _settings.SaveCount);
+    }
+
+    [Fact]
+    public void Recording_ReservedChordsDependOnTheOs()
+    {
+        var vm = Create();
+        vm.BeginRecording();
+
+        vm.HandleKey(Key.Q, KeyModifiers.Control, PhysicalKey.None);
+
+        Assert.Equal("Ctrl+Q", _settings.Current.RewriteShortcut);
     }
 
     [Fact]
@@ -134,6 +179,9 @@ public sealed class ShortcutPanelViewModelTests
         vm.BeginRecording();
 
         Assert.False(vm.HandleKey(Key.Tab, KeyModifiers.None, PhysicalKey.None));
+        Assert.False(vm.HandleKey(Key.Tab, KeyModifiers.Shift, PhysicalKey.None));
+        Assert.True(vm.IsRecording);
+        Assert.Equal(0, _settings.SaveCount);
     }
 
     [Theory]
@@ -231,17 +279,62 @@ public sealed class ShortcutPanelViewModelTests
     }
 
     [Fact]
-    public async Task Status_ReportsNoBackendAndInvalidShortcut()
+    public async Task Status_ReportsABackendThatStoppedOnItsOwn()
+    {
+        var backend = new FakeHotkeyBackend("sharphook");
+        var hotkeys = Hotkeys(backend);
+        var vm = Create(hotkeys: hotkeys);
+        await hotkeys.StartAsync(CancellationToken.None);
+
+        backend.StopOnItsOwn("The keyboard hook stopped unexpectedly.");
+
+        Assert.False(vm.IsListening);
+        Assert.Equal("System keyboard hook stopped listening: The keyboard hook stopped unexpectedly. Juvin will try again.", vm.StatusText);
+        await hotkeys.StopAsync();
+    }
+
+    [Fact]
+    public async Task Status_ReportsNoBackend()
     {
         var hotkeys = Hotkeys();
         var vm = Create(hotkeys: hotkeys);
 
         await hotkeys.StartAsync(CancellationToken.None);
-        Assert.Equal(_localizer["Shortcuts.Status.NoBackend"], vm.StatusText);
 
-        _settings.Update(s => s with { RewriteShortcut = "F" });
+        Assert.Equal(_localizer["Shortcuts.Status.NoBackend"], vm.StatusText);
+    }
+
+    [Fact]
+    public async Task Status_ExplainsThatAnInvalidSavedShortcutFallsBackToTheDefault()
+    {
+        _settings.Update(s => s with { RewriteShortcut = "Shift+A" });
+        var hotkeys = Hotkeys(new FakeHotkeyBackend("evdev"));
+        var vm = Create(hotkeys: hotkeys);
+
         await hotkeys.StartAsync(CancellationToken.None);
-        Assert.Equal(_localizer["Shortcuts.Status.InvalidShortcut"], vm.StatusText);
+
+        Assert.True(vm.IsListening);
+        Assert.Equal("Ctrl+Shift+F", vm.ShortcutText);
+        Assert.Equal(_localizer.Format("Shortcuts.Status.InvalidShortcut", "Keyboard devices"), vm.StatusText);
+    }
+
+    [Fact]
+    public async Task Status_KeepsAnUnavailableChoiceVisible_AndNamesTheBackendListeningInstead()
+    {
+        _settings.Update(s => s with { HotkeyBackend = "evdev" });
+        var hotkeys = Hotkeys(new FakeHotkeyBackend("evdev", isAvailable: false), new FakeHotkeyBackend("sharphook"));
+        var vm = Create(hotkeys: hotkeys);
+
+        await hotkeys.StartAsync(CancellationToken.None);
+
+        Assert.Equal([null, "sharphook", "evdev"], vm.BackendOptions.Select(option => option.Id));
+        Assert.Equal("evdev", vm.SelectedBackend?.Id);
+        Assert.Equal("Keyboard devices cannot run here, so Juvin listens through System keyboard hook instead.", vm.StatusText);
+        Assert.Equal(1, _settings.SaveCount);
+
+        vm.SelectedBackend = vm.BackendOptions[0];
+        Assert.Equal([null, "sharphook"], vm.BackendOptions.Select(option => option.Id));
+        Assert.Equal("Listening through System keyboard hook.", vm.StatusText);
     }
 
     [Fact]

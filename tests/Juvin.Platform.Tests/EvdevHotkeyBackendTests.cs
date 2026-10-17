@@ -186,6 +186,22 @@ public sealed class EvdevHotkeyBackendTests
     }
 
     [LinuxFact]
+    public async Task LosingEveryKeyboard_KeepsListening_AndARescanReattachesIt()
+    {
+        var stopped = 0;
+        _backend.Stopped += _ => stopped++;
+        await StartAsync();
+
+        _source.Fail(Keyboard);
+        Assert.Empty(_source.OpenDevices);
+        _backend.Rescan();
+        Press(LeftCtrl, LeftShift, KeyF);
+
+        Assert.Equal(1, _presses);
+        Assert.Equal(0, stopped);
+    }
+
+    [LinuxFact]
     public async Task Restart_ListensForTheNewChord()
     {
         await StartAsync();

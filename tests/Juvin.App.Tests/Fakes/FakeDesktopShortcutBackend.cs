@@ -26,6 +26,12 @@ public sealed class FakeDesktopShortcutBackend(bool requiresSessionRestart) : IH
         remove { }
     }
 
+    public event Action<string>? Stopped
+    {
+        add { }
+        remove { }
+    }
+
     public Task StartAsync(KeyChord chord, CancellationToken ct) => Task.CompletedTask;
 
     public Task StopAsync() => Task.CompletedTask;

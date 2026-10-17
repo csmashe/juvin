@@ -15,9 +15,10 @@ namespace Juvin.Core.Models;
 /// </summary>
 public sealed record AppSettings
 {
+    public const string DefaultRewriteShortcut = "Ctrl+Shift+F";
+
     private const int CurrentSchemaVersion = 1;
     private const string DefaultLocalServerUrl = "http://localhost:11434";
-    private const string DefaultRewriteShortcut = "Ctrl+Shift+F";
 
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
 

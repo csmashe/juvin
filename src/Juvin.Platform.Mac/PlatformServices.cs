@@ -31,7 +31,8 @@ public static class PlatformServices
         services.AddSingleton<ISetupTask>(sp => new AccessibilityPermissionSetupTask(
             sp.GetRequiredService<Localizer>(),
             sp.GetRequiredService<IProcessRunner>(),
-            ct => sp.GetService<IHotkeyRestart>()?.RestartAsync(ct) ?? Task.CompletedTask
+            ct => sp.GetService<IHotkeyRestart>()?.RestartAsync(ct) ?? Task.CompletedTask,
+            () => sp.GetService<IHotkeyRestart>()?.IsListening ?? false
         ));
         return services;
     }
