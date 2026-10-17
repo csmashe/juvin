@@ -212,6 +212,20 @@ public sealed class SettingsServiceTests : IDisposable
     }
 
     [Fact]
+    public void Reset_RaisesSettingsResetAfterTheDefaultsAreSaved()
+    {
+        var service = new SettingsService(_temp.File("settings.json"));
+        service.Update(s => s with { LocalModel = "llama3" });
+        var events = new List<string>();
+        service.SettingsChanged += _ => events.Add("changed");
+        service.SettingsReset += () => events.Add($"reset:{service.Current.LocalModel ?? "default"}");
+
+        service.Reset();
+
+        Assert.Equal(["changed", "reset:default"], events);
+    }
+
+    [Fact]
     public void Load_UsesTheDefaultForANullString()
     {
         var path = _temp.File("settings.json");

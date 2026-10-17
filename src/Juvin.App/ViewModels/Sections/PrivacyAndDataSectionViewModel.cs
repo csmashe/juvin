@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Juvin.App.Services.CrashReporting;
@@ -17,6 +18,7 @@ namespace Juvin.App.ViewModels.Sections;
 /// </summary>
 public sealed partial class PrivacyAndDataSectionViewModel : ObservableObject
 {
+    private const string PolicyRepository = "https://github.com/csmashe/juvin/blob/";
     private readonly IHistoryService _history;
     private readonly Localizer _localizer;
     private readonly ILoginItem _loginItem;
@@ -91,6 +93,8 @@ public sealed partial class PrivacyAndDataSectionViewModel : ObservableObject
     }
 
     public string DataFolder { get; }
+
+    public Uri PolicyUrl { get; } = PolicyUrlFor(AppVersion.Current, AppVersion.IsReleaseTag);
     public bool IsCrashReportingAvailable { get; }
     public IReadOnlyList<RetentionOption> RetentionOptions { get; }
     public bool HasError => ErrorMessage is not null;
@@ -100,6 +104,10 @@ public sealed partial class PrivacyAndDataSectionViewModel : ObservableObject
         !_history.IsAvailable ? _localizer["PrivacyAndData.HistoryUnavailable"]
         : _history.Entries.Count == 1 ? _localizer["PrivacyAndData.HistoryCountOne"]
         : _localizer.Format("PrivacyAndData.HistoryCount", _history.Entries.Count);
+
+    /// <summary>A build from a release tag links the policy it shipped with; any other build links the latest one.</summary>
+    public static Uri PolicyUrlFor(string version, bool isReleaseTag) =>
+        new(PolicyRepository + (isReleaseTag && ReleaseVersion().IsMatch(version) ? "v" + version : "main") + "/docs/PRIVACY.md");
 
     public string ExportMarkdown() => HistoryExport.ToMarkdown(_history.Entries);
 
@@ -264,6 +272,9 @@ public sealed partial class PrivacyAndDataSectionViewModel : ObservableObject
             _applyingSettings = false;
         }
     }
+
+    [GeneratedRegex(@"^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$")]
+    private static partial Regex ReleaseVersion();
 }
 
 /// <param name="Days">Zero keeps history until it is cleared.</param>

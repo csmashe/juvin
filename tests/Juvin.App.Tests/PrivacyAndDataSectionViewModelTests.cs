@@ -250,6 +250,17 @@ public sealed class PrivacyAndDataSectionViewModelTests : IDisposable
         Assert.Contains("\"id\": \"a\"", vm.ExportJson());
     }
 
+    [Theory]
+    [InlineData("1.2.3", true, "https://github.com/csmashe/juvin/blob/v1.2.3/docs/PRIVACY.md")]
+    [InlineData("1.2.3-rc.1", true, "https://github.com/csmashe/juvin/blob/v1.2.3-rc.1/docs/PRIVACY.md")]
+    [InlineData("1.2.3", false, "https://github.com/csmashe/juvin/blob/main/docs/PRIVACY.md")]
+    [InlineData("0.1.0-dev.7", false, "https://github.com/csmashe/juvin/blob/main/docs/PRIVACY.md")]
+    [InlineData("0.0.0.1", true, "https://github.com/csmashe/juvin/blob/main/docs/PRIVACY.md")]
+    public void ThePolicyLink_FollowsTheReleaseTag(string version, bool isReleaseTag, string expected)
+    {
+        Assert.Equal(new Uri(expected), PrivacyAndDataSectionViewModel.PolicyUrlFor(version, isReleaseTag));
+    }
+
     private PrivacyAndDataSectionViewModel Create() => new(_settings, _history, _localizer, _loginItem, _crashReporter, _dataPath);
 
     private static HistoryEntry Entry(string id, DateTimeOffset createdAt) =>

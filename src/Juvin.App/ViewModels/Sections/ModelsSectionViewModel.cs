@@ -40,7 +40,7 @@ public sealed partial class ModelsSectionViewModel : ObservableObject
     private bool _isLocalProbing;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(LocalServerLocation), nameof(HasLocalServerLocation))]
+    [NotifyPropertyChangedFor(nameof(LocalServerLocation), nameof(HasLocalServerLocation), nameof(HasServerNameHint))]
     private string _localServerUrl = "";
 
     [ObservableProperty]
@@ -49,6 +49,10 @@ public sealed partial class ModelsSectionViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _localThinkingDisabled;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSaveError))]
+    private string? _saveError;
 
     [ObservableProperty]
     private ModelOption? _selectedLocalModel;
@@ -75,6 +79,8 @@ public sealed partial class ModelsSectionViewModel : ObservableObject
     public string ModeHint => SelectedMode?.Hint ?? "";
     public string LocalServerLocation => _probes.LocationLabel(LocalServerUrl);
     public bool HasLocalServerLocation => LocalServerLocation.Length > 0;
+    public bool HasServerNameHint => ModelProbeService.IsUnlistedHostName(LocalServerUrl);
+    public bool HasSaveError => SaveError is not null;
     public bool HasLocalStatus => !string.IsNullOrWhiteSpace(LocalStatus);
     public bool HasCodexStatus => !string.IsNullOrWhiteSpace(CodexStatus);
 
@@ -208,10 +214,12 @@ public sealed partial class ModelsSectionViewModel : ObservableObject
         try
         {
             _settings.Update(update);
+            SaveError = null;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             Trace.WriteLine($"[ModelsSection] Could not save settings: {ex.GetType().Name}");
+            SaveError = _localizer.Format("PrivacyAndData.SaveFailed", ex.Message);
             ApplySettings(_settings.Current);
         }
     }
@@ -221,7 +229,7 @@ public sealed partial class ModelsSectionViewModel : ObservableObject
         _applyingSettings = true;
         try
         {
-            SelectedMode = ModeOptions.First(option => option.Mode == settings.ProcessingMode);
+            SelectedMode = ProcessingModeOption.Find(ModeOptions, settings.ProcessingMode);
             LocalServerUrl = settings.LocalServerUrl;
             LocalThinkingDisabled = settings.LocalThinkingDisabled;
             CodexBinaryPath = settings.CodexBinaryPath ?? "";

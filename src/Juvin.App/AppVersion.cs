@@ -6,6 +6,12 @@ public static class AppVersion
 {
     public static string Current { get; } = Read();
 
+    /// <summary>True only for a build made from a pushed release tag, whose files exist at that tag.</summary>
+    public static bool IsReleaseTag { get; } = bool.TryParse(ReadMetadata("ReleaseTag"), out var tagged) && tagged;
+
+    private static string? ReadMetadata(string key) =>
+        typeof(AppVersion).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>().FirstOrDefault(attribute => attribute.Key == key)?.Value;
+
     private static string Read()
     {
         var assembly = typeof(AppVersion).Assembly;

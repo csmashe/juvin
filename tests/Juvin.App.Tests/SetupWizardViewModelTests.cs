@@ -134,6 +134,79 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task ASecondRowsAction_CanStartWhileTheFirstRuns()
+    {
+        var firstGate = new TaskCompletionSource();
+        var secondGate = new TaskCompletionSource();
+        var first = new FakeSetupTask("first", SetupTaskSeverity.Required, SetupTaskStatusKind.NeedsAction) { ActionGate = firstGate.Task };
+        var second = new FakeSetupTask("second", SetupTaskSeverity.Required, SetupTaskStatusKind.NeedsAction) { ActionGate = secondGate.Task };
+        var vm = await CreateOnLastStepAsync(first, second);
+
+        var firstRun = vm.RunSetupActionCommand.ExecuteAsync(vm.SetupItems[0]);
+        await WaitUntilAsync(() => first.ActionCount == 1);
+
+        Assert.True(vm.SetupItems[0].IsBusy);
+        Assert.False(vm.SetupItems[0].CanRunAction);
+        Assert.True(vm.RunSetupActionCommand.CanExecute(vm.SetupItems[1]));
+        var secondRun = vm.RunSetupActionCommand.ExecuteAsync(vm.SetupItems[1]);
+        await WaitUntilAsync(() => second.ActionCount == 1);
+        Assert.True(vm.SetupItems[1].IsBusy);
+
+        firstGate.SetResult();
+        secondGate.SetResult();
+        await Task.WhenAll(firstRun, secondRun).WaitAsync(s_timeout);
+
+        Assert.False(vm.SetupItems[0].IsBusy);
+        Assert.False(vm.SetupItems[1].IsBusy);
+    }
+
+    [Fact]
+    public async Task AnOlderCheckFinishingLast_DoesNotOverrideTheNewerResult()
+    {
+        var older = new TaskCompletionSource<SetupTaskState>();
+        var newer = new TaskCompletionSource<SetupTaskState>();
+        var task = new FakeSetupTask("server", SetupTaskSeverity.Required, SetupTaskStatusKind.NeedsAction)
+        {
+            Evaluation = n => n == 1 ? older.Task : newer.Task,
+        };
+        var vm = Create(task);
+
+        var olderCheck = vm.RecheckSetupCommand.ExecuteAsync(null);
+        await WaitUntilAsync(() => task.EvaluateCount == 1);
+        vm.StepIndex = (int)SetupWizardStep.Done;
+        await WaitUntilAsync(() => task.EvaluateCount == 2);
+
+        Assert.False(vm.AllRequiredReady);
+        newer.SetResult(new SetupTaskState(SetupTaskStatusKind.Failed, "down"));
+        await WaitUntilAsync(() => vm.SetupItems[0].Kind == SetupTaskStatusKind.Failed);
+        older.SetResult(new SetupTaskState(SetupTaskStatusKind.Satisfied, "up"));
+        await olderCheck.WaitAsync(s_timeout);
+
+        Assert.Equal(SetupTaskStatusKind.Failed, vm.SetupItems[0].Kind);
+        Assert.False(vm.CanAdvance);
+    }
+
+    [Fact]
+    public async Task APendingCheck_KeepsFinishDisabled()
+    {
+        var pending = new TaskCompletionSource<SetupTaskState>();
+        var task = new FakeSetupTask("server", SetupTaskSeverity.Required, SetupTaskStatusKind.Satisfied)
+        {
+            Evaluation = n => n == 1 ? Task.FromResult(new SetupTaskState(SetupTaskStatusKind.Satisfied, "up")) : pending.Task,
+        };
+        var vm = Create(task);
+        await vm.RecheckSetupCommand.ExecuteAsync(null);
+        Assert.True(vm.AllRequiredReady);
+
+        vm.StepIndex = (int)SetupWizardStep.Done;
+
+        Assert.True(vm.SetupItems[0].IsSatisfied);
+        Assert.False(vm.CanAdvance);
+        pending.SetResult(new SetupTaskState(SetupTaskStatusKind.Satisfied, "up"));
+        await WaitUntilAsync(() => vm.CanAdvance);
+    }
+
+    [Fact]
     public void TasksThatDoNotApply_AreLeftOut()
     {
         var vm = Create(
@@ -290,7 +363,8 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
             stream,
             $$$"""{"v":1,"type":"context.response","id":"{{{id}}}","ok":false,"error":{"code":"no-selection","message":"Declined."}}"""
         );
-        await WaitUntilAsync(() => vm.TryItPhase == TryItPhase.CaptureFailed);
+        // The reason is set just after the phase.
+        await WaitUntilAsync(() => vm is { TryItPhase: TryItPhase.CaptureFailed, HasTryItStatus: true });
 
         Assert.Equal(_localizer.Format("Wizard.TryIt.CaptureFailed", _localizer["Panel.Error.NoSelection"]), vm.TryItStatus);
         Assert.False(vm.IsCaptured);
@@ -476,6 +550,88 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task AReopenedWizard_SuggestsTheOnlyServerAndItsModelWithoutSaving()
+    {
+        _settings.Update(s => s with { HasCompletedOnboarding = true });
+        _providers.Servers[ModelProbeService.LmStudioUrl] = FakeProviders.Reachable(null, FakeProviders.Model("large", "27B"));
+
+        var vm = await CreateOnModeStepAsync();
+
+        Assert.Equal(1, _settings.SaveCount);
+        Assert.Equal(new AppSettings().LocalServerUrl, _settings.Current.LocalServerUrl);
+        var lmStudio = vm.Detections.Single(row => row.Url == ModelProbeService.LmStudioUrl);
+        Assert.True(lmStudio.CanUse);
+
+        vm.UseServerCommand.Execute(lmStudio);
+
+        Assert.Equal(ModelProbeService.LmStudioUrl, _settings.Current.LocalServerUrl);
+        Assert.Equal("large", vm.RecommendedModel?.Id);
+        Assert.False(vm.IsRecommendedModelInUse);
+        Assert.Null(_settings.Current.LocalModel);
+
+        vm.UseRecommendedModelCommand.Execute(null);
+
+        Assert.Equal("large", _settings.Current.LocalModel);
+    }
+
+    [Fact]
+    public async Task AFirstRunInCodexMode_ChoosesNoServerOrModel()
+    {
+        _settings.Update(s => s with { ProcessingMode = ProcessingMode.Codex });
+        _providers.Servers[ModelProbeService.LmStudioUrl] = FakeProviders.Reachable(null, FakeProviders.Model("large", "27B"));
+
+        var vm = await CreateOnModeStepAsync();
+
+        Assert.Equal(1, _settings.SaveCount);
+        Assert.Equal(new AppSettings().LocalServerUrl, _settings.Current.LocalServerUrl);
+        Assert.Null(_settings.Current.LocalModel);
+        Assert.True(vm.Detections.Single(row => row.Url == ModelProbeService.LmStudioUrl).CanUse);
+    }
+
+    [Fact]
+    public void SettingsChangedElsewhere_AreShownWithoutSavingAgain()
+    {
+        const string lan = "http://10.0.3.20:11434";
+        var vm = Create();
+
+        _settings.Update(s => s with { ProcessingMode = ProcessingMode.Codex, CrashReportingEnabled = false, LocalServerUrl = lan });
+
+        Assert.Equal(1, _settings.SaveCount);
+        Assert.True(vm.IsCodexMode);
+        Assert.False(vm.CrashReportingEnabled);
+        Assert.Equal(lan, vm.ServerUrl);
+
+        vm.Dispose();
+        _settings.Update(s => s with { ProcessingMode = ProcessingMode.Local });
+
+        Assert.True(vm.IsCodexMode);
+    }
+
+    [Fact]
+    public void AModeNoOptionOffers_ShowsLocal()
+    {
+        _settings.Update(s => s with { ProcessingMode = (ProcessingMode)99 });
+
+        var vm = Create();
+
+        Assert.Equal(ProcessingMode.Local, vm.SelectedMode?.Mode);
+        Assert.Equal(1, _settings.SaveCount);
+    }
+
+    [Theory]
+    [InlineData("http://nas.lan:11434", false)]
+    [InlineData("http://nas:11434", false)]
+    [InlineData("http://models.example.com:11434", true)]
+    public void AServerHostName_OutsideTheLocalSuffixes_ShowsTheHint(string url, bool hint)
+    {
+        var vm = Create();
+
+        vm.ServerUrl = url;
+
+        Assert.Equal(hint, vm.HasServerNameHint);
+    }
+
+    [Fact]
     public async Task ASavedModelTheServerHas_IsKeptOverTheSuggestion()
     {
         _settings.Update(s => s with { LocalModel = "small" });
@@ -506,7 +662,8 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
         var vm = await CreateOnModeStepAsync();
 
         vm.CommitServerUrlCommand.Execute(lan);
-        await WaitUntilAsync(() => vm.Detections.All(row => !row.IsBusy) && vm.Detections.Any(row => row.Url == lan));
+        // The suggestion is set last, after the rows report, so it marks the end of the check.
+        await WaitUntilAsync(() => vm.Detections.Any(row => row.Url == lan) && vm.HasRecommendation);
 
         Assert.Equal("large", _settings.Current.LocalModel);
         Assert.True(vm.IsRecommendedModelInUse);
@@ -561,7 +718,7 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
         var vm = await CreateOnModeStepAsync();
 
         vm.CommitServerUrlCommand.Execute($" {lan} ");
-        await WaitUntilAsync(() => vm.Detections.All(row => !row.IsBusy) && vm.Detections.Any(row => row.Url == lan));
+        await WaitUntilAsync(() => vm.Detections.Any(row => row.Url == lan) && vm.HasRecommendation);
 
         Assert.Equal(lan, _settings.Current.LocalServerUrl);
         Assert.Equal(lan, vm.ServerUrl);

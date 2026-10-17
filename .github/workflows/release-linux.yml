@@ -66,6 +66,8 @@ jobs:
       - name: Build packages
         env:
           JUVIN_SENTRY_DSN: ${{ secrets.JUVIN_SENTRY_DSN }}
+          # Set only for a pushed v* tag; "Run workflow" builds have no tag to link to.
+          JUVIN_RELEASE_TAG: ${{ github.ref_type == 'tag' && 'true' || '' }}
         run: scripts/build-linux-packages.sh "${{ steps.version.outputs.version }}" dist
 
       - name: Smoke test packages

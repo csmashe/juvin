@@ -14,6 +14,8 @@ public sealed class FakeSettingsService : ISettingsService
 
     public event Action<AppSettings>? SettingsChanged;
 
+    public event Action? SettingsReset;
+
     public void Load()
     {
     }
@@ -37,5 +39,9 @@ public sealed class FakeSettingsService : ISettingsService
         SettingsChanged?.Invoke(next);
     }
 
-    public void Reset() => Update(_ => new AppSettings());
+    public void Reset()
+    {
+        Update(_ => new AppSettings());
+        SettingsReset?.Invoke();
+    }
 }

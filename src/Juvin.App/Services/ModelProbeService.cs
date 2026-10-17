@@ -15,6 +15,8 @@ public sealed class ModelProbeService
     public const string LmStudioUrl = "http://localhost:1234";
     public const string OllamaPullCommand = "ollama pull qwen3.5:27b";
 
+    private static readonly string[] s_localNameSuffixes = [".local", ".lan", ".home", ".internal", ".arpa"];
+
     private readonly Localizer _localizer;
     private readonly ProviderSelector _providers;
 
@@ -71,6 +73,23 @@ public sealed class ModelProbeService
 
     /// <summary>True for a loopback address, false for any other host, null when the URL is not valid.</summary>
     public static bool? IsThisDevice(string url) => OpenAiCompatibleProvider.IsLoopbackServer(url);
+
+    /// <summary>
+    ///     True when the server is named by a dotted host name outside the local-network suffixes. IP
+    ///     literals outside the local network are refused, but a name is only checked when it is
+    ///     resolved; a single-label name such as "nas" is a LAN name.
+    /// </summary>
+    public static bool IsUnlistedHostName(string url)
+    {
+        var trimmed = url.Trim();
+        if (IsThisDevice(trimmed) != false || !Uri.TryCreate(trimmed, UriKind.Absolute, out var uri) || uri.HostNameType != UriHostNameType.Dns)
+        {
+            return false;
+        }
+
+        var host = uri.IdnHost.TrimEnd('.');
+        return host.Contains('.') && !s_localNameSuffixes.Any(suffix => host.EndsWith(suffix, StringComparison.OrdinalIgnoreCase));
+    }
 
     public string LocationLabel(string url) =>
         IsThisDevice(url) switch

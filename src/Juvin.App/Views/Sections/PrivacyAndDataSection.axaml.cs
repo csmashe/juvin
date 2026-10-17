@@ -10,6 +10,7 @@ namespace Juvin.App.Views.Sections;
 public partial class PrivacyAndDataSection : UserControl
 {
     private const string JsonExtension = ".json";
+    private const string MarkdownExtension = ".md";
 
     public PrivacyAndDataSection()
     {
@@ -45,19 +46,17 @@ public partial class PrivacyAndDataSection : UserControl
 
         try
         {
+            var markdown = new FilePickerFileType(StrExtension.Localizer["PrivacyAndData.MarkdownFiles"]) { Patterns = ["*" + MarkdownExtension] };
             var json = new FilePickerFileType(StrExtension.Localizer["PrivacyAndData.JsonFiles"]) { Patterns = ["*" + JsonExtension] };
             var picked = await topLevel.StorageProvider.SaveFilePickerWithResultAsync(
                 new FilePickerSaveOptions
                 {
                     Title = StrExtension.Localizer["PrivacyAndData.ExportTitle"],
                     SuggestedFileName = "juvin-history",
-                    DefaultExtension = "md",
+                    SuggestedFileType = markdown,
+                    DefaultExtension = MarkdownExtension.TrimStart('.'),
                     ShowOverwritePrompt = true,
-                    FileTypeChoices =
-                    [
-                        new FilePickerFileType(StrExtension.Localizer["PrivacyAndData.MarkdownFiles"]) { Patterns = ["*.md"] },
-                        json,
-                    ],
+                    FileTypeChoices = [markdown, json],
                 }
             );
             if (picked.File is not { } file)
@@ -65,7 +64,8 @@ public partial class PrivacyAndDataSection : UserControl
                 return;
             }
 
-            // Pickers that cannot report the chosen type (Linux portals) leave it null, so the name decides then.
+            // Pickers that cannot report the chosen type (Linux portals) leave it null, so the name's
+            // extension decides then, and Markdown, the suggested type, is the fallback.
             var asJson = picked.SelectedFileType is { } type
                 ? type == json
                 : file.Name.EndsWith(JsonExtension, StringComparison.OrdinalIgnoreCase);

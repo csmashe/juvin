@@ -23,6 +23,7 @@
                                 </StackPanel>
                                 <ToggleSwitch Grid.Column="1"
                                               VerticalAlignment="Center"
+                                              AutomationProperties.Name="{loc:Str PrivacyAndData.History}"
                                               IsChecked="{Binding HistoryEnabled}" />
                             </Grid>
                         </Border>
@@ -53,6 +54,7 @@
                                 </StackPanel>
                                 <ToggleSwitch Grid.Column="1"
                                               VerticalAlignment="Center"
+                                              AutomationProperties.Name="{loc:Str PrivacyAndData.Provenance}"
                                               IsChecked="{Binding ProvenanceCaptureEnabled}" />
                             </Grid>
                         </Border>
@@ -64,6 +66,7 @@
                                 </StackPanel>
                                 <ToggleSwitch Grid.Column="1"
                                               VerticalAlignment="Center"
+                                              AutomationProperties.Name="{loc:Str PrivacyAndData.Crash}"
                                               IsEnabled="{Binding IsCrashReportingAvailable}"
                                               IsChecked="{Binding CrashReportingEnabled}" />
                             </Grid>
@@ -165,7 +168,7 @@
                             <HyperlinkButton Grid.Column="1"
                                              VerticalAlignment="Center"
                                              Content="{loc:Str PrivacyAndData.PolicyLink}"
-                                             NavigateUri="https://github.com/csmashe/juvin/blob/main/docs/PRIVACY.md" />
+                                             NavigateUri="{Binding PolicyUrl}" />
                         </Grid>
                     </Border>
                 </Border>

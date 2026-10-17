@@ -91,10 +91,14 @@ try {
     if (-not $env:JUVIN_SENTRY_DSN) {
         Write-Host '    JUVIN_SENTRY_DSN is not set; crash reporting will be disabled in this build'
     }
-    Invoke-Publish 'src\Juvin.App\Juvin.App.csproj' $payload @(
+    $appArgs = @(
         '-p:PublishSingleFile=false', '-p:PublishReadyToRun=true', '-p:DebugType=portable', '-p:DebugSymbols=true',
         "-p:JuvinSentryDsn=$env:JUVIN_SENTRY_DSN"
     )
+    if ($env:JUVIN_RELEASE_TAG) {
+        $appArgs += '-p:JuvinReleaseTag=true'
+    }
+    Invoke-Publish 'src\Juvin.App\Juvin.App.csproj' $payload $appArgs
 
     $single = @(
         '-p:PublishSingleFile=true', '-p:IncludeNativeLibrariesForSelfExtract=true', '-p:DebugType=None', '-p:DebugSymbols=false'

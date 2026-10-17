@@ -8,6 +8,12 @@ public interface ISettingsService
 
     event Action<AppSettings>? SettingsChanged;
 
+    /// <summary>
+    ///     Raised by <see cref="Reset" /> after the defaults are in place, so holders of unsaved edits
+    ///     can drop them instead of saving the old values again.
+    /// </summary>
+    event Action? SettingsReset;
+
     /// <summary>Re-reads the settings file, recovering from the backup or defaults if it is unreadable.</summary>
     void Load();
 

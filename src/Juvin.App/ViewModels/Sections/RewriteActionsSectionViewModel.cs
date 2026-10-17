@@ -43,6 +43,7 @@ public sealed partial class RewriteActionsSectionViewModel : ObservableObject
         CustomActions.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasCustomActions));
         ApplySettings(settings.Current);
         settings.SettingsChanged += ApplySettings;
+        settings.SettingsReset += OnSettingsReset;
     }
 
     public IReadOnlyList<BuiltInActionRow> BuiltInActions { get; }
@@ -140,6 +141,29 @@ public sealed partial class RewriteActionsSectionViewModel : ObservableObject
         {
             _applyingSettings = false;
         }
+    }
+
+    /// <summary>Delete all data must not leave edits a Retry or the next commit would save again.</summary>
+    private void OnSettingsReset()
+    {
+        _rowsUnsaved = false;
+        SaveError = null;
+        _applyingSettings = true;
+        try
+        {
+            foreach (var row in BuiltInActions)
+            {
+                row.Instruction = row.DefaultInstruction;
+            }
+
+            CustomActions.Clear();
+        }
+        finally
+        {
+            _applyingSettings = false;
+        }
+
+        ApplySettings(_settings.Current);
     }
 
     /// <summary>

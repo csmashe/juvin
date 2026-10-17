@@ -214,6 +214,52 @@ public sealed class ModelsSectionViewModelTests
     }
 
     [Fact]
+    public void AFailedSave_ShowsTheErrorUntilASaveSucceeds()
+    {
+        var vm = Create();
+        _settings.UpdateFailure = new IOException("disk full");
+
+        vm.CommitCodexModelCommand.Execute("gpt-6");
+
+        Assert.True(vm.HasSaveError);
+        Assert.Contains("disk full", vm.SaveError);
+        Assert.Equal("", vm.CodexModel);
+
+        _settings.UpdateFailure = null;
+        vm.CommitCodexModelCommand.Execute("gpt-6");
+
+        Assert.False(vm.HasSaveError);
+        Assert.Equal("gpt-6", _settings.Current.CodexModel);
+    }
+
+    [Fact]
+    public void AModeNoOptionOffers_ShowsLocalWithoutSaving()
+    {
+        _settings.Update(s => s with { ProcessingMode = (ProcessingMode)99 });
+
+        var vm = Create();
+
+        Assert.Equal(ProcessingMode.Local, vm.SelectedMode?.Mode);
+        Assert.Equal(1, _settings.SaveCount);
+    }
+
+    [Theory]
+    [InlineData("http://nas.lan:11434", false)]
+    [InlineData("http://nas:11434", false)]
+    [InlineData("http://ollama.home.arpa:11434", false)]
+    [InlineData("http://10.0.3.20:11434", false)]
+    [InlineData("http://localhost:11434", false)]
+    [InlineData("https://models.example.com", true)]
+    public void AHostName_OutsideTheLocalSuffixes_ShowsTheHint(string url, bool hint)
+    {
+        var vm = Create();
+
+        vm.CommitLocalServerUrlCommand.Execute(url);
+
+        Assert.Equal(hint, vm.HasServerNameHint);
+    }
+
+    [Fact]
     public async Task CheckCodex_ReportsSignedIn()
     {
         _providers.Codex = new ProviderStatus(ProviderStatusKind.Ready, "Provider.Status.Ready", [], "codex-cli 0.162.0");
