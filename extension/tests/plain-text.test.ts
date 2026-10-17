@@ -57,6 +57,31 @@ describe("readPlainText", () => {
     expect(readPlainText(root).text).toBe("");
   });
 
+  it("separates the cells of a table row with a tab and keeps rows as lines, like innerText", () => {
+    const root = editor("<table><tr><td>Due date</td><td>Oct 20</td></tr><tr><th>Owner</th><td>Sam</td></tr></table>");
+    const plain = readPlainText(root);
+    expect(plain.text).toBe("Due date\tOct 20\nOwner\tSam");
+    // A cell whose content is a block still gets only the tab, as innerText does.
+    expect(readPlainText(editor("<table><tr><td><div>Due</div></td><td>Oct 20</td></tr></table>")).text).toBe("Due\tOct 20");
+    const start = plain.text.indexOf("Oct");
+    expect(offsetsToRange(root, plain, start, start + "Oct 20".length).toString()).toBe("Oct 20");
+  });
+
+  it("reads an emoji image as its emoji and leaves other images out", () => {
+    // A decorative image with a whitespace or punctuation alt is not an emoji and stays an image.
+    const root = editor(`a<img data-emoji="👍" alt="👍">b<img alt="❤️">c<img alt="logo">d<img alt=" ">e<img alt="...">f<img data-emoji="🎉">g<img data-emoji="x" alt="company logo">h`);
+    const plain = readPlainText(root);
+    expect(plain.text).toBe("a👍b❤️cdef🎉gh");
+    const start = plain.text.indexOf("👍");
+    expect(offsetsToRange(root, plain, start, start + 3).toString()).toBe("b");
+    expect(offsetsToRange(root, plain, start, start + 3).cloneContents().querySelector("img")?.getAttribute("alt")).toBe("👍");
+  });
+
+  it("follows an emoji image's own visibility", () => {
+    const html = `a<img data-emoji="👍" alt="👍" style="visibility:hidden">b<span style="visibility:hidden"><img data-emoji="🎉" alt="🎉" style="visibility:visible"></span>c`;
+    expect(readPlainText(editor(html)).text).toBe("ab🎉c");
+  });
+
   it("skips text that visibility hides, like innerText", () => {
     expect(readPlainText(editor(`a<span style="visibility:hidden">x<i style="visibility:visible">y</i></span>b`)).text).toBe("ayb");
   });

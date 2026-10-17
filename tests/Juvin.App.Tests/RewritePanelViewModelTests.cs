@@ -260,6 +260,41 @@ public sealed class RewritePanelViewModelTests
     }
 
     [Fact]
+    public async Task AnUnsupportedContentApply_OffersCopyAndKeepsApplyOff()
+    {
+        _target.ApplyError = new ConnectorError("unsupported-content", "The selection holds content other than text.");
+        var vm = Create();
+        await LoadAndRunAsync(vm, Capture());
+
+        await vm.ApplyCommand.ExecuteAsync(null);
+
+        Assert.Equal(_localizer["Panel.Error.UnsupportedContent"], vm.Notice);
+        Assert.False(vm.CanApply);
+        Assert.True(vm.CopyCommand.CanExecute(null));
+        Assert.True(vm.RecaptureCommand.CanExecute(null));
+        Assert.Equal("reply 1", vm.ResultText);
+    }
+
+    [Fact]
+    public async Task ACaptureWithEmbeddedContent_SaysSoBeforeAnyRunAndKeepsApplyOff()
+    {
+        var capture = new ContextResult(Capture().Capture! with { HasEmbeddedContent = true }, null);
+        var vm = Create();
+
+        await vm.LoadAsync(_target, capture);
+
+        Assert.Equal(_localizer["Panel.Error.UnsupportedContent"], vm.Notice);
+        Assert.Empty(_local.Requests);
+
+        await vm.SelectActionCommand.ExecuteAsync(vm.Actions.Single(chip => chip.Action.Id == "clearer"));
+
+        Assert.Equal(_localizer["Panel.Error.UnsupportedContent"], vm.Notice);
+        Assert.False(vm.CanApply);
+        Assert.True(vm.CopyCommand.CanExecute(null));
+        Assert.Equal("reply 1", vm.ResultText);
+    }
+
+    [Fact]
     public async Task ADraftChangedCapture_StaysStaleAfterANewAction()
     {
         _target.ApplyError = new ConnectorError("draft-changed", "The draft changed since it was captured.");

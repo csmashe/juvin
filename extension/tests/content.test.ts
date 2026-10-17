@@ -11,25 +11,27 @@ import { hashText } from "../src/content/hash";
 import { formatSignature } from "../src/content/formatting";
 import { offsetsToRange, readPlainText } from "../src/content/plain-text";
 
-const TEST_PAGE: PageLocation & { href: string } = {
+type TestLocation = PageLocation & Pick<Location, "origin">;
+
+const TEST_PAGE: TestLocation = {
   protocol: "moz-extension:",
   hostname: "abc",
   pathname: "/test-page.html",
-  href: "moz-extension://abc/test-page.html",
+  origin: "moz-extension://abc",
 };
 
-const OTHER_SITE: PageLocation & { href: string } = {
+const OTHER_SITE: TestLocation = {
   protocol: "https:",
   hostname: "www.example.com",
   pathname: "/compose",
-  href: "https://www.example.com/compose",
+  origin: "https://www.example.com",
 };
 
-const GMAIL: PageLocation & { href: string } = {
+const GMAIL: TestLocation = {
   protocol: "https:",
   hostname: "mail.google.com",
   pathname: "/mail/u/0/",
-  href: "https://mail.google.com/mail/u/0/#inbox/thread-1",
+  origin: "https://mail.google.com",
 };
 
 function testPage(): HTMLElement {
@@ -82,9 +84,33 @@ describe("selectAdapter", () => {
   });
 });
 
+describe("EditorRegistry", () => {
+  it("finds an editor again after it is detached and reattached", () => {
+    document.body.innerHTML = `<div id="ed" contenteditable="true">draft</div>`;
+    const editor = document.getElementById("ed")!;
+    const registry = new EditorRegistry(() => "e-1");
+    expect(registry.idFor(editor)).toBe("e-1");
+    editor.remove();
+    expect(registry.find("e-1")).toBeNull();
+    document.body.append(editor);
+    expect(registry.find("e-1")).toBe(editor);
+    expect(registry.idFor(editor)).toBe("e-1");
+  });
+});
+
 describe("captureContext", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
+  });
+
+  it("sends the page URL without its query or fragment", async () => {
+    const original = location.href;
+    window.history.replaceState(null, "", "/mail/u/0/?q=secret#search/invoice+overdue");
+    document.body.innerHTML = `<div id="ed" contenteditable="true">my draft</div>`;
+    select(document.getElementById("ed")!, 0, 2);
+    const result = await captureContext(document, location, new EditorRegistry());
+    window.history.replaceState(null, "", original);
+    expect(result.ok && result.capture.pageUrl).toBe(`${location.origin}/mail/u/0/`);
   });
 
   it("captures the test page thread, selection, and hash", async () => {
@@ -100,7 +126,7 @@ describe("captureContext", () => {
 
     expect(result.capture).toMatchObject({
       adapter: "test-page",
-      pageUrl: TEST_PAGE.href,
+      pageUrl: "moz-extension://abc/test-page.html",
       subject: "Offsite",
       editor: { id: "e-1", hash: await hashText("hey robin\napril works") },
       selection: { text: "robin", start: 4, end: 9 },
@@ -440,6 +466,121 @@ describe("applyReplacement", () => {
     editor.remove();
     const result = await applyReplacement(document, registry, { editorId: "e-1", expectedHash: hash, start: 4, end: 9, text: "a" }, fakeExec);
     expect(!result.ok && result.error.code).toBe("editor-gone");
+  });
+
+  describe("around content other than text", () => {
+    async function capturedWith(html: string, start: number, end: number): Promise<{ editor: HTMLElement; registry: EditorRegistry; request: Parameters<typeof applyReplacement>[2] }> {
+      document.body.innerHTML = `<div id="ed" contenteditable="true">${html}</div>`;
+      const editor = document.getElementById("ed")!;
+      select(editor, start, end);
+      const registry = new EditorRegistry(() => "e-1");
+      const capture = await captureContext(document, OTHER_SITE, registry);
+      if (!capture.ok) {
+        throw new Error("capture failed");
+      }
+
+      const { editor: { hash }, selection } = capture.capture;
+      return { editor, registry, request: { editorId: "e-1", expectedHash: hash, start, end, text: "Hi team", format: "markdown", expectedFormatHash: selection.formatHash! } };
+    }
+
+    it("refuses with draft-changed when an image was inserted between the captured words", async () => {
+      const { editor, registry, request } = await capturedWith("hello world", 0, 11);
+      const image = document.createElement("img");
+      image.setAttribute("src", "https://example.com/logo.png");
+      (editor.firstChild as Text).splitText(6);
+      editor.insertBefore(image, editor.childNodes[1]!);
+      let called = false;
+      const exec: ExecCommand = () => (called = true);
+      const result = await applyReplacement(document, registry, request, exec);
+      expect(!result.ok && result.error.code).toBe("draft-changed");
+      expect(called).toBe(false);
+      expect(editor.querySelector("img")).not.toBeNull();
+    });
+
+    it("refuses with unsupported-content when the selection held an image at capture", async () => {
+      const { editor, registry, request } = await capturedWith(`hello <img src="https://example.com/logo.png">world`, 0, 11);
+      let called = false;
+      const exec: ExecCommand = () => (called = true);
+      const markdown = await applyReplacement(document, registry, request, exec);
+      expect(markdown).toEqual({ ok: false, error: { code: "unsupported-content", message: "The selection holds content other than text." } });
+      const { format: _format, expectedFormatHash: _hash, ...plain } = request;
+      const result = await applyReplacement(document, registry, plain, exec);
+      expect(!result.ok && result.error.code).toBe("unsupported-content");
+      expect(called).toBe(false);
+      expect(editor.querySelector("img")).not.toBeNull();
+    });
+
+    it("refuses with unsupported-content for a selection inside a table", async () => {
+      const { registry, request } = await capturedWith("<table><tr><td>Due date</td><td>Oct 20</td></tr></table>", 0, 15);
+      const result = await applyReplacement(document, registry, request, fakeExec);
+      expect(!result.ok && result.error.code).toBe("unsupported-content");
+    });
+
+    it("flags a selection holding an image at capture, and leaves the flag out otherwise", async () => {
+      document.body.innerHTML = `<div id="ed" contenteditable="true">hello <img src="https://example.com/logo.png">world</div>`;
+      const editor = document.getElementById("ed")!;
+      select(editor, 0, 11);
+      const flagged = await captureContext(document, OTHER_SITE, new EditorRegistry());
+      expect(flagged.ok && flagged.capture.selection.hasEmbeddedContent).toBe(true);
+      select(editor, 0, 5);
+      const plain = await captureContext(document, OTHER_SITE, new EditorRegistry());
+      expect(plain.ok && "hasEmbeddedContent" in plain.capture.selection).toBe(false);
+    });
+
+    it("keeps an image with a whitespace or punctuation alt as embedded content", async () => {
+      const html = `hello <img alt=" " src="https://example.com/spacer.png">there <img alt="..." src="https://example.com/dots.png">world`;
+      const { editor, registry, request } = await capturedWith(html, 0, 16);
+      expect(readPlainText(editor).text).toBe("hello there world");
+      const capture = await captureContext(document, OTHER_SITE, registry);
+      expect(capture.ok && capture.capture.selection.hasEmbeddedContent).toBe(true);
+      const result = await applyReplacement(document, registry, request, fakeExec);
+      expect(!result.ok && result.error.code).toBe("unsupported-content");
+      expect(editor.querySelectorAll("img")).toHaveLength(2);
+    });
+
+    it("captures an emoji image as its emoji and applies over it normally", async () => {
+      const html = `hello <img data-emoji="👍" alt="👍" class="an1" src="https://fonts.gstatic.com/s/e/notoemoji/1f44d/32.png"> world <img alt="🎉" src="https://example.com/party.png">`;
+      const { editor, registry, request } = await capturedWith(html, 0, 17);
+      expect(readPlainText(editor).text).toBe("hello 👍 world 🎉");
+      const capture = await captureContext(document, OTHER_SITE, registry);
+      expect(capture.ok && capture.capture.selection).toMatchObject({ text: "hello 👍 world 🎉", markdown: "hello 👍 world 🎉" });
+      expect(capture.ok && "hasEmbeddedContent" in capture.capture.selection).toBe(false);
+      const result = await applyReplacement(document, registry, { ...request, text: "Hi 👍 team" }, fakeExec);
+      expect(result).toEqual({ ok: true });
+      expect(readPlainText(editor).text).toBe("Hi 👍 team");
+    });
+
+    it.each([
+      ["after", 3, 6, "abcHi team"],
+      ["before", 0, 3, "Hi teamdef"],
+    ])("leaves an image right %s the selection out of the range, the flag, and the edit", async (_, start, end, expected) => {
+      const { editor, registry, request } = await capturedWith(`abc<img src="https://example.com/x.png">def`, start, end);
+      const capture = await captureContext(document, OTHER_SITE, registry);
+      expect(capture.ok && "hasEmbeddedContent" in capture.capture.selection).toBe(false);
+      const result = await applyReplacement(document, registry, request, fakeExec);
+      expect(result).toEqual({ ok: true });
+      expect(readPlainText(editor).text).toBe(expected);
+      expect(editor.querySelector("img")).not.toBeNull();
+    });
+
+    it("ends the range right after an emoji, leaving the image that follows it alone", async () => {
+      const { editor, registry, request } = await capturedWith(`hi <img alt="👍"><img src="https://example.com/logo.png">there`, 0, 5);
+      const capture = await captureContext(document, OTHER_SITE, registry);
+      expect(capture.ok && capture.capture.selection.text).toBe("hi 👍");
+      expect(capture.ok && "hasEmbeddedContent" in capture.capture.selection).toBe(false);
+      const result = await applyReplacement(document, registry, request, fakeExec);
+      expect(result).toEqual({ ok: true });
+      expect(readPlainText(editor).text).toBe("Hi teamthere");
+      expect(editor.querySelector("img")?.getAttribute("src")).toBe("https://example.com/logo.png");
+    });
+
+    it("applies next to an image outside the selection and keeps it", async () => {
+      const { editor, registry, request } = await capturedWith(`hello world <img src="https://example.com/logo.png">`, 0, 5);
+      const result = await applyReplacement(document, registry, request, fakeExec);
+      expect(result).toEqual({ ok: true });
+      expect(editor.querySelector("img")).not.toBeNull();
+      expect(readPlainText(editor).text).toBe("Hi team world ");
+    });
   });
 
   it("reports internal when the editor rejects the command", async () => {

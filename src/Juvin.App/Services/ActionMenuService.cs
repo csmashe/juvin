@@ -22,6 +22,7 @@ namespace Juvin.App.Services;
 public sealed class ActionMenuService
 {
     private const string DraftChangedCode = "draft-changed";
+    private const string UnsupportedContentCode = "unsupported-content";
 
     private static readonly TimeSpan s_showTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan s_sendTimeout = TimeSpan.FromSeconds(10);
@@ -421,6 +422,26 @@ public sealed class ActionMenuService
             menu.Advice = session;
             menu.EndBusy(busy);
             _ = SendResultAsync(menu, new MenuUpdateMessage { MenuId = menu.Id, State = MenuStates.Answer, Text = result.Text }, handOver);
+            return;
+        }
+
+        if (menu.Capture.HasEmbeddedContent)
+        {
+            // The extension would refuse to replace a selection holding an image, so the result is offered for Copy.
+            Trace.WriteLine($"[ActionMenu] Not applying to {menu.Id}: the selection holds embedded content.");
+            menu.EndBusy(busy);
+            _ = SendResultAsync(
+                menu,
+                new MenuUpdateMessage
+                {
+                    MenuId = menu.Id,
+                    State = MenuStates.Error,
+                    Text = ErrorText(UnsupportedContentCode),
+                    CanRetry = false,
+                    Result = result.Text,
+                },
+                handOver
+            );
             return;
         }
 

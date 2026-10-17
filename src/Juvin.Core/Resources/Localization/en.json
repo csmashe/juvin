@@ -402,6 +402,7 @@
   "Panel.Error.NoBrowser": "No browser is connected to Juvin. Click into your browser with the Juvin extension and press the shortcut there to reconnect it.",
   "Panel.Error.BrowserNotFocused": "Focus the browser with your draft and press the shortcut again.",
   "Panel.Error.EditorGone": "The draft editor is no longer on the page. Copy the rewrite instead.",
+  "Panel.Error.UnsupportedContent": "The selection holds an image or other content Juvin cannot rewrite. Copy the rewrite instead.",
   "Panel.Error.Disconnected": "The browser disconnected. Copy the rewrite, or press the shortcut again in the browser.",
   "Panel.Error.Timeout": "The browser did not answer in time. Try again.",
   "Panel.Error.TooLarge": "The rewrite is too large to send to the browser. Copy it instead.",

@@ -4,7 +4,7 @@ import type { PageLocation, SiteAdapter } from "./adapters/adapter";
 import { selectAdapter } from "./adapters/registry";
 import { isPlainEditor, isTextArea, type Editor, type EditorRegistry, type Offsets } from "./editor-registry";
 import { hashText } from "./hash";
-import { formatSignature } from "./formatting";
+import { embeddedContent, formatSignature } from "./formatting";
 import { selectionMarkdown } from "./markdown";
 import { pointToOffset, readPlainText } from "./plain-text";
 
@@ -43,7 +43,7 @@ function failure(code: ContextErrorCode, message: string): CaptureResult {
 
 export async function captureContext(
   doc: Document,
-  location: PageLocation & { href: string },
+  location: PageLocation & Pick<Location, "origin">,
   registry: EditorRegistry,
   adapters?: readonly SiteAdapter[],
   editorId?: string,
@@ -75,6 +75,7 @@ export async function captureContext(
   const rich = !isPlainEditor(editor);
   const markdown = rich ? selectionMarkdown(editor, offsets.start, offsets.end) : undefined;
   const signature = rich ? formatSignature(editor, offsets.start, offsets.end) : undefined;
+  const embedded = !isTextArea(editor) && embeddedContent(editor, offsets.start, offsets.end).length > 0;
   const hash = await hashText(text);
   const formatHash = signature === undefined ? undefined : await hashText(signature);
   const thread = await adapter.captureThread(doc, editor);
@@ -92,7 +93,8 @@ export async function captureContext(
     ok: true,
     capture: {
       adapter: adapter.id,
-      pageUrl: location.href,
+      // Without the query and fragment, which on Gmail carry the search terms.
+      pageUrl: location.origin + location.pathname,
       capturedAt: new Date().toISOString(),
       ...(thread.subject ? { subject: thread.subject } : {}),
       editor: { id, hash },
@@ -101,6 +103,7 @@ export async function captureContext(
         start: offsets.start,
         end: offsets.end,
         ...(markdown === undefined || formatHash === undefined ? {} : { markdown, formatHash }),
+        ...(embedded ? { hasEmbeddedContent: true } : {}),
       },
       thread: { completeness: thread.completeness, collapsedCount: thread.collapsedCount, messages: thread.messages },
     },

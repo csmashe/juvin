@@ -3,7 +3,7 @@ import type { ApplyResult } from "../shared/runtime-messages";
 import { editorText } from "./capture";
 import { isEditable, isPlainEditor, isTextArea, type Editor, type EditorRegistry } from "./editor-registry";
 import { hashText } from "./hash";
-import { expectFormatting, formatRuns, formatSignature, formattingSnapshot, type FormatRun } from "./formatting";
+import { embeddedContent, expectFormatting, formatRuns, formatSignature, formattingSnapshot, type FormatRun } from "./formatting";
 import { markdownToElement, stripMarkdown } from "./markdown";
 import { offsetsToRange, readPlainText } from "./plain-text";
 
@@ -79,10 +79,15 @@ export async function applyReplacement(
     return failure("draft-changed", "The draft changed since it was captured.");
   }
 
-  // The hash covers plain text only; this catches formatting changed since the capture.
+  // The hash covers plain text only; this catches formatting or embedded content changed since the capture.
   const signature = request.format === "markdown" && !isPlainEditor(editor) ? formatSignature(editor, offsets.start, offsets.end) : undefined;
   if (signature !== undefined && (await hashText(signature)) !== request.expectedFormatHash) {
     return failure("draft-changed", "The draft changed since it was captured.");
+  }
+
+  // The edit would delete an image or table in the range along with the text.
+  if (!isTextArea(editor) && embeddedContent(editor, offsets.start, offsets.end).length > 0) {
+    return failure("unsupported-content", "The selection holds content other than text.");
   }
 
   if (!isEditable(editor)) {

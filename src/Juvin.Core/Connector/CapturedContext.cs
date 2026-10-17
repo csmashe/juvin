@@ -6,6 +6,7 @@ namespace Juvin.Core.Connector;
 /// <summary>A capture turned into rewrite input, plus what Apply needs to find the same draft again.</summary>
 /// <param name="EditorHash">Must still match the editor's text when the rewrite is applied.</param>
 /// <param name="FormatHash">Set for a Markdown capture; the selection's formatting must still match it on apply.</param>
+/// <param name="HasEmbeddedContent">The selection holds content other than text, which the extension refuses to replace.</param>
 public sealed record CapturedContext(
     RewriteContext Context,
     string Adapter,
@@ -14,7 +15,8 @@ public sealed record CapturedContext(
     string? PageUrl,
     int SelectionStart,
     int SelectionEnd,
-    string? FormatHash = null
+    string? FormatHash = null,
+    bool HasEmbeddedContent = false
 )
 {
     /// <exception cref="ArgumentException">The capture's completeness is not one of the protocol's values.</exception>
@@ -48,7 +50,8 @@ public sealed record CapturedContext(
             capture.PageUrl,
             capture.Selection.Start,
             capture.Selection.End,
-            capture.Selection.FormatHash
+            capture.Selection.FormatHash,
+            capture.Selection.HasEmbeddedContent
         );
     }
 

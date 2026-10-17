@@ -437,6 +437,23 @@ public sealed class ActionMenuServiceTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task ACaptureWithEmbeddedContent_SendsTheResultForCopyWithoutApplying()
+    {
+        await SayHelloAsync();
+        _service.OnCaptureCompleted(_session, 1, new ContextResult(Capture().Capture! with { HasEmbeddedContent = true }, null));
+        var menuId = await ShowAsync();
+        Choose(menuId, "clearer");
+        await NextAsync("menu.update");
+
+        var update = await NextAsync("menu.update");
+
+        Assert.Equal("error", update.GetProperty("state").GetString());
+        Assert.Equal(_localizer["Panel.Error.UnsupportedContent"], update.GetProperty("text").GetString());
+        Assert.False(update.GetProperty("canRetry").GetBoolean());
+        Assert.Equal("reply 1", update.GetProperty("result").GetString());
+    }
+
+    [Fact]
     public async Task AnApplyTheEditorRefuses_SendsTheErrorWithTheResultForCopy()
     {
         var menuId = await OpenMenuAsync();

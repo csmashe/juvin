@@ -1,4 +1,5 @@
 import type { Completeness, ThreadMessage } from "../../shared/protocol";
+import { isEditableHost } from "../editor-registry";
 
 export interface ThreadSnapshot {
   subject?: string;
@@ -17,13 +18,6 @@ export interface SiteAdapter {
   matches(location: PageLocation): boolean;
   findEditor(doc: Document): HTMLElement | null;
   captureThread(doc: Document, editor: HTMLElement): Promise<ThreadSnapshot>;
-}
-
-const EDITABLE_VALUES = new Set(["", "true", "plaintext-only"]);
-
-function isEditableHost(element: Element): boolean {
-  const value = element.getAttribute("contenteditable");
-  return value !== null && EDITABLE_VALUES.has(value.toLowerCase());
 }
 
 /** The textarea or contenteditable host that holds the current selection, or null. */

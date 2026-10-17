@@ -35,6 +35,7 @@ public enum RewritePanelState
 public sealed partial class RewritePanelViewModel : ObservableObject
 {
     private const string DraftChangedCode = "draft-changed";
+    private const string UnsupportedContentCode = "unsupported-content";
 
     private static readonly TimeSpan s_copiedHintDuration = TimeSpan.FromSeconds(2);
 
@@ -390,10 +391,11 @@ public sealed partial class RewritePanelViewModel : ObservableObject
         }
 
         Trace.WriteLine($"[RewritePanel] Apply refused ({ConnectorTrace.Code(error.Code)}).");
-        if (error.Code == DraftChangedCode)
+        // Content Apply would delete stays in the captured range, so Apply stays off for it as for a changed draft.
+        if (error.Code is DraftChangedCode or UnsupportedContentCode)
         {
             IsDraftChanged = true;
-            Notice = _localizer["Panel.DraftChanged"];
+            Notice = error.Code == DraftChangedCode ? _localizer["Panel.DraftChanged"] : ErrorText(error.Code);
         }
         else
         {
@@ -492,6 +494,13 @@ public sealed partial class RewritePanelViewModel : ObservableObject
             Trace.WriteLine($"[RewritePanel] Capture declined ({ConnectorTrace.Code(result.Error?.Code)}).");
             Fail(ErrorText(result.Error?.Code), canRetry: false);
             return Task.CompletedTask;
+        }
+
+        // Said before any run, so the user knows up front that the rewrite can only be copied.
+        if (result.Capture.HasEmbeddedContent)
+        {
+            IsDraftChanged = true;
+            Notice = ErrorText(UnsupportedContentCode);
         }
 
         CaptureLoaded?.Invoke();

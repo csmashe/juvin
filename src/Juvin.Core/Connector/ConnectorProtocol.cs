@@ -94,6 +94,7 @@ public static class ConnectorErrorCodes
         "editor-gone",
         "browser-not-focused",
         "draft-changed",
+        "unsupported-content",
         "unsupported",
         "internal"
     );

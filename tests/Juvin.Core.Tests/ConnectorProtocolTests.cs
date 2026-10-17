@@ -303,6 +303,7 @@ public sealed class ConnectorProtocolTests
 
     [Theory]
     [InlineData("editor-gone", "editor-gone")]
+    [InlineData("unsupported-content", "unsupported-content")]
     [InlineData(ConnectorErrorCodes.BadMessage, ConnectorErrorCodes.BadMessage)]
     [InlineData(ConnectorErrorCodes.Timeout, ConnectorErrorCodes.Timeout)]
     [InlineData(ConnectorErrorCodes.NoBrowser, ConnectorErrorCodes.NoBrowser)]
@@ -387,6 +388,16 @@ public sealed class ConnectorProtocolTests
         Assert.Equal("sha256:9f86d0...", captured.EditorHash);
         Assert.Equal("https://mail.google.com/mail/u/0/", captured.PageUrl);
         Assert.Equal((0, 118), (captured.SelectionStart, captured.SelectionEnd));
+        Assert.False(captured.HasEmbeddedContent);
+    }
+
+    [Fact]
+    public void CapturedContext_CarriesTheEmbeddedContentFlag()
+    {
+        var json = CaptureResponse.Replace("\"formatHash\":\"sha256:5d41a1...\"", "\"formatHash\":\"sha256:5d41a1...\",\"hasEmbeddedContent\":true");
+        var response = Assert.IsType<ContextResponseMessage>(ConnectorProtocol.Parse(json).Message);
+
+        Assert.True(CapturedContext.From(response.Capture!).HasEmbeddedContent);
     }
 
     [Fact]
