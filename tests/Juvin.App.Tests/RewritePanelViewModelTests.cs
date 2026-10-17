@@ -337,6 +337,47 @@ public sealed class RewritePanelViewModelTests
     }
 
     [Fact]
+    public async Task AFollowUpAfterTheModeChanged_IsRefusedAndKeepsTheResult()
+    {
+        var vm = Create();
+        await LoadAndRunAsync(vm, Capture());
+
+        _settings.Update(s => s with { ProcessingMode = ProcessingMode.Codex });
+        vm.FollowUpText = "shorter please";
+        await vm.SendFollowUpCommand.ExecuteAsync(null);
+
+        Assert.Empty(_codex.Requests);
+        Assert.Single(_local.Requests);
+        Assert.Equal("reply 1", vm.ResultText);
+        Assert.Equal(RewritePanelState.Done, vm.State);
+        Assert.Equal(_localizer["Panel.Notice.ProviderChanged"], vm.Notice);
+        Assert.False(vm.CanSendFollowUp);
+        Assert.False(vm.SendFollowUpCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task RetryAfterAFailedFollowUp_AfterTheModeChanged_IsRefused()
+    {
+        var vm = Create();
+        await LoadAndRunAsync(vm, Capture());
+        _local.Failure = new ProviderException(ProviderFailureKind.Unreachable, "The local model server did not respond in time.");
+        vm.FollowUpText = "shorter please";
+        await vm.SendFollowUpCommand.ExecuteAsync(null);
+        Assert.True(vm.HasError);
+        var shown = vm.ResultText;
+
+        _settings.Update(s => s with { ProcessingMode = ProcessingMode.Codex });
+        await vm.RetryCommand.ExecuteAsync(null);
+
+        Assert.Empty(_codex.Requests);
+        Assert.Equal(2, _local.Requests.Count);
+        Assert.Equal(shown, vm.ResultText);
+        Assert.Equal(_localizer["Panel.Notice.ProviderChanged"], vm.Notice);
+        Assert.False(vm.CanRetry);
+        Assert.False(vm.CanSendFollowUp);
+    }
+
+    [Fact]
     public async Task RetryAfterAFailedFollowUp_KeepsTheEarlierTurns()
     {
         var vm = Create();

@@ -374,6 +374,7 @@
   "Panel.Copy": "Copy",
   "Panel.Copied": "Copied",
   "Panel.Apply": "Apply",
+  "Panel.Notice.ProviderChanged": "The model settings changed. Start a new rewrite to continue.",
   "Panel.DraftChanged": "Draft changed. The draft was edited after it was captured, so Apply would overwrite your edits. Copy the rewrite, or Recapture to start again from the current draft.",
   "Panel.Adapter.Gmail": "Gmail",
   "Panel.Adapter.Generic": "Page text",
@@ -403,5 +404,6 @@
   "Panel.Error.TooLarge": "The rewrite is too large to send to the browser. Copy it instead.",
   "Panel.Error.Unknown": "The browser could not complete the request.",
   "Menu.Error.UnknownAction": "That action is no longer available. Press the shortcut again to see the current actions.",
+  "Menu.Error.ProviderChanged": "The model settings changed since this answer. Run What am I missing? again.",
   "Menu.Error.InvalidInstruction": "Enter an instruction of up to {0} characters."
 }

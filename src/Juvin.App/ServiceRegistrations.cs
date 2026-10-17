@@ -121,7 +121,7 @@ public static class ServiceRegistrations
         ));
         services.AddTransient<SetupWizard>();
 
-        return services.BuildServiceProvider();
+        return services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
     }
 
     private static void AddPlatform(IServiceCollection services)

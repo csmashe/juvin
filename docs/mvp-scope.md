@@ -139,7 +139,7 @@ Decided October 13, 2026 (decision 7). The shortcut opens a menu next to the dra
 - Draft changed: when the hash check refuses, the card shows the result with Copy and Recapture, as the panel does today.
 - Failure: a provider error shows in the card with Try again. Local mode still never falls back to another provider.
 - Ask for a change (click the mark): a text box and Run; the result applies like a quick action.
-- What am I missing? answers in the card as bullet points with Copy and a follow-up box, since there is nothing to apply.
+- What am I missing? answers in the card as bullet points with Copy and a follow-up box, since there is nothing to apply. Ask for a change after an answer continues that conversation and answers in the card again rather than applying like a quick action, which is what the extension does.
 - Right-click on the mark: the context facts (message count, completeness, and the processing mode with the model) at the top, then a list of the whole action catalog, custom actions from the Rewrite actions section included, then Review, which hands the capture to the desktop rewrite panel for a streamed preview, the Changes diff, follow-ups, and Apply. The panel opens with nothing running and the user picks an action there; there is no default action any more.
 - Closing: Escape, a click outside, the shortcut pressed again, or a new capture closes the menu and cancels anything in flight.
 - Privacy: the menu holds results only while it is open, and the extension stores nothing. The page could read the shadow root's text while it is shown, which is the same exposure as the draft itself.

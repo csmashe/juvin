@@ -177,6 +177,39 @@ public sealed class ConnectorServiceTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task ConfigSends_ToAPeerThatStopsReading_SendOnlyTheLatestOnceTheFirstFinishes()
+    {
+        var channel = new FakeConnectorChannel { SendGate = new TaskCompletionSource() };
+        await using var session = new ConnectorSession(channel, () => _service.BuildConfig(_settings.Current));
+        var shortcuts = new[] { "Ctrl+Alt+A", "Ctrl+Alt+B", "Ctrl+Alt+C" };
+
+        var first = _service.QueueConfigAsync(session, ConfigFor(shortcuts[0]));
+        var later = shortcuts[1..].Select(shortcut => _service.QueueConfigAsync(session, ConfigFor(shortcut))).ToList();
+        await Task.WhenAll(later).WaitAsync(s_timeout);
+        Assert.False(first.IsCompleted);
+        channel.SendGate.SetResult();
+        await first.WaitAsync(s_timeout);
+
+        Assert.Equal("Ctrl+Alt+A", (await channel.NextSentAsync()).GetProperty("shortcut").GetString());
+        Assert.Equal("Ctrl+Alt+C", (await channel.NextSentAsync()).GetProperty("shortcut").GetString());
+        Assert.False(channel.HasSent);
+    }
+
+    [Fact]
+    public async Task ConfigSend_ToAPeerThatStopsReading_IsAbandonedAfterTheDeadline()
+    {
+        _service.ConfigSendTimeout = TimeSpan.FromMilliseconds(100);
+        var channel = new FakeConnectorChannel { SendGate = new TaskCompletionSource() };
+        await using var session = new ConnectorSession(channel, () => _service.BuildConfig(_settings.Current));
+
+        await _service.QueueConfigAsync(session, ConfigFor("Ctrl+Alt+A")).WaitAsync(s_timeout);
+        channel.SendGate = null;
+        await _service.QueueConfigAsync(session, ConfigFor("Ctrl+Alt+B")).WaitAsync(s_timeout);
+
+        Assert.Equal("Ctrl+Alt+B", (await channel.NextSentAsync()).GetProperty("shortcut").GetString());
+    }
+
+    [Fact]
     public async Task ShortcutPressed_RequestsAndReportsTheCapture()
     {
         await _service.StartAsync(CancellationToken.None);
@@ -201,6 +234,39 @@ public sealed class ConnectorServiceTests : IAsyncDisposable
         var result = await completed.Task.WaitAsync(s_timeout);
         Assert.Equal("Draft", result.Capture?.Context.Draft);
         Assert.Equal(ThreadCompleteness.DraftOnly, result.Capture?.Context.Completeness);
+    }
+
+    [Fact]
+    public async Task ShortcutPressed_ReportsACaptureTheExtensionNeverAnswers()
+    {
+        _service.CaptureTimeout = TimeSpan.FromMilliseconds(100);
+        await _service.StartAsync(CancellationToken.None);
+        var completed = new TaskCompletionSource<ContextResult>();
+        _service.CaptureCompleted += (_, _, result) => completed.TrySetResult(result);
+        await using var stream = await ConnectAndSayHelloAsync();
+
+        await WriteAsync(stream, """{"v":1,"type":"shortcut.pressed"}""");
+        Assert.Equal("context.request", (await ReadAsync(stream)).GetProperty("type").GetString());
+
+        var result = await completed.Task.WaitAsync(s_timeout);
+        Assert.Equal(ConnectorRewriteTarget.TimeoutCode, result.Error?.Code);
+    }
+
+    [Fact]
+    public async Task ShortcutPressed_ReportsACaptureWhoseConnectionBreaks()
+    {
+        await _service.StartAsync(CancellationToken.None);
+        var completed = new TaskCompletionSource<ContextResult>();
+        _service.CaptureCompleted += (_, _, result) => completed.TrySetResult(result);
+        var stream = await ConnectAndSayHelloAsync();
+
+        await WriteAsync(stream, """{"v":1,"type":"shortcut.pressed"}""");
+        Assert.Equal("context.request", (await ReadAsync(stream)).GetProperty("type").GetString());
+        await stream.DisposeAsync();
+
+        var result = await completed.Task.WaitAsync(s_timeout);
+        Assert.Equal(ConnectorErrorCodes.Disconnected, result.Error?.Code);
+        Assert.False(ConnectorService.AnsweredByBrowser(result));
     }
 
     [Theory]
@@ -303,10 +369,13 @@ public sealed class ConnectorServiceTests : IAsyncDisposable
     }
 
     [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task TriggerCapture_PrefersAnErrorOtherThanBrowserNotFocused(bool notFocusedFirst)
+    [InlineData(true, "no-selection")]
+    [InlineData(false, "no-selection")]
+    [InlineData(true, null)]
+    public async Task TriggerCapture_PrefersAnErrorOtherThanBrowserNotFocused(bool notFocusedFirst, string? focusedCode)
     {
+        // A null code leaves the focused browser silent, so the app's own timeout must still outrank "not focused".
+        _service.CaptureTimeout = focusedCode is null ? TimeSpan.FromMilliseconds(300) : _service.CaptureTimeout;
         await _service.StartAsync(CancellationToken.None);
         var completed = new TaskCompletionSource<(ConnectorSession Session, ContextResult Result)>();
         _service.CaptureCompleted += (client, _, outcome) => completed.TrySetResult((client, outcome));
@@ -320,17 +389,20 @@ public sealed class ConnectorServiceTests : IAsyncDisposable
         {
             await WriteAsync(unfocused, ErrorResponse(unfocusedId, ConnectorService.BrowserNotFocusedCode));
             await Task.Delay(50);
-            await WriteAsync(focused, ErrorResponse(focusedId, "no-selection"));
+            if (focusedCode is not null)
+            {
+                await WriteAsync(focused, ErrorResponse(focusedId, focusedCode));
+            }
         }
         else
         {
-            await WriteAsync(focused, ErrorResponse(focusedId, "no-selection"));
+            await WriteAsync(focused, ErrorResponse(focusedId, focusedCode!));
             await Task.Delay(50);
             await WriteAsync(unfocused, ErrorResponse(unfocusedId, ConnectorService.BrowserNotFocusedCode));
         }
 
         var (session, result) = await completed.Task.WaitAsync(s_timeout);
-        Assert.Equal("no-selection", result.Error?.Code);
+        Assert.Equal(focusedCode ?? ConnectorRewriteTarget.TimeoutCode, result.Error?.Code);
         Assert.Same(_service.Clients[1], session);
     }
 
@@ -461,6 +533,9 @@ public sealed class ConnectorServiceTests : IAsyncDisposable
         );
         Assert.Equal("internal", (await failed)?.Code);
     }
+
+    private ConnectorConfig ConfigFor(string shortcut) =>
+        _service.BuildConfig(_settings.Current with { RewriteShortcut = shortcut });
 
     private async Task<Stream> ConnectAndSayHelloAsync()
     {

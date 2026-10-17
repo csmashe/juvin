@@ -43,6 +43,19 @@ public sealed class RewriteSession
 
     public IReadOnlyList<ChatMessage> History => _history;
 
+    /// <summary>
+    ///     Whether <paramref name="current" /> would still send a turn where this session sends it: the same mode,
+    ///     and the same server and model for Local or the same binary and model for Codex. A follow-up must
+    ///     not reach a provider the user has since switched away from.
+    /// </summary>
+    public bool UsesSameProvider(AppSettings current) =>
+        _settings.ProcessingMode == current.ProcessingMode
+        && (
+            current.ProcessingMode == ProcessingMode.Local
+                ? _settings.LocalServerUrl == current.LocalServerUrl && _settings.LocalModel == current.LocalModel
+                : _settings.CodexBinaryPath == current.CodexBinaryPath && _settings.CodexModel == current.CodexModel
+        );
+
     /// <summary>The provenance of the last run, including one that failed.</summary>
     public RewriteProvenance? LastProvenance { get; private set; }
 

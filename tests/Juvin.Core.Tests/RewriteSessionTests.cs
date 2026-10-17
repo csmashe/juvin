@@ -40,6 +40,48 @@ public sealed class RewriteSessionTests
         Assert.Equal(4, session.History.Count);
     }
 
+    [Theory]
+    [InlineData("same", true)]
+    [InlineData("mode", false)]
+    [InlineData("local-server", false)]
+    [InlineData("local-model", false)]
+    [InlineData("codex-model-in-local-mode", true)]
+    public void UsesSameProvider_InLocalMode_ComparesTheModeServerAndModel(string change, bool expected)
+    {
+        var started = new AppSettings { LocalServerUrl = "http://10.0.3.20:11434", LocalModel = "gemma4:26b", CodexModel = "gpt-5" };
+        var current = change switch
+        {
+            "mode" => started with { ProcessingMode = ProcessingMode.Codex },
+            "local-server" => started with { LocalServerUrl = "http://localhost:11434" },
+            "local-model" => started with { LocalModel = "qwen3.5:27b" },
+            "codex-model-in-local-mode" => started with { CodexModel = "gpt-5-mini" },
+            _ => started with { },
+        };
+
+        Assert.Equal(expected, Session(started).UsesSameProvider(current));
+    }
+
+    [Theory]
+    [InlineData("same", true)]
+    [InlineData("mode", false)]
+    [InlineData("codex-model", false)]
+    [InlineData("codex-binary", false)]
+    [InlineData("local-model-in-codex-mode", true)]
+    public void UsesSameProvider_InCodexMode_ComparesTheModeBinaryAndModel(string change, bool expected)
+    {
+        var started = new AppSettings { ProcessingMode = ProcessingMode.Codex, LocalModel = "gemma4:26b", CodexModel = "gpt-5" };
+        var current = change switch
+        {
+            "mode" => started with { ProcessingMode = ProcessingMode.Local },
+            "codex-model" => started with { CodexModel = "gpt-5-mini" },
+            "codex-binary" => started with { CodexBinaryPath = "/opt/codex/bin/codex" },
+            "local-model-in-codex-mode" => started with { LocalModel = "qwen3.5:27b" },
+            _ => started with { },
+        };
+
+        Assert.Equal(expected, Session(started).UsesSameProvider(current));
+    }
+
     [Fact]
     public async Task Run_ForwardsThePreview()
     {

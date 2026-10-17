@@ -87,6 +87,7 @@ public sealed class RewritePanelServiceTests
     [Theory]
     [InlineData("browser-not-focused", true)]
     [InlineData("timeout", false)]
+    [InlineData("disconnected", false)]
     [InlineData("no-selection", true)]
     public void AnsweredByBrowser_OnlyABrowsersOwnAnswerCounts(string code, bool expected) =>
         Assert.Equal(expected, ConnectorService.AnsweredByBrowser(new ContextResult(null, new ConnectorError(code, "x"))));
