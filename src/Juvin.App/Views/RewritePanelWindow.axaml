@@ -3,6 +3,7 @@
         xmlns:vm="using:Juvin.App.ViewModels"
         xmlns:ic="using:FluentIcons.Avalonia"
         xmlns:loc="using:Juvin.App.Localization"
+        xmlns:rewrite="using:Juvin.Core.Rewrite"
         x:Class="Juvin.App.Views.RewritePanelWindow"
         x:DataType="vm:RewritePanelViewModel"
         Title="{loc:Str Panel.Title}"
@@ -152,6 +153,7 @@
 
             <Grid Grid.Row="3" Margin="16,10,16,0" ColumnDefinitions="*,Auto" ColumnSpacing="8">
                 <TextBox Text="{Binding FollowUpText}"
+                         MaxLength="{x:Static rewrite:RewriteActionCatalog.MaxInstructionLength}"
                          PlaceholderText="{loc:Str Panel.FollowUpPlaceholder}"
                          IsEnabled="{Binding HasCapture}">
                     <TextBox.KeyBindings>

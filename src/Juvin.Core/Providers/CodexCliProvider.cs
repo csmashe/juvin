@@ -13,8 +13,6 @@ namespace Juvin.Core.Providers;
 /// </summary>
 public sealed class CodexCliProvider : IModelProvider
 {
-    private const string DefaultModelLabel = "default";
-
     private static readonly string[] s_requiredExecFlags = ["--json", "--ephemeral", "--sandbox", "--skip-git-repo-check"];
     private static readonly TimeSpan s_defaultTimeout = TimeSpan.FromMinutes(3);
     private static readonly TimeSpan s_probeTimeout = TimeSpan.FromSeconds(30);
@@ -190,10 +188,10 @@ public sealed class CodexCliProvider : IModelProvider
 
         var text = output.Text.TrimEnd();
         Trace.WriteLine(
-            $"[CodexCliProvider] Completed: model={model ?? DefaultModelLabel}, chars={text.Length}, ms={stopwatch.ElapsedMilliseconds}"
+            $"[CodexCliProvider] Completed: model={model ?? IModelProvider.DefaultModelLabel}, chars={text.Length}, ms={stopwatch.ElapsedMilliseconds}"
         );
         preview?.Report(text);
-        return new ChatResult(text, model ?? DefaultModelLabel, output.InputTokens, output.OutputTokens);
+        return new ChatResult(text, model ?? IModelProvider.DefaultModelLabel, output.InputTokens, output.OutputTokens);
     }
 
     internal static string? ResolveBinary(string? configured, string? pathVariable, bool isWindows)
@@ -313,7 +311,7 @@ public sealed class CodexCliProvider : IModelProvider
         var reason = detail.ToLowerInvariant() switch
         {
             var d when d.Contains("model") && (d.Contains("not supported") || d.Contains("not found") || d.Contains("does not exist") || d.Contains("invalid")) =>
-                $"Codex does not accept the model '{model ?? DefaultModelLabel}'.",
+                $"Codex does not accept the model '{model ?? IModelProvider.DefaultModelLabel}'.",
             var d when d.Contains("unauthorized") || d.Contains("401") || d.Contains("login") || d.Contains("not logged in") =>
                 "Codex is not signed in. Run codex login.",
             var d when d.Contains("rate limit") || d.Contains("429") || d.Contains("quota") || d.Contains("usage limit") =>

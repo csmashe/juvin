@@ -301,6 +301,17 @@ public sealed class ActionMenuService
 
     private void Run(OpenMenu menu, RewriteAction action, string? instruction)
     {
+        if (action.IsCustom && !RewriteActionCatalog.IsValidInstruction(instruction))
+        {
+            Trace.WriteLine($"[ActionMenu] Refused {action.Id} on {menu.Id}: instruction of {instruction?.Length ?? 0} chars.");
+            _ = SendErrorAsync(
+                menu,
+                _localizer.Format("Menu.Error.InvalidInstruction", RewriteActionCatalog.MaxInstructionLength),
+                canRetry: false
+            );
+            return;
+        }
+
         var settings = _settings.Current;
         RewriteSession session;
         if (action.IsCustom && menu.Advice is { } advice)

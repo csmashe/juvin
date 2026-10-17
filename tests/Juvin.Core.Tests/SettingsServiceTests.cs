@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Juvin.Core.Models;
 using Juvin.Core.Services;
 
@@ -76,6 +77,31 @@ public sealed class SettingsServiceTests : IDisposable
 
         Assert.Equal(ProcessingMode.Codex, service.Current.ProcessingMode);
         Assert.Equal("Ctrl+Shift+F", service.Current.RewriteShortcut);
+    }
+
+    [Fact]
+    public void OpenForReading_ThrowsOnACorruptFileAndLeavesItInPlace()
+    {
+        var path = _temp.File("settings.json");
+        File.WriteAllText(path, "{ not json");
+
+        Assert.Throws<JsonException>(() => SettingsService.OpenForReading(path).Current);
+        Assert.Equal("{ not json", File.ReadAllText(path));
+        Assert.Equal(["settings.json"], Directory.EnumerateFiles(_temp.Path).Select(Path.GetFileName));
+    }
+
+    [Fact]
+    public void OpenForReading_DoesNotRestoreACorruptFileFromItsBackup()
+    {
+        var path = _temp.File("settings.json");
+        var service = new SettingsService(path);
+        service.Update(s => s with { HistoryRetentionDays = 7 });
+        File.WriteAllText(path, "{ not json");
+        var before = Directory.EnumerateFiles(_temp.Path).Select(Path.GetFileName).Order().ToArray();
+
+        Assert.Throws<JsonException>(() => SettingsService.OpenForReading(path).Current);
+        Assert.Equal("{ not json", File.ReadAllText(path));
+        Assert.Equal(before, Directory.EnumerateFiles(_temp.Path).Select(Path.GetFileName).Order().ToArray());
     }
 
     [Fact]

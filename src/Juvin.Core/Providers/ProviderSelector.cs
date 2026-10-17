@@ -33,10 +33,9 @@ public sealed class ProviderSelector
         {
             ProcessingMode.Local => _local(settings),
             ProcessingMode.Codex => _codex(settings),
-            _ => throw new ArgumentOutOfRangeException(
-                nameof(settings),
-                settings.ProcessingMode,
-                "Unknown processing mode."
+            _ => throw new ProviderException(
+                ProviderFailureKind.Configuration,
+                $"The processing mode {(int)settings.ProcessingMode} is not one Juvin knows. Choose a mode in Settings."
             ),
         };
 

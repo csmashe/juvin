@@ -182,7 +182,7 @@ public sealed partial class RewritePanelViewModel : ObservableObject
     /// <summary>"What am I missing?" returns advice, never a draft, so neither it nor its follow-ups can replace the selection.</summary>
     private bool IsSessionApplicable => _sessionAction is { IsMissing: false };
     public bool CanRecapture => _target is not null && !IsBusy;
-    public bool CanSendFollowUp => _session is not null && !IsRunning && !string.IsNullOrWhiteSpace(FollowUpText);
+    public bool CanSendFollowUp => _session is not null && !IsRunning && RewriteActionCatalog.IsValidInstruction(FollowUpText);
 
     /// <summary>Raised when the panel should hide: Close, Escape, or a successful Apply.</summary>
     public event Action? HideRequested;
@@ -674,13 +674,20 @@ public sealed partial class RewritePanelViewModel : ObservableObject
                 : _localizer.Format("Panel.OlderMessagesLeftOut", leftOut);
         }
 
-        foreach (var message in context.Thread.Skip(leftOut))
+        foreach (var (message, index) in context.Thread.Skip(leftOut).Select((message, index) => (message, index)))
         {
+            var body = message.Body;
+            // The newest message shows only the part the builder kept, so the list matches what the model saw.
+            if (index == shown - 1 && provenance?.NewestMessageBodyLength is { } kept && kept < body.Trim().Length)
+            {
+                body = body.Trim()[..kept] + "\n\n" + _localizer["Panel.NewestMessageCutShort"];
+            }
+
             ContextMessages.Add(
                 new ContextMessageItem(
                     message.From,
                     message.Sent?.ToLocalTime().ToString("g", CultureInfo.CurrentCulture),
-                    message.Body
+                    body
                 )
             );
         }

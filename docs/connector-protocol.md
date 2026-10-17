@@ -206,7 +206,7 @@ Codes: `editor-gone` (unknown editor id, the editor left the page, or its tab is
 {"v":1,"type":"menu.choose","menuId":"menu-4","action":"recapture"}
 ```
 
-`action` is an id from `slots` or `more`, or one of the reserved words `review` and `recapture`, which are never action ids. `custom` is Ask for a change and carries the user's `instruction`. While the menu shows an `answer`, `custom` continues that conversation and gets another `answer`; nothing is applied until a different action is picked. Try again after an error sends the same choice again. The app ignores a choice for a `menuId` it no longer holds and a choice that arrives while this menu's action is running.
+`action` is an id from `slots` or `more`, or one of the reserved words `review` and `recapture`, which are never action ids. `custom` is Ask for a change and carries the user's `instruction`, at most 2000 characters once trimmed; the app answers a longer or blank one with a non-retryable error. While the menu shows an `answer`, `custom` continues that conversation and gets another `answer`; nothing is applied until a different action is picked. Try again after an error sends the same choice again. The app ignores a choice for a `menuId` it no longer holds and a choice that arrives while this menu's action is running.
 
 - An action id runs that action over the capture and reports through `menu.update`. The app applies the result itself, through `apply.request` with the capture's hash and format checks, so the editor is written only when it still matches the capture.
 - `review` hands the capture to the desktop rewrite panel, which opens idle until an action is picked there. The extension closes the menu as soon as it sends this; the app sends no `menu.close` for it.

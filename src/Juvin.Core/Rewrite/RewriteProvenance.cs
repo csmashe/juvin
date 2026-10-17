@@ -30,6 +30,9 @@ public sealed record RewriteProvenance
 
     public required int ThreadMessageCount { get; init; }
 
+    /// <summary>Characters of the newest message's body that were sent when it was cut to fit; null when it went whole.</summary>
+    public int? NewestMessageBodyLength { get; init; }
+
     public required int DraftLength { get; init; }
 
     public int? InputTokens { get; init; }

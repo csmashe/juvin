@@ -18,6 +18,7 @@ public sealed class RewriteSession
 
     private ThreadCompleteness _completeness;
     private int _includedMessages;
+    private int? _newestMessageBodyLength;
     private string _systemPrompt = "";
 
     /// <exception cref="ProviderException">The provider for the processing mode is misconfigured.</exception>
@@ -53,9 +54,12 @@ public sealed class RewriteSession
     )
     {
         var instruction = action.IsCustom ? customInstruction : action.Instruction;
-        if (string.IsNullOrWhiteSpace(instruction))
+        if (!RewriteActionCatalog.IsValidInstruction(instruction))
         {
-            throw new ArgumentException("A custom action needs an instruction.", nameof(customInstruction));
+            throw new ArgumentException(
+                $"The instruction must be non-empty and at most {RewriteActionCatalog.MaxInstructionLength} characters.",
+                nameof(customInstruction)
+            );
         }
 
         string userPrompt;
@@ -64,8 +68,12 @@ public sealed class RewriteSession
             var built = _builder.Build(_context, instruction, _settings.SenderName);
             _systemPrompt = built.SystemPrompt;
             userPrompt = built.UserPrompt;
-            _completeness = built.Truncated ? ThreadCompleteness.TruncatedForModelLimit : _context.Completeness;
+            // A capture that was already partial says more than the truncation does, so it is kept.
+            _completeness = built.Truncated && _context.Completeness == ThreadCompleteness.EntireThread
+                ? ThreadCompleteness.TruncatedForModelLimit
+                : _context.Completeness;
             _includedMessages = built.IncludedMessageCount;
+            _newestMessageBodyLength = built.NewestMessageBodyLength;
         }
         else
         {
@@ -109,7 +117,7 @@ public sealed class RewriteSession
         }
         catch
         {
-            LastProvenance = CreateProvenance(request, request.Model ?? "default", latest, startedAt, stopwatch.Elapsed);
+            LastProvenance = CreateProvenance(request, request.Model ?? IModelProvider.DefaultModelLabel, latest, startedAt, stopwatch.Elapsed);
             throw;
         }
     }
@@ -137,6 +145,7 @@ public sealed class RewriteSession
             ResponseReceived = capture ? response : null,
             Completeness = _completeness,
             ThreadMessageCount = _includedMessages,
+            NewestMessageBodyLength = _newestMessageBodyLength,
             DraftLength = _context.Draft.Length,
             StartedAt = startedAt,
             Duration = duration,

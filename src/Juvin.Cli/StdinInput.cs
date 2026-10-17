@@ -24,7 +24,7 @@ internal static class StdinInput
             var root = document.RootElement;
             var draft = GetString(root, "draft") ?? throw new InvalidDataException("The input JSON has no \"draft\" string.");
             var thread = ParseThread(root);
-            var collapsed = root.TryGetProperty("collapsed", out var c) && c.TryGetInt32(out var n) ? n : 0;
+            var collapsed = root.TryGetProperty("collapsed", out var c) && c.TryGetInt32(out var n) ? Math.Max(0, n) : 0;
             var completeness =
                 Enum.TryParse<ThreadCompleteness>(GetString(root, "completeness"), ignoreCase: true, out var stated)
                     ? stated

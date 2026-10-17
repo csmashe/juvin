@@ -125,9 +125,9 @@ internal sealed record CliOptions
         }
 
         // ReSharper disable once InvertIf -- a guard that reads top-down like the ones above it
-        if (string.IsNullOrWhiteSpace(options.Instruction) && options.Instruction is not null)
+        if (options.Instruction is not null && !RewriteActionCatalog.IsValidInstruction(options.Instruction))
         {
-            error = "--instruction needs some text.";
+            error = $"--instruction needs some text, at most {RewriteActionCatalog.MaxInstructionLength} characters.";
             return null;
         }
 

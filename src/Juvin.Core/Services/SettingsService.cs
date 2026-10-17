@@ -24,6 +24,11 @@ public sealed class SettingsService : ISettingsService
     }
 
     public SettingsService(string filePath)
+        : this(filePath, AtomicJsonBackupMode.LastKnownGood, AtomicJsonCorruptFilePolicy.PreserveAndReset)
+    {
+    }
+
+    private SettingsService(string filePath, AtomicJsonBackupMode backupMode, AtomicJsonCorruptFilePolicy corruptFilePolicy)
     {
         _store = new AtomicJsonStore<AppSettings>(
             filePath,
@@ -31,13 +36,21 @@ public sealed class SettingsService : ISettingsService
             new AtomicJsonStoreOptions<AppSettings>
             {
                 JsonOptions = s_jsonOptions,
-                BackupMode = AtomicJsonBackupMode.LastKnownGood,
-                CorruptFilePolicy = AtomicJsonCorruptFilePolicy.PreserveAndReset,
+                BackupMode = backupMode,
+                CorruptFilePolicy = corruptFilePolicy,
                 Diagnostic = d =>
                     Trace.WriteLine($"[SettingsService] {d.Kind}: {d.Path} {d.PreservedPath}"),
             }
         );
     }
+
+    /// <summary>
+    ///     Reads the settings for a caller that does not own them, such as the CLI. Nothing on disk
+    ///     is touched: the backup is not consulted, and a corrupt file is left in place with its
+    ///     <see cref="JsonException" /> surfacing from <see cref="Current" />.
+    /// </summary>
+    public static SettingsService OpenForReading(string filePath) =>
+        new(filePath, AtomicJsonBackupMode.None, AtomicJsonCorruptFilePolicy.Throw);
 
     public AppSettings Current => _store.Current;
 

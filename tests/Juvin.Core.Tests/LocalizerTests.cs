@@ -10,7 +10,7 @@ public sealed class LocalizerTests : IDisposable
     {
         File.WriteAllText(
             _temp.File("en.json"),
-            """{ "Greeting": "Hello", "OnlyEnglish": "English", "Count": "{0} items" }"""
+            """{ "Greeting": "Hello", "OnlyEnglish": "English", "Count": "{0} items", "Broken": "{0 items" }"""
         );
         File.WriteAllText(_temp.File("de.json"), """{ "Greeting": "Hallo" }""");
     }
@@ -37,6 +37,14 @@ public sealed class LocalizerTests : IDisposable
         var localizer = new Localizer(_temp.Path);
 
         Assert.Equal("3 items", localizer.Format("Count", 3));
+    }
+
+    [Fact]
+    public void Format_ReturnsAStringWithAMalformedPlaceholderUnformatted()
+    {
+        var localizer = new Localizer(_temp.Path);
+
+        Assert.Equal("{0 items", localizer.Format("Broken", 3));
     }
 
     [Theory]

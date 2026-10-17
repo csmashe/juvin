@@ -77,6 +77,28 @@ public sealed class RewriteSessionTests
     }
 
     [Fact]
+    public async Task Custom_RejectsAnInstructionOverTheCatalogLimit()
+    {
+        var session = Session(new AppSettings());
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            session.RunAsync(
+                RewriteAction.Custom,
+                new string('x', RewriteActionCatalog.MaxInstructionLength + 1),
+                null,
+                CancellationToken.None
+            )
+        );
+        await session.RunAsync(
+            RewriteAction.Custom,
+            new string('x', RewriteActionCatalog.MaxInstructionLength),
+            null,
+            CancellationToken.None
+        );
+        Assert.Single(_local.Requests);
+    }
+
+    [Fact]
     public async Task ABlankSavedModel_IsSentAsNoModel()
     {
         await Session(new AppSettings { LocalModel = "  " }).RunAsync(RewriteAction.Clearer, null, null, CancellationToken.None);
@@ -173,6 +195,24 @@ public sealed class RewriteSessionTests
         Assert.Equal(1, result.Provenance.ThreadMessageCount);
     }
 
+    [Theory]
+    [InlineData(ThreadCompleteness.LoadedMessagesOnly)]
+    [InlineData(ThreadCompleteness.VisibleTextOnly)]
+    public async Task Truncation_KeepsAnAlreadyPartialCompleteness(ThreadCompleteness captured)
+    {
+        var context = s_context with
+        {
+            Thread = [.. Enumerable.Repeat(new ThreadMessage("x", [], null, new string('y', 500)), 3)],
+            Completeness = captured,
+        };
+        var session = new RewriteSession(Selector(), new AppSettings(), context, new RewritePromptBuilder(threadBudget: 600));
+
+        var result = await session.RunAsync(RewriteAction.Clearer, null, null, CancellationToken.None);
+
+        Assert.Equal(captured, result.Provenance.Completeness);
+        Assert.Equal(1, result.Provenance.ThreadMessageCount);
+    }
+
     [Fact]
     public async Task Session_UsesOnlyTheConfiguredModeEvenWhenItFails()
     {
@@ -203,6 +243,18 @@ public sealed class RewriteSessionTests
         var selector = new ProviderSelector(_ => _codex, _ => _codex);
 
         Assert.Throws<InvalidOperationException>(() => selector.Select(new AppSettings()));
+    }
+
+    [Fact]
+    public void Selector_ReportsAnUnknownModeAsAConfigurationFailure()
+    {
+        var ex = Assert.Throws<ProviderException>(() =>
+            Selector().Select(new AppSettings { ProcessingMode = (ProcessingMode)99 })
+        );
+
+        Assert.Equal(ProviderFailureKind.Configuration, ex.Kind);
+        Assert.Empty(_local.Requests);
+        Assert.Empty(_codex.Requests);
     }
 
     [Fact]

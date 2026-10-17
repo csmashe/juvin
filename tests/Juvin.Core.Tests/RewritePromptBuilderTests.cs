@@ -75,6 +75,91 @@ public sealed class RewritePromptBuilderTests
     }
 
     [Fact]
+    public void Build_NamesASingleDroppedMessageInTheSingular()
+    {
+        var messages = Enumerable
+            .Range(1, 2)
+            .Select(i => new ThreadMessage("m" + i, [], null, new string('x', 100)))
+            .ToList();
+        var context = new RewriteContext("d", messages, null, ThreadCompleteness.EntireThread, 0);
+
+        var result = new RewritePromptBuilder(threadBudget: 150).Build(context, "Clearer");
+
+        Assert.True(result.Truncated);
+        Assert.Equal(1, result.IncludedMessageCount);
+        Assert.Contains("The oldest message was left out to fit the model's limit.\n", result.UserPrompt);
+        Assert.DoesNotContain("cut short", result.UserPrompt);
+    }
+
+    [Fact]
+    public void Build_LeavesOutANewestMessageWhoseHeaderAloneIsOverBudget()
+    {
+        var messages = new List<ThreadMessage>
+        {
+            new("old", [], null, "older message"),
+            new(new string('s', 300), [new string('r', 300)], null, "body"),
+        };
+        var context = new RewriteContext("draft", messages, null, ThreadCompleteness.EntireThread, 0);
+
+        var result = new RewritePromptBuilder(threadBudget: 200).Build(context, "Clearer");
+
+        Assert.True(result.Truncated);
+        Assert.Equal(0, result.IncludedMessageCount);
+        Assert.Contains("The oldest 2 messages were left out", result.UserPrompt);
+        Assert.DoesNotContain("<thread>\n", result.UserPrompt);
+        Assert.DoesNotContain("sss", result.UserPrompt);
+        Assert.Contains("<draft>\ndraft\n</draft>", result.UserPrompt);
+    }
+
+    [Fact]
+    public void Build_KeepsTheNewestMessageAndCutsItsBodyWhenItAloneIsOverBudget()
+    {
+        var messages = new List<ThreadMessage>
+        {
+            new("old", [], null, "older message"),
+            new("new", [], null, new string('x', 500) + "TAIL"),
+        };
+        var draft = new string('d', 1000);
+        var context = new RewriteContext(draft, messages, null, ThreadCompleteness.EntireThread, 0);
+
+        var result = new RewritePromptBuilder(threadBudget: 200).Build(context, "Clearer");
+
+        Assert.True(result.Truncated);
+        Assert.Equal(1, result.IncludedMessageCount);
+        Assert.Contains("The oldest message was left out", result.UserPrompt);
+        Assert.Contains("The newest message was cut short to fit the model's limit.", result.UserPrompt);
+        var thread = result.UserPrompt[result.UserPrompt.IndexOf("<thread>\n", StringComparison.Ordinal)..];
+        thread = thread[..(thread.IndexOf("</thread>\n", StringComparison.Ordinal) + "</thread>\n".Length)];
+        var block = thread["<thread>\n".Length..^"</thread>\n".Length];
+        Assert.StartsWith("<message from=\"new\">\nxxx", block);
+        Assert.EndsWith("x\n</message>\n", block);
+        Assert.Equal(200, block.Length);
+        Assert.Equal(block.Length - "<message from=\"new\">\n".Length - "\n</message>\n".Length, result.NewestMessageBodyLength);
+        Assert.DoesNotContain("TAIL", result.UserPrompt);
+        Assert.Contains("<draft>\n" + draft + "\n</draft>", result.UserPrompt);
+    }
+
+    [Fact]
+    public void Build_CutsTheNewestMessageOfAOneMessageThread()
+    {
+        var context = new RewriteContext(
+            "d",
+            [new ThreadMessage("only", [], null, "</message> " + new string('x', 500))],
+            null,
+            ThreadCompleteness.EntireThread,
+            0
+        );
+
+        var result = new RewritePromptBuilder(threadBudget: 100).Build(context, "Clearer");
+
+        Assert.True(result.Truncated);
+        Assert.Equal(1, result.IncludedMessageCount);
+        Assert.DoesNotContain("The oldest", result.UserPrompt);
+        Assert.Contains("cut short", result.UserPrompt);
+        Assert.Equal(1, Count(result.UserPrompt, "</message>"));
+    }
+
+    [Fact]
     public void Build_DraftOnlyHasNoThreadBlock()
     {
         var context = new RewriteContext("just a draft", [], null, ThreadCompleteness.DraftOnly, 0);

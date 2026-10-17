@@ -25,10 +25,12 @@ internal static partial class PlaceholderFiller
     /// <summary>
     ///     <see cref="Fill" /> for a partial reply: an unfinished last line that could still become a
     ///     placeholder line is held back, so each preview is a prefix of the filled final text and
-    ///     append-only consumers print it correctly. Any other line streams as it arrives.
+    ///     append-only consumers print it correctly. Any other line streams as it arrives. Trailing
+    ///     whitespace is dropped first, as the providers drop it from the final text.
     /// </summary>
     public static string FillStreaming(string text, string? senderName)
     {
+        text = text.TrimEnd();
         if (string.IsNullOrWhiteSpace(senderName))
         {
             return text;
