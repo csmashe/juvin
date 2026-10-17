@@ -5,8 +5,6 @@ namespace Juvin.Platform.Windows.Ipc;
 /// <summary>Client side of <see cref="NamedPipeServer" />: one request line, one reply line per connection.</summary>
 public sealed class NamedPipeClient : ILocalSocketClient
 {
-    private const int ProbeTimeoutMillis = 500;
-
     private readonly string _pipeName;
 
     public NamedPipeClient()
@@ -41,20 +39,6 @@ public sealed class NamedPipeClient : ILocalSocketClient
             when (ex is IOException or TimeoutException or OperationCanceledException or UnauthorizedAccessException)
         {
             return null;
-        }
-    }
-
-    public bool IsLivePeer()
-    {
-        try
-        {
-            using var pipe = CreateClient();
-            pipe.Connect(ProbeTimeoutMillis);
-            return true;
-        }
-        catch (Exception ex) when (ex is IOException or TimeoutException or UnauthorizedAccessException)
-        {
-            return false;
         }
     }
 

@@ -84,6 +84,77 @@ public sealed class UnixConnectorSocketTests : IDisposable
     }
 
     [UnixFact]
+    public async Task StopAsync_ClosesConnectionsWhoseHandlerIgnoresCancellation()
+    {
+        var server = new UnixConnectorSocketServer(SocketPath);
+        var entered = new TaskCompletionSource();
+        var release = new TaskCompletionSource();
+        await server.StartAsync(
+            async (_, _) =>
+            {
+                entered.SetResult();
+                await release.Task;
+            },
+            CancellationToken.None
+        );
+
+        try
+        {
+            await using var stream = await new UnixConnectorSocketClient(SocketPath).ConnectAsync(s_timeout);
+            Assert.NotNull(stream);
+            // ReSharper disable once MethodSupportsCancellation -- no token is in scope; the timeout bounds the wait
+            await entered.Task.WaitAsync(s_timeout);
+            await server.StopAsync();
+
+            Assert.Null(await NativeMessagingFraming.ReadFrameAsync(stream, CancellationToken.None).WaitAsync(s_timeout));
+        }
+        finally
+        {
+            release.SetResult();
+        }
+    }
+
+    [UnixFact]
+    public async Task Server_DropsConnectionsOverTheCap()
+    {
+        using var server = new UnixConnectorSocketServer(SocketPath);
+        using var entered = new SemaphoreSlim(0);
+        await server.StartAsync(
+            async (_, ct) =>
+            {
+                entered.Release();
+                await Task.Delay(Timeout.Infinite, ct);
+            },
+            CancellationToken.None
+        );
+        var client = new UnixConnectorSocketClient(SocketPath);
+        var open = new List<Stream>();
+        try
+        {
+            // One at a time: connects beyond the listen backlog fail before the server can accept them.
+            for (var i = 0; i < ActiveConnections.DefaultLimit; i++)
+            {
+                var stream = await client.ConnectAsync(s_timeout);
+                Assert.NotNull(stream);
+                open.Add(stream);
+                Assert.True(await entered.WaitAsync(s_timeout));
+            }
+
+            await using var extra = await client.ConnectAsync(s_timeout);
+
+            Assert.NotNull(extra);
+            Assert.Null(await NativeMessagingFraming.ReadFrameAsync(extra, CancellationToken.None).WaitAsync(s_timeout));
+        }
+        finally
+        {
+            foreach (var stream in open)
+            {
+                await stream.DisposeAsync();
+            }
+        }
+    }
+
+    [UnixFact]
     public async Task Client_ReturnsNullWhenNothingIsListening()
     {
         Assert.Null(await new UnixConnectorSocketClient(SocketPath).ConnectAsync(s_timeout));

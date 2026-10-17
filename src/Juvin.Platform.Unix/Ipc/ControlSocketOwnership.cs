@@ -13,7 +13,6 @@ internal enum ControlSocketCleanupResult
     Removed,
     Live,
     Indeterminate,
-    OwnershipContended,
 }
 
 /// <summary>
@@ -91,19 +90,18 @@ internal sealed partial class ControlSocketOwnership : IDisposable
     ///     Best-effort client cleanup. Contention or any acquisition/probe/delete failure
     ///     leaves the socket pathname untouched.
     /// </summary>
-    // ReSharper disable once UnusedMethodReturnValue.Global -- the outcome documents what happened; clients treat cleanup as best-effort
-    internal static ControlSocketCleanupResult TryCleanupStaleSocket(string socketPath)
+    internal static void TryCleanupStaleSocket(string socketPath)
     {
         try
         {
             if (!TryAcquire(socketPath, out var ownership))
             {
-                return ControlSocketCleanupResult.OwnershipContended;
+                return;
             }
 
             using (ownership)
             {
-                return ownership.CleanupStaleSocket();
+                ownership.CleanupStaleSocket();
             }
         }
         catch (Exception ex)
@@ -111,7 +109,6 @@ internal sealed partial class ControlSocketOwnership : IDisposable
             Trace.WriteLine(
                 $"[ControlSocketOwnership] Stale-socket cleanup for {socketPath} failed: {ex.Message}"
             );
-            return ControlSocketCleanupResult.Indeterminate;
         }
     }
 

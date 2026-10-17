@@ -25,8 +25,11 @@ public sealed record ContextResult(CapturedContext? Capture, ConnectorError? Err
 /// </remarks>
 public sealed class ConnectorSession : IAsyncDisposable
 {
+    private static readonly TimeSpan s_helloTimeout = TimeSpan.FromSeconds(10);
+
     private readonly IConnectorChannel _channel;
     private readonly Func<ConnectorConfig> _config;
+    private readonly TimeSpan _helloTimeout;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly ConcurrentDictionary<string, TaskCompletionSource<ConnectorMessage>> _pending = new();
 
@@ -38,12 +41,21 @@ public sealed class ConnectorSession : IAsyncDisposable
     /// <param name="channel">The framed channel to the extension; disposed with the session.</param>
     /// <param name="config">Builds the config sent in reply to <c>hello</c>.</param>
     public ConnectorSession(IConnectorChannel channel, Func<ConnectorConfig> config)
+        : this(channel, config, s_helloTimeout)
+    {
+    }
+
+    /// <param name="channel">The framed channel to the extension; disposed with the session.</param>
+    /// <param name="config">Builds the config sent in reply to <c>hello</c>.</param>
+    /// <param name="helloTimeout">How long <see cref="RunAsync" /> waits for the first <c>hello</c> before closing.</param>
+    internal ConnectorSession(IConnectorChannel channel, Func<ConnectorConfig> config, TimeSpan helloTimeout)
     {
         ArgumentNullException.ThrowIfNull(channel);
         ArgumentNullException.ThrowIfNull(config);
 
         _channel = channel;
         _config = config;
+        _helloTimeout = helloTimeout;
     }
 
     /// <summary>The extension's identity from its last <c>hello</c>; null until it has sent one.</summary>
@@ -62,10 +74,14 @@ public sealed class ConnectorSession : IAsyncDisposable
     /// <summary>Raised when the extension reports a menu dismissed or its editor gone.</summary>
     public event Action<ConnectorSession, MenuCloseMessage>? MenuClosed;
 
-    /// <summary>Runs the receive loop until the peer disconnects, the protocol requires closing, or <paramref name="ct" /> fires.</summary>
+    /// <summary>
+    ///     Runs the receive loop until the peer disconnects, the protocol requires closing, no <c>hello</c>
+    ///     arrives within ten seconds, or <paramref name="ct" /> fires.
+    /// </summary>
     public async Task RunAsync(CancellationToken ct)
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _lifetime.Token);
+        linked.CancelAfter(_helloTimeout);
         var token = linked.Token;
         try
         {
@@ -75,7 +91,16 @@ public sealed class ConnectorSession : IAsyncDisposable
                 {
                     return;
                 }
+
+                if (_client is not null)
+                {
+                    linked.CancelAfter(Timeout.InfiniteTimeSpan);
+                }
             }
+        }
+        catch (OperationCanceledException) when (_client is null && !ct.IsCancellationRequested && !_lifetime.IsCancellationRequested)
+        {
+            Trace.WriteLine("[ConnectorSession] Closing: no hello arrived in time.");
         }
         catch (OperationCanceledException)
         {

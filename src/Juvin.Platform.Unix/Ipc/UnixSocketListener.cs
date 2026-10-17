@@ -43,11 +43,13 @@ internal sealed class UnixSocketListener
 
     /// <summary>
     ///     <paramref name="serve" /> gets each accepted connection's stream, which is closed when it
-    ///     returns. Its token fires when the listener stops.
+    ///     returns. Its token fires when the listener stops, and the stream is closed shortly after
+    ///     even if <paramref name="serve" /> has not returned.
     /// </summary>
     public async Task StartAsync(Func<NetworkStream, CancellationToken, Task> serve, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(serve);
+        SocketPathResolver.ThrowIfTooLong(Address);
 
         await _lifecycleGate.WaitAsync(ct).ConfigureAwait(false);
         try
@@ -152,7 +154,7 @@ internal sealed class UnixSocketListener
                 }
             }
 
-            await _connections.WaitForIdleAsync(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
+            await _connections.CloseAllAsync(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
             cts.Dispose();
             TryCleanup(ownership);
             if (ownsOwnership)
@@ -252,7 +254,10 @@ internal sealed class UnixSocketListener
                 continue;
             }
 
-            _connections.Track(Task.Run(() => HandleClientAsync(client, serve, ct), CancellationToken.None));
+            if (!_connections.TryStart(client, () => HandleClientAsync(client, serve, ct)))
+            {
+                Trace.WriteLine($"[UnixSocketListener] Dropped a connection to the {_description}: {ActiveConnections.DefaultLimit} are already open.");
+            }
         }
     }
 

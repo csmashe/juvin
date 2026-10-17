@@ -220,6 +220,10 @@ public class App : Application
         {
             Trace.WriteLine($"[App] Control socket did not start: {ex.Message}");
         }
+        catch (ArgumentException ex)
+        {
+            Trace.WriteLine($"[App] Control socket did not start: {ex.GetType().Name}");
+        }
     }
 
     private async Task StartConnectorAsync(ConnectorService connector)
@@ -232,6 +236,10 @@ public class App : Application
         catch (Exception ex) when (ex is IOException or OperationCanceledException or UnauthorizedAccessException)
         {
             Trace.WriteLine($"[App] Browser connector did not start: {ex.Message}");
+        }
+        catch (ArgumentException ex)
+        {
+            Trace.WriteLine($"[App] Browser connector did not start: {ex.GetType().Name}");
         }
     }
 

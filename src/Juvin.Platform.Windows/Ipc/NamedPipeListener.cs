@@ -6,9 +6,9 @@ using System.Security.Principal;
 namespace Juvin.Platform.Windows.Ipc;
 
 /// <summary>
-///     Accepts connections on one named pipe. The pipe's ACL grants only the current user, and the
-///     first instance is created with <see cref="PipeOptions.FirstPipeInstance" /> so no other
-///     process can own the name before us.
+///     Accepts connections on one named pipe. The pipe's ACL grants only the current user and denies
+///     network logons, and the first instance is created with <see cref="PipeOptions.FirstPipeInstance" />
+///     so no other process can own the name before us.
 /// </summary>
 internal sealed class NamedPipeListener
 {
@@ -39,7 +39,8 @@ internal sealed class NamedPipeListener
 
     /// <summary>
     ///     <paramref name="serve" /> gets each connected pipe, which is closed when it returns. Its
-    ///     token fires when the listener stops.
+    ///     token fires when the listener stops, and the pipe is closed shortly after even if
+    ///     <paramref name="serve" /> has not returned.
     /// </summary>
     public async Task StartAsync(Func<NamedPipeServerStream, CancellationToken, Task> serve, CancellationToken ct)
     {
@@ -102,7 +103,7 @@ internal sealed class NamedPipeListener
             }
 
             // A pipe instance still held by a handler would make the next FirstPipeInstance fail.
-            await _connections.WaitForIdleAsync(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
+            await _connections.CloseAllAsync(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
             cts.Dispose();
         }
         finally
@@ -150,7 +151,10 @@ internal sealed class NamedPipeListener
                 return;
             }
 
-            _connections.Track(Task.Run(() => HandleClientAsync(connected, serve, ct), CancellationToken.None));
+            if (!_connections.TryStart(connected, () => HandleClientAsync(connected, serve, ct)))
+            {
+                Trace.WriteLine($"[NamedPipeListener] Dropped a connection to the {_description}: {ActiveConnections.DefaultLimit} are already open.");
+            }
         }
     }
 
@@ -171,12 +175,20 @@ internal sealed class NamedPipeListener
         }
     }
 
-    private NamedPipeServerStream CreatePipe(bool firstInstance)
+    internal NamedPipeServerStream CreatePipe(bool firstInstance)
     {
         var identity = WindowsIdentity.GetCurrent();
         var user = identity.User ?? throw new InvalidOperationException("The current user has no SID.");
         var security = new PipeSecurity();
         security.AddAccessRule(new PipeAccessRule(user, PipeAccessRights.FullControl, AccessControlType.Allow));
+        // The same account signing in over SMB would otherwise pass the allow rule above.
+        security.AddAccessRule(
+            new PipeAccessRule(
+                new SecurityIdentifier(WellKnownSidType.NetworkSid, null),
+                PipeAccessRights.FullControl,
+                AccessControlType.Deny
+            )
+        );
         // The client's CurrentUserOnly check compares the pipe owner with the token's default
         // owner, which is the Administrators group for an elevated token, not the user SID.
         security.SetOwner(identity.Owner ?? user);

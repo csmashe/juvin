@@ -87,8 +87,9 @@ public static class Program
 
     private static int ShowRunningInstance(ILocalSocketClient client)
     {
+        // The instance holding the lock may not have bound its control socket yet.
         var reply = client
-            .SendAsync(ControlCommandHandler.ShowRequestLine, s_requestTimeout)
+            .SendWhenReadyAsync(ControlCommandHandler.ShowRequestLine, s_requestTimeout)
             .GetAwaiter()
             .GetResult();
         if (reply is null)

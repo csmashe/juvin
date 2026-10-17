@@ -12,7 +12,6 @@ public sealed class FakeTests
 
         await socket.StartAsync((line, _) => Task.FromResult("re:" + line), CancellationToken.None);
 
-        Assert.True(socket.IsLivePeer());
         Assert.Equal("re:{}", await socket.SendAsync("{}", TimeSpan.FromSeconds(1)));
         Assert.Equal(["{}"], socket.ReceivedLines);
     }
