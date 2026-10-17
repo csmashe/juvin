@@ -39,6 +39,9 @@ public sealed class FakeSettingsService : ISettingsService
         SettingsChanged?.Invoke(next);
     }
 
+    /// <summary>Delivers a notification without changing <see cref="Current" />, as a late notification from a concurrent update would.</summary>
+    public void RaiseSettingsChanged(AppSettings settings) => SettingsChanged?.Invoke(settings);
+
     public void Reset()
     {
         Update(_ => new AppSettings());

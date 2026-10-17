@@ -9,7 +9,8 @@ public interface ICrashReporter
     /// <param name="exception">The failure to report.</param>
     /// <param name="operation">Where it was caught; one of <see cref="CrashOperations" /> for the app's own hooks.</param>
     /// <param name="fatal">True when the process ends after this capture, so the report is marked unhandled.</param>
-    // ReSharper disable once UnusedMemberInSuper.Global -- the app's hooks hold the service itself; this is the seam view models report through
+    /// <remarks>The seam for future view-model reporting; today only the app's own hooks call it, through the service.</remarks>
+    // ReSharper disable once UnusedMemberInSuper.Global -- only the hooks capture today, and they hold the service itself
     void CaptureException(Exception exception, string operation, bool fatal = false);
 }
 
