@@ -44,7 +44,21 @@ export interface MenuCloseRequest {
   menuId: string;
 }
 
-export type ContentRequest = CaptureRequest | ApplyRequest | MenuShowRequest | MenuUpdateRequest | MenuCloseRequest;
+/** The app connection dropped: the menu shows that it cannot go on, keeping any result the user can still copy. */
+export interface MenuDisconnectedRequest {
+  kind: "juvin.menu.disconnected";
+  tabId?: number;
+  menuId: string;
+}
+
+/** Asks whether the menu is still drawn, after the tab finished loading. */
+export interface MenuCheckRequest {
+  kind: "juvin.menu.check";
+  tabId?: number;
+  menuId: string;
+}
+
+export type ContentRequest = CaptureRequest | ApplyRequest | MenuShowRequest | MenuUpdateRequest | MenuCloseRequest | MenuDisconnectedRequest | MenuCheckRequest;
 
 /** From the content script's menu to the background: the user picked an entry. */
 export interface MenuChosenNotice {
@@ -68,6 +82,11 @@ export type ApplyResult = { ok: true } | { ok: false; error: ErrorPayload<ApplyE
 
 export type MenuShowResult = { ok: true } | { ok: false; error: ErrorPayload<MenuErrorCode> };
 
+/** The content script's answer to the menu requests after show; ok is false when it no longer has that menu. */
+export interface MenuDeliveryResult {
+  ok: boolean;
+}
+
 export interface Status {
   connected: boolean;
   connecting: boolean;
@@ -81,7 +100,15 @@ export type PingResult = { ok: true; latencyMs: number } | { ok: false; error: s
 
 export function isContentRequest(value: unknown): value is ContentRequest {
   const kind = (value as { kind?: unknown } | null)?.kind;
-  return kind === "juvin.capture" || kind === "juvin.apply" || kind === "juvin.menu.show" || kind === "juvin.menu.update" || kind === "juvin.menu.close";
+  return (
+    kind === "juvin.capture" ||
+    kind === "juvin.apply" ||
+    kind === "juvin.menu.show" ||
+    kind === "juvin.menu.update" ||
+    kind === "juvin.menu.close" ||
+    kind === "juvin.menu.disconnected" ||
+    kind === "juvin.menu.check"
+  );
 }
 
 export function isMenuNotice(value: unknown): value is MenuNotice {

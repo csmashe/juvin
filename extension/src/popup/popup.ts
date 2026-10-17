@@ -1,4 +1,5 @@
 import browser from "webextension-polyfill";
+import { detectBrowser } from "../shared/browser-detect";
 import type { PingResult, PopupRequest, Status } from "../shared/runtime-messages";
 
 const ALL_SITES = { origins: ["<all_urls>"] };
@@ -39,6 +40,18 @@ function render(status: Status): void {
 
 async function refreshStatus(): Promise<void> {
   render(await request<Status>({ kind: "juvin.status" }));
+}
+
+/** Opening the popup is a user action, so it reconnects after a worker restart; an earlier failure waits for Connect. */
+async function openStatus(): Promise<void> {
+  const status = await request<Status>({ kind: "juvin.status" });
+  if (status.connected || status.connecting || status.lastError !== undefined) {
+    render(status);
+    return;
+  }
+
+  render({ ...status, connecting: true });
+  render(await request<Status>({ kind: "juvin.connect" }));
 }
 
 async function refreshBrowserShortcut(): Promise<void> {
@@ -86,10 +99,10 @@ element("shortcuts").addEventListener("click", async () => {
       return;
     }
 
-    const page = navigator.userAgent.includes("Edg/") ? "edge://extensions/shortcuts" : "chrome://extensions/shortcuts";
+    const page = detectBrowser({ userAgent: navigator.userAgent }).name === "edge" ? "edge://extensions/shortcuts" : "chrome://extensions/shortcuts";
     await browser.tabs.create({ url: page });
   } catch {
-    shortcutsHint.textContent = navigator.userAgent.includes("Firefox/")
+    shortcutsHint.textContent = detectBrowser({ userAgent: navigator.userAgent }).name === "firefox"
       ? "Open about:addons, then choose Manage Extension Shortcuts from the gear menu."
       : "Open chrome://extensions/shortcuts in a new tab.";
     shortcutsHint.hidden = false;
@@ -107,6 +120,6 @@ element("test-page").addEventListener("click", async () => {
   window.close();
 });
 
-void refreshStatus();
+void openStatus();
 void refreshBrowserShortcut();
 void refreshAllSites();

@@ -26,6 +26,7 @@ export const MENU_STRINGS = {
   review: "Review",
   undoKey: "Ctrl+Z",
   undoKeyMac: "Cmd+Z",
+  disconnected: "The connection to the Juvin app was lost. Press the shortcut again to reconnect.",
   appliedNote: (undoKey: string) => `Draft rewritten. Press ${undoKey} to undo.`,
 };
 
@@ -231,22 +232,27 @@ export class MenuRenderer {
     return { ok: true };
   }
 
-  update(update: MenuUpdateMessage): void {
+  has(menuId: string): boolean {
+    return this.menu?.menuId === menuId;
+  }
+
+  /** False when this menu is no longer open, so the app can stop work nobody sees. */
+  update(update: MenuUpdateMessage): boolean {
     const menu = this.menu;
     if (!menu || menu.menuId !== update.menuId) {
-      return;
+      return false;
     }
 
     menu.pending = false;
     switch (update.state) {
       case "running":
         this.setRunning(menu, update.action);
-        return;
+        return true;
       case "applied": {
         const editor = menu.editor;
         this.teardown();
         this.showNote(editor);
-        return;
+        return true;
       }
       case "answer":
         this.showAnswer(menu, update.text);
@@ -260,12 +266,29 @@ export class MenuRenderer {
     }
 
     this.reposition();
+    return true;
   }
 
-  close(menuId: string): void {
-    if (this.menu?.menuId === menuId) {
-      this.teardown();
+  close(menuId: string): boolean {
+    if (this.menu?.menuId !== menuId) {
+      return false;
     }
+
+    this.teardown();
+    return true;
+  }
+
+  /** The app is gone, so nothing can be retried; a result the user could copy stays. */
+  disconnected(menuId: string): boolean {
+    const menu = this.menu;
+    if (menu?.menuId !== menuId) {
+      return false;
+    }
+
+    menu.pending = false;
+    this.showError(menu, MENU_STRINGS.disconnected, false, menu.result ?? menu.answer);
+    this.reposition();
+    return true;
   }
 
   private createHost(doc: Document): { host: HTMLElement; root: ShadowRoot } {

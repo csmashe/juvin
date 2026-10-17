@@ -174,6 +174,41 @@ describe("MenuRenderer", () => {
     expect(h.notices).toEqual([{ kind: "juvin.menu.choose", menuId: "menu-2", action: "soften" }]);
   });
 
+  it("reports whether it still has the menu an update or a check names", () => {
+    h.renderer.show(request(h));
+    expect(h.renderer.has("menu-1")).toBe(true);
+    expect(h.renderer.update(update({ state: "running", action: "soften" }))).toBe(true);
+    h.renderer.close("menu-1");
+    expect(h.renderer.has("menu-1")).toBe(false);
+    expect(h.renderer.update(update({ state: "running", action: "soften" }))).toBe(false);
+  });
+
+  it("shows a lost connection during a run without Try again", () => {
+    h.renderer.show(request(h));
+    key("4");
+    h.renderer.update(update({ state: "error", text: "Failed.", canRetry: true, result: "kept rewrite" }));
+    h.renderer.update(update({ state: "running", action: "shorter" }));
+
+    expect(h.renderer.disconnected("menu-other")).toBe(false);
+    expect(h.renderer.disconnected("menu-1")).toBe(true);
+
+    const root = h.root();
+    expect(root.querySelector(".card .message")!.textContent).toBe(MENU_STRINGS.disconnected);
+    expect(root.querySelector(".ring")!.classList.contains("running")).toBe(false);
+    expect(buttonByText(root, MENU_STRINGS.tryAgain)).toBeUndefined();
+    expect(buttonByText(root, MENU_STRINGS.copy)).toBeUndefined();
+  });
+
+  it("keeps a standing answer to copy when the connection is lost", () => {
+    h.renderer.show(request(h));
+    h.renderer.update(update({ state: "answer", text: "- A point" }));
+    h.renderer.disconnected("menu-1");
+    const root = h.root();
+    expect(root.querySelector(".card .message")!.textContent).toBe(MENU_STRINGS.disconnected);
+    expect(root.querySelector(".card .result")!.textContent).toBe("- A point");
+    expect(buttonByText(root, MENU_STRINGS.copy)).toBeDefined();
+  });
+
   it("ignores an update for another menu", () => {
     h.renderer.show(request(h));
     h.renderer.update({ ...update({ state: "running", action: "soften" }), menuId: "menu-9" });
@@ -287,9 +322,9 @@ describe("MenuRenderer", () => {
 
   it("removes the menu and its listeners on close", () => {
     h.renderer.show(request(h));
-    h.renderer.close("menu-other");
+    expect(h.renderer.close("menu-other")).toBe(false);
     expect(hosts()).toHaveLength(1);
-    h.renderer.close("menu-1");
+    expect(h.renderer.close("menu-1")).toBe(true);
     expect(hosts()).toHaveLength(0);
     expect(key("1").defaultPrevented).toBe(false);
     document.body.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));

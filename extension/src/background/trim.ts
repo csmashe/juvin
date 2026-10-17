@@ -25,15 +25,16 @@ export function buildTrimmedContextResponse(
   }
 
   const messages = [...capture.thread.messages];
-  // Drop by estimated size first, then confirm with a real measurement. The trimmed thread reports
-  // "truncated", so the estimate counts that completeness value instead of the original one.
-  size += byteLength("truncated") - byteLength(capture.thread.completeness);
+  // Only a whole thread becomes "truncated"; a thread already partial keeps saying how it was partial.
+  const completeness = capture.thread.completeness === "entire-thread" ? "truncated" : capture.thread.completeness;
+  // Drop by estimated size first, then confirm with a real measurement, counting the new completeness value.
+  size += byteLength(completeness) - byteLength(capture.thread.completeness);
   while (messages.length > 0 && size > capBytes) {
     size -= byteLength(messages.shift()) + 1;
   }
 
   for (;;) {
-    response = contextOk(id, { ...capture, thread: { ...capture.thread, completeness: "truncated", messages } });
+    response = contextOk(id, { ...capture, thread: { ...capture.thread, completeness, messages } });
     if (byteLength(response) <= capBytes) {
       return response;
     }

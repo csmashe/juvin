@@ -41,7 +41,7 @@ The rewrite shortcut is `Ctrl+Shift+F` (`Command+Shift+F` on macOS); Ctrl+Shift+
 ## Layout
 
 - `src/background/`: native messaging connection, routing of `context.request` and `apply.request` to tabs, opening the test page for `testpage.request`, thread trimming to the frame cap.
-- `src/content/`: site adapters, editor registry, capture, and apply. Only adapters read a site's DOM.
+- `src/content/`: site adapters, editor registry, capture, and apply. Only adapters read a site's DOM. The generic adapter covers other sites; the content script runs in the top frame only, so an editor inside an iframe is not found.
 - `src/popup/`: connection status, connection test, shortcut, and the all-sites permission for the generic adapter.
 - `src/test-page/`: a bundled sample thread with a reply editor, handled by the `test-page` adapter.
 - `src/shared/`: protocol types and parsing, browser detection, internal message types.

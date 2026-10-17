@@ -39,6 +39,16 @@ describe("buildTrimmedContextResponse", () => {
     expect(byteLength({ ...response, capture: { ...response.capture, thread: { ...response.capture.thread, messages: messages.slice(9 - kept.length) } } })).toBeGreaterThan(5000);
   });
 
+  it("keeps a partial completeness when it drops messages", () => {
+    const messages = Array.from({ length: 10 }, (_, i) => message(i, 1000));
+    for (const completeness of ["loaded-messages-only", "visible-text-only"] as const) {
+      const capture = captureWith(messages);
+      const response = buildTrimmedContextResponse("c1", { ...capture, thread: { ...capture.thread, completeness } }, 5000);
+      expect(response?.ok && response.capture.thread.messages.length).toBeLessThan(10);
+      expect(response?.ok && response.capture.thread.completeness).toBe(completeness);
+    }
+  });
+
   it("does not drop a message the truncated response can still hold", () => {
     const capture = captureWith([message(1, 500), message(2, 500)]);
     const fits = buildTrimmedContextResponse("c1", { ...capture, thread: { ...capture.thread, completeness: "truncated", messages: [capture.thread.messages[1]!] } }, Number.MAX_SAFE_INTEGER)!;
