@@ -9,9 +9,8 @@ namespace Juvin.Platform.Linux.Panel;
 /// <summary>
 ///     Sway centres every floating X11 window it maps and ignores the X11 sticky state. After the
 ///     inner hints, finds the panel in <c>swaymsg -t get_tree</c> by class and title, moves it to
-///     the focused output, makes it sticky there, and puts it at the top right of that output's
-///     workspace. Runs on every show, because Sway centres the panel again each time it is mapped.
-///     Elsewhere it is the inner support alone.
+///     the focused output, makes it sticky, and puts it top right. Runs on every show, since Sway
+///     centres it again on each map. Elsewhere it is the inner support alone.
 /// </summary>
 public sealed class SwayPanelWindowSupport : IPanelWindowSupport
 {
