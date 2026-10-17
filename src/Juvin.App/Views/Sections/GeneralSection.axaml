@@ -11,6 +11,12 @@
                 <TextBlock Classes="page-subtitle" Text="{loc:Str General.Subtitle}" />
             </StackPanel>
 
+            <Border Classes="panel" IsVisible="{Binding HasSaveError}">
+                <Border Classes="section-row">
+                    <TextBlock Classes="row-hint" Margin="0" Text="{Binding SaveError}" />
+                </Border>
+            </Border>
+
             <StackPanel Spacing="8">
                 <TextBlock Classes="section-label" Text="{loc:Str General.AboutYouLabel}" />
                 <Border Classes="panel">
@@ -50,6 +56,7 @@
                                 </StackPanel>
                                 <ToggleSwitch Grid.Column="1"
                                               VerticalAlignment="Center"
+                                              AutomationProperties.Name="{loc:Str General.LaunchAtLogin}"
                                               IsEnabled="{Binding CanChangeLaunchAtLogin}"
                                               IsChecked="{Binding LaunchAtLogin}" />
                             </Grid>
@@ -76,6 +83,7 @@
                                 </StackPanel>
                                 <ToggleSwitch Grid.Column="1"
                                               VerticalAlignment="Center"
+                                              AutomationProperties.Name="{loc:Str General.CloseToTray}"
                                               IsEnabled="{Binding IsTrayAvailable}"
                                               IsChecked="{Binding CloseToTray}" />
                             </Grid>

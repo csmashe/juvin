@@ -55,6 +55,8 @@ public sealed class SettingsService : ISettingsService
 
     public event Action<AppSettings>? SettingsChanged;
 
+    public event Action? SettingsReset;
+
     public void Load()
     {
         _store.Reload();
@@ -72,6 +74,13 @@ public sealed class SettingsService : ISettingsService
     public void Reset()
     {
         Update(_ => new AppSettings());
-        _store.DeleteCopies();
+        try
+        {
+            _store.DeleteCopies();
+        }
+        finally
+        {
+            SettingsReset?.Invoke();
+        }
     }
 }

@@ -12,6 +12,12 @@
                 <TextBlock Classes="page-subtitle" Text="{loc:Str Models.Subtitle}" />
             </StackPanel>
 
+            <Border Classes="panel" IsVisible="{Binding HasSaveError}">
+                <Border Classes="section-row">
+                    <TextBlock Classes="row-hint" Margin="0" Text="{Binding SaveError}" />
+                </Border>
+            </Border>
+
             <StackPanel Spacing="8">
                 <TextBlock Classes="section-label" Text="{loc:Str Models.ModeLabel}" />
                 <Border Classes="panel">
@@ -69,6 +75,10 @@
                                             Content="{loc:Str Common.Check}"
                                             Command="{Binding CheckLocalCommand}" />
                                 </Grid>
+                                <TextBlock Classes="row-hint"
+                                           Margin="0"
+                                           Text="{loc:Str Models.ServerNameHint}"
+                                           IsVisible="{Binding HasServerNameHint}" />
                                 <ProgressBar IsIndeterminate="True" Height="4" IsVisible="{Binding IsLocalProbing}" />
                                 <TextBlock Classes="row-hint"
                                            Margin="0"
@@ -114,6 +124,7 @@
                                 </StackPanel>
                                 <ToggleSwitch Grid.Column="1"
                                               VerticalAlignment="Center"
+                                              AutomationProperties.Name="{loc:Str Models.Thinking}"
                                               IsChecked="{Binding LocalThinkingDisabled}" />
                             </Grid>
                         </Border>

@@ -58,6 +58,11 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
     private bool _applyingSettings;
     private bool _applyingServerUrl;
     private bool _serverChosenByUser;
+    private string _shownServerUrl;
+
+    // UI thread only. A checklist result is applied only by the newest evaluation, and Finish waits for it.
+    private int _evaluation;
+    private int _completedEvaluation;
 
     // Read and written on the UI thread only; captures post in either order, so an older one is dropped.
     private long _shownCapture;
@@ -96,6 +101,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
     private bool _noServerFound;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasServerNameHint))]
     private string _serverUrl;
 
     [ObservableProperty]
@@ -155,6 +161,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         IsCrashReportingAvailable = crashReporter.IsAvailable;
         ShowSavedChoices();
         _serverUrl = settings.Current.LocalServerUrl;
+        _shownServerUrl = _serverUrl;
         SetupItems =
         [
             .. setupTasks
@@ -164,7 +171,8 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         StepDots = [.. Enumerable.Range(0, StepCount).Select(index => new StepDot(index))];
         RefreshStepState();
 
-        // The connector, the menu, and the panel outlive the wizard, so Dispose unsubscribes.
+        // The settings, the connector, the menu, and the panel outlive the wizard, so Dispose unsubscribes.
+        _settings.SettingsChanged += OnSettingsChanged;
         _connector.ClientsChanged += OnClientsChanged;
         _connector.CaptureCompleted += OnCaptureCompleted;
         _connector.TriggerFailed += OnTriggerFailed;
@@ -206,18 +214,27 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
     public bool HasModelAdvice => !string.IsNullOrWhiteSpace(ModelAdvice);
     public bool HasPullCommand => !string.IsNullOrWhiteSpace(PullCommand);
     public bool HasServerUrlError => !string.IsNullOrWhiteSpace(ServerUrlError);
+    public bool HasServerNameHint => ModelProbeService.IsUnlistedHostName(ServerUrl);
     public bool ShowModelPanel => !IsDetecting && (HasRecommendation || HasModelAdvice || NoServerFound);
     public string NextLabel => _localizer[IsLastStep ? "Common.Finish" : "Common.Next"];
     public string StepText => _localizer.Format("Wizard.StepText", StepIndex + 1, StepCount);
 
-    public bool AllRequiredReady => SetupItems.Where(row => row.IsRequired).All(row => row.IsSatisfied);
+    public bool AllRequiredReady =>
+        _completedEvaluation == _evaluation && SetupItems.Where(row => row.IsRequired).All(row => row.IsSatisfied);
 
     public bool CanAdvance => !IsLastStep || AllRequiredReady;
 
     private bool IsClosed => _lifetime.IsCancellationRequested;
 
+    /// <summary>
+    ///     Only a first run in Local mode picks a server or model for the user. A reopened wizard, or
+    ///     Codex mode, suggests them with Use instead, so opening the step never changes the settings.
+    /// </summary>
+    private bool MayChooseForUser => !_settings.Current.HasCompletedOnboarding && !IsCodexMode;
+
     public void Dispose()
     {
+        _settings.SettingsChanged -= OnSettingsChanged;
         _connector.ClientsChanged -= OnClientsChanged;
         _connector.CaptureCompleted -= OnCaptureCompleted;
         _connector.TriggerFailed -= OnTriggerFailed;
@@ -352,7 +369,8 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         return RefreshSetupAsync();
     }
 
-    [RelayCommand]
+    // Each row guards itself through IsBusy, so one row's fix never holds up another's.
+    [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task RunSetupActionAsync(SetupTaskRow? row)
     {
         if (IsClosed || row is null || row.IsBusy)
@@ -515,7 +533,8 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         // A server the user typed or chose is never swapped for the only running one, even while it is down.
         // An address that is not a built-in default was set by the user, in this wizard or an earlier one or in Models.
         if (
-            !_serverChosenByUser
+            MayChooseForUser
+            && !_serverChosenByUser
             && IsDefaultServer(settings.LocalServerUrl)
             && reachable.Count == 1
             && !ModelProbeService.IsSameServer(reachable[0].Url!, settings.LocalServerUrl)
@@ -582,9 +601,13 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         }
 
         var recommended = ModelProbeService.RecommendModel(status.Models);
-        if (recommended is not null && !status.Models.Any(model => ModelProbeService.IsSameModel(model.Id, settings.LocalModel)))
+        if (
+            MayChooseForUser
+            && recommended is not null
+            && !status.Models.Any(model => ModelProbeService.IsSameModel(model.Id, settings.LocalModel))
+        )
         {
-            // Next must not leave the server without a model.
+            // Next must not leave a first run's server without a model.
             SaveSetting(s => s with { LocalModel = recommended.Id });
             settings = _settings.Current;
         }
@@ -600,11 +623,37 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
 
     private static Symbol ProgressSymbol(bool reached) => reached ? Symbol.CheckmarkCircle : Symbol.Circle;
 
+    private void OnSettingsChanged(AppSettings _) => _post(ShowChangedSettings);
+
     private void OnClientsChanged() => _post(RefreshBrowserConnection);
 
     private void OnCaptureCompleted(ConnectorSession session, long number, ContextResult result) => _post(() => ShowCapture(number, result));
 
     private void OnTriggerFailed(long number, ContextResult result) => _post(() => ShowCapture(number, result));
+
+    /// <summary>
+    ///     The wizard is not modal, so a change made in Models while it is open shows here too. Display only:
+    ///     a change made elsewhere, or a reset, must not start the automatic server and model choice again.
+    /// </summary>
+    private void ShowChangedSettings()
+    {
+        if (IsClosed)
+        {
+            return;
+        }
+
+        ShowSavedChoices();
+        if (_settings.Current.LocalServerUrl == _shownServerUrl)
+        {
+            return;
+        }
+
+        ShowConfiguredServer();
+        // The detections and the recommendation belonged to the previous server.
+        Detections.Clear();
+        RecommendedModel = null;
+        NoServerFound = false;
+    }
 
     private void RefreshBrowserConnection()
     {
@@ -687,6 +736,9 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
     private void SaveSetting(Func<AppSettings, AppSettings> update)
     {
         var previousUrl = _settings.Current.LocalServerUrl;
+        // The wizard's own save is not a change made elsewhere, so the settings handler, which may run
+        // inside Update, must already see the new address and leave the detections alone.
+        _shownServerUrl = update(_settings.Current).LocalServerUrl;
         try
         {
             _settings.Update(update);
@@ -694,6 +746,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            _shownServerUrl = previousUrl;
             SaveError = _localizer.Format("Wizard.SaveFailed", ex.Message);
             ShowSavedChoices();
         }
@@ -707,22 +760,32 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
 
     private void ShowSavedChoices()
     {
+        var wasApplying = _applyingSettings;
         _applyingSettings = true;
-        SelectedMode = ModeOptions.First(option => option.Mode == _settings.Current.ProcessingMode);
-        CrashReportingEnabled = _settings.Current.CrashReportingEnabled;
-        _applyingSettings = false;
+        try
+        {
+            SelectedMode = ProcessingModeOption.Find(ModeOptions, _settings.Current.ProcessingMode);
+            CrashReportingEnabled = _settings.Current.CrashReportingEnabled;
+        }
+        finally
+        {
+            _applyingSettings = wasApplying;
+        }
     }
 
     private void ShowConfiguredServer()
     {
+        _shownServerUrl = _settings.Current.LocalServerUrl;
         _applyingServerUrl = true;
-        ServerUrl = _settings.Current.LocalServerUrl;
+        ServerUrl = _shownServerUrl;
         _applyingServerUrl = false;
         ServerUrlError = null;
     }
 
     private async Task RefreshSetupAsync()
     {
+        var evaluation = ++_evaluation;
+        RefreshGating();
         foreach (var row in SetupItems.Where(row => !row.IsBusy).ToList())
         {
             if (IsClosed)
@@ -748,14 +811,19 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
                 );
             }
 
-            if (IsClosed)
+            if (IsClosed || evaluation != _evaluation)
             {
                 return;
             }
 
-            row.Apply(state);
+            // An action started on the row while it was being checked; its own recheck follows.
+            if (!row.IsBusy)
+            {
+                row.Apply(state);
+            }
         }
 
+        _completedEvaluation = evaluation;
         RefreshGating();
     }
 

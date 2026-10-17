@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Juvin.App.Services;
 using Juvin.Core.Interfaces;
+using Juvin.Core.Localization;
 using Juvin.Core.Models;
 using Juvin.Platform;
 
@@ -11,6 +12,7 @@ namespace Juvin.App.ViewModels.Sections;
 public sealed partial class GeneralSectionViewModel : ObservableObject
 {
     private readonly ISettingsService _settings;
+    private readonly Localizer _localizer;
     private readonly ILoginItem _loginItem;
     private bool _applyingSettings;
 
@@ -28,15 +30,20 @@ public sealed partial class GeneralSectionViewModel : ObservableObject
     private bool _launchAtLoginFailed;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSaveError))]
+    private string? _saveError;
+
+    [ObservableProperty]
     private string _senderName = "";
 
     [ObservableProperty]
     private bool _isTrayAvailable;
 
-    public GeneralSectionViewModel(ISettingsService settings, TrayIconService tray, ILoginItem loginItem)
+    public GeneralSectionViewModel(ISettingsService settings, TrayIconService tray, ILoginItem loginItem, Localizer localizer)
     {
         _settings = settings;
         _loginItem = loginItem;
+        _localizer = localizer;
         IsTrayAvailable = tray.IsTrayAvailable;
         tray.AvailabilityChanged += (_, _) => IsTrayAvailable = tray.IsTrayAvailable;
         IsLoginItemSupported = loginItem.IsSupported;
@@ -47,6 +54,8 @@ public sealed partial class GeneralSectionViewModel : ObservableObject
     public bool IsLoginItemSupported { get; }
 
     public bool CanChangeLaunchAtLogin => IsLoginItemSupported && !IsChangingLaunchAtLogin;
+
+    public bool HasSaveError => SaveError is not null;
 
     partial void OnCloseToTrayChanged(bool value)
     {
@@ -111,11 +120,13 @@ public sealed partial class GeneralSectionViewModel : ObservableObject
         try
         {
             _settings.Update(update);
+            SaveError = null;
             return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             Trace.WriteLine($"[GeneralSection] Could not save settings: {ex.GetType().Name}");
+            SaveError = _localizer.Format("PrivacyAndData.SaveFailed", ex.Message);
             ApplySettings(_settings.Current);
             return false;
         }

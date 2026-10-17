@@ -225,6 +225,44 @@ public sealed class RewriteActionsSectionViewModelTests
         Assert.Equal(["Renamed", "Brief"], vm.CustomActions.Select(row => row.Title));
     }
 
+    [Fact]
+    public void DeletingAllData_AfterAFailedSave_DropsTheDraftsSoRetrySavesNothing()
+    {
+        var vm = CreateWithFormal();
+        _settings.UpdateFailure = new IOException("disk full");
+        Row(vm, "soften").Instruction = "Be gentle.";
+        vm.AddCustomActionCommand.Execute(null);
+        vm.CustomActions[1].Title = "Brief";
+        vm.CustomActions[1].Instruction = "Keep it brief.";
+        _settings.UpdateFailure = null;
+
+        _settings.Reset();
+
+        Assert.False(vm.HasSaveError);
+        Assert.Empty(vm.CustomActions);
+        Assert.Equal(RewriteAction.Soften.Instruction, Row(vm, "soften").Instruction);
+
+        vm.RetrySaveCommand.Execute(null);
+
+        Assert.Empty(_settings.Current.CustomRewriteActions);
+        Assert.Empty(_settings.Current.RewriteInstructionOverrides);
+    }
+
+    [Fact]
+    public void DeletingAllData_DropsAnUnfinishedActionAndItsValidation()
+    {
+        var vm = Create();
+        Row(vm, "clearer").Instruction = "   ";
+        vm.AddCustomActionCommand.Execute(null);
+        vm.CustomActions[0].Title = "Brief";
+
+        _settings.Reset();
+
+        Assert.Empty(vm.CustomActions);
+        Assert.False(Row(vm, "clearer").IsInvalid);
+        Assert.Equal(RewriteAction.Clearer.Instruction, Row(vm, "clearer").Instruction);
+    }
+
     private static BuiltInActionRow Row(RewriteActionsSectionViewModel vm, string id) =>
         vm.BuiltInActions.Single(row => row.Id == id);
 

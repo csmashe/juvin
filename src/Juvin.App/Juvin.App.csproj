@@ -17,6 +17,14 @@
         <AssemblyMetadata Include="SentryDsn" Value="$(JuvinSentryDsn)"/>
     </ItemGroup>
 
+    <!-- Only a build from a pushed v* tag passes -p:JuvinReleaseTag=true, so only it links docs at that tag. -->
+    <PropertyGroup>
+        <JuvinReleaseTag Condition="'$(JuvinReleaseTag)' == ''">false</JuvinReleaseTag>
+    </PropertyGroup>
+    <ItemGroup>
+        <AssemblyMetadata Include="ReleaseTag" Value="$(JuvinReleaseTag)"/>
+    </ItemGroup>
+
     <ItemGroup>
         <PackageReference Include="Avalonia"/>
         <PackageReference Include="Avalonia.Desktop"/>

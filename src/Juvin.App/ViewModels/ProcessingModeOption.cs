@@ -12,6 +12,10 @@ public sealed record ProcessingModeOption(ProcessingMode Mode, string Label, str
         new(ProcessingMode.Local, localizer["Models.Mode.Local"], localizer["Models.Mode.LocalHint"]),
         new(ProcessingMode.Codex, localizer["Models.Mode.Codex"], localizer["Models.Mode.CodexHint"]),
     ];
+
+    /// <summary>The option for <paramref name="mode" />, or Local for a value no option offers.</summary>
+    public static ProcessingModeOption Find(IReadOnlyList<ProcessingModeOption> options, ProcessingMode mode) =>
+        options.FirstOrDefault(option => option.Mode == mode) ?? options.First(option => option.Mode == ProcessingMode.Local);
 }
 
 /// <summary>A model in a picker: the name with its parameter size, flagged when it is low-quality class.</summary>

@@ -57,6 +57,24 @@ public sealed class GeneralSectionViewModelTests
     }
 
     [Fact]
+    public void AFailedSave_ShowsTheErrorUntilASaveSucceeds()
+    {
+        var vm = Create();
+        _settings.UpdateFailure = new IOException("disk full");
+
+        vm.CloseToTray = false;
+
+        Assert.True(vm.HasSaveError);
+        Assert.Contains("disk full", vm.SaveError);
+
+        _settings.UpdateFailure = null;
+        vm.CloseToTray = false;
+
+        Assert.False(vm.HasSaveError);
+        Assert.False(_settings.Current.CloseToTray);
+    }
+
+    [Fact]
     public void TurningLaunchAtLoginOn_EnablesTheLoginItemAndSaves()
     {
         var vm = Create();
@@ -146,7 +164,8 @@ public sealed class GeneralSectionViewModelTests
         Assert.Equal(0, _loginItem.DisableCount);
     }
 
-    private GeneralSectionViewModel Create() => new(_settings, new TrayIconService(new Localizer(), new NoTrayHost()), _loginItem);
+    private GeneralSectionViewModel Create() =>
+        new(_settings, new TrayIconService(new Localizer(), new NoTrayHost()), _loginItem, new Localizer());
 
     private sealed class NoTrayHost : ITrayHostProbe
     {

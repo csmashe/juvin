@@ -50,6 +50,7 @@
                                     </StackPanel>
                                     <ToggleSwitch Grid.Column="1"
                                                   VerticalAlignment="Center"
+                                                  AutomationProperties.Name="{loc:Str Wizard.Welcome.CrashReports}"
                                                   IsEnabled="{Binding IsCrashReportingAvailable}"
                                                   IsChecked="{Binding CrashReportingEnabled}" />
                                 </Grid>
@@ -157,6 +158,10 @@
                                                    Margin="0"
                                                    Text="{Binding ServerUrlError}"
                                                    IsVisible="{Binding HasServerUrlError}" />
+                                        <TextBlock Classes="row-hint"
+                                                   Margin="0"
+                                                   Text="{loc:Str Models.ServerNameHint}"
+                                                   IsVisible="{Binding HasServerNameHint}" />
                                     </StackPanel>
                                 </Border>
                             </Border>
@@ -191,10 +196,8 @@
                                         <TextBlock Classes="row-hint"
                                                    Text="{loc:Str Wizard.Mode.PullHint}"
                                                    IsVisible="{Binding HasPullCommand}" />
-                                        <TextBox Text="{Binding PullCommand}"
-                                                 IsReadOnly="True"
-                                                 FontFamily="monospace"
-                                                 FontSize="11"
+                                        <TextBox Classes="command"
+                                                 Text="{Binding PullCommand}"
                                                  IsVisible="{Binding HasPullCommand}" />
                                     </StackPanel>
                                 </Border>
@@ -281,14 +284,13 @@
                                                             <Button Content="{Binding ActionLabel}"
                                                                     HorizontalAlignment="Stretch"
                                                                     IsVisible="{Binding CanRunAction}"
+                                                                    IsEnabled="{Binding !IsBusy}"
                                                                     Command="{Binding $parent[ItemsControl].((vm:SetupWizardViewModel)DataContext).RunSetupActionCommand, FallbackValue={x:Null}}"
                                                                     CommandParameter="{Binding}" />
                                                         </StackPanel>
                                                     </Grid>
-                                                    <TextBox Text="{Binding CopyCommand}"
-                                                             IsReadOnly="True"
-                                                             FontFamily="monospace"
-                                                             FontSize="11"
+                                                    <TextBox Classes="command"
+                                                             Text="{Binding CopyCommand}"
                                                              IsVisible="{Binding HasCopyCommand}" />
                                                     <TextBlock Classes="row-hint"
                                                                Text="{Binding ActionMessage}"
