@@ -46,6 +46,9 @@ internal sealed class FakeModelProvider : IModelProvider
     /// <summary>When set, a completion previews half its reply and then waits for this before finishing.</summary>
     public TaskCompletionSource? CompletionGate { get; set; }
 
+    /// <summary>When set, reported in order in place of the half-reply preview.</summary>
+    public IReadOnlyList<string>? Previews { get; init; }
+
     public async Task<ProviderStatus> ProbeAsync(CancellationToken ct)
     {
         if (_gate is not null)
@@ -63,7 +66,11 @@ internal sealed class FakeModelProvider : IModelProvider
     {
         Requests.Add(request);
         var text = Reply(request);
-        preview?.Report(text[..(text.Length / 2)]);
+        foreach (var step in Previews ?? [text[..(text.Length / 2)]])
+        {
+            preview?.Report(step);
+        }
+
         if (CompletionGate is not null)
         {
             await CompletionGate.Task.WaitAsync(ct);

@@ -43,8 +43,11 @@ public sealed partial class RewritePanelViewModel : ObservableObject
     private readonly Localizer _localizer;
     private readonly Action<Action> _post;
     private readonly ProviderSelector _providers;
+    private readonly Lock _previewLock = new();
     private readonly ISettingsService _settings;
 
+    // The Apply or Recapture that set IsBusy; only it, or a superseding operation, clears it.
+    private object? _busyOwner;
     private CapturedContext? _capture;
     private IReadOnlyList<DiffSegment>? _changes;
     private int _copiedHints;
@@ -54,6 +57,11 @@ public sealed partial class RewritePanelViewModel : ObservableObject
     private string? _historyEntryId;
     private RewriteAction? _lastAction;
     private string? _lastInstruction;
+
+    // The session's last completed result and its history entry, put back when a later turn fails; null before its first result.
+    private (string Text, string? HistoryEntryId)? _lastResult;
+    private (int Generation, string Text)? _pendingPreview;
+    private int _previewPosted;
     private CancellationTokenSource? _recapture;
     private string? _recaptureEditorId;
     private CancellationTokenSource? _run;
@@ -144,7 +152,7 @@ public sealed partial class RewritePanelViewModel : ObservableObject
         _localizer = localizer;
         _post = post;
         RebuildChips(settings.Current);
-        settings.SettingsChanged += changed => _post(() => RebuildChips(changed));
+        settings.SettingsChanged += changed => _post(() => OnSettingsChanged(changed));
     }
 
     public ObservableCollection<PanelActionChip> Actions { get; } = [];
@@ -159,6 +167,7 @@ public sealed partial class RewritePanelViewModel : ObservableObject
     public bool HasContextMessages => ContextMessages.Count > 0;
     public bool IsIdle => State == RewritePanelState.Idle && HasCapture;
     public bool IsRunning => State == RewritePanelState.Running;
+    public bool CanCancel => IsRunning || _recapture is not null;
     public bool IsWorking => IsRunning && !IsStreaming;
     public bool HasError => State == RewritePanelState.Failed;
     public bool HasResult => ResultText.Length > 0;
@@ -231,6 +240,7 @@ public sealed partial class RewritePanelViewModel : ObservableObject
         ShowContext(_capture, result.Provenance);
         ProviderLabel = DescribeProvider(session.Provider, result.Provenance.ModelId);
         ResultText = result.Text;
+        _lastResult = (result.Text, null);
         Notice = _localizer["Panel.Error.Disconnected"];
         State = RewritePanelState.Done;
         Trace.WriteLine($"[RewritePanel] Showing a {action.Id} result of {result.Text.Length} chars the browser did not take.");
@@ -241,7 +251,11 @@ public sealed partial class RewritePanelViewModel : ObservableObject
     partial void OnResultTextChanged(string value)
     {
         _changes = null;
-        Refresh();
+        OnPropertyChanged(nameof(HasResult));
+        OnPropertyChanged(nameof(CanCopy));
+        OnPropertyChanged(nameof(IsTextVisible));
+        OnPropertyChanged(nameof(Changes));
+        CopyCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnIsBusyChanged(bool value) => Refresh();
@@ -254,7 +268,11 @@ public sealed partial class RewritePanelViewModel : ObservableObject
 
     partial void OnShowChangesChanged(bool value) => Refresh();
 
-    partial void OnFollowUpTextChanged(string value) => Refresh();
+    partial void OnFollowUpTextChanged(string value)
+    {
+        OnPropertyChanged(nameof(CanSendFollowUp));
+        SendFollowUpCommand.NotifyCanExecuteChanged();
+    }
 
     partial void OnSubjectChanged(string? value) => OnPropertyChanged(nameof(HasSubject));
 
@@ -314,7 +332,11 @@ public sealed partial class RewritePanelViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void Cancel() => _run?.Cancel();
+    private void Cancel()
+    {
+        _run?.Cancel();
+        _recapture?.Cancel();
+    }
 
     [RelayCommand]
     private void ShowRewriteView() => ShowChanges = false;
@@ -326,11 +348,7 @@ public sealed partial class RewritePanelViewModel : ObservableObject
     private void Close()
     {
         Supersede();
-        if (State == RewritePanelState.Running)
-        {
-            Fail(_localizer["Panel.Cancelled"], canRetry: true);
-        }
-
+        FailSupersededRun();
         HideRequested?.Invoke();
     }
 
@@ -343,7 +361,7 @@ public sealed partial class RewritePanelViewModel : ObservableObject
         var generation = _generation;
         var historyEntryId = _historyEntryId;
         Notice = null;
-        IsBusy = true;
+        var busy = TakeBusy();
         ConnectorError? error;
         try
         {
@@ -351,7 +369,7 @@ public sealed partial class RewritePanelViewModel : ObservableObject
         }
         finally
         {
-            IsBusy = false;
+            ReleaseBusy(busy);
         }
 
         if (error is null && historyEntryId is not null)
@@ -401,14 +419,18 @@ public sealed partial class RewritePanelViewModel : ObservableObject
     {
         var target = _target!;
         Supersede();
+        FailSupersededRun();
         var recapture = new CancellationTokenSource();
         _recapture = recapture;
         var generation = _generation;
-        IsBusy = true;
+        var busy = TakeBusy();
         ContextResult result;
+        bool cancelled;
         try
         {
             result = await target.RecaptureAsync(_recaptureEditorId, recapture.Token);
+            // An answer that was already on its way when Cancel was pressed is treated as cancelled too.
+            cancelled = recapture.IsCancellationRequested;
         }
         catch (OperationCanceledException)
         {
@@ -416,19 +438,19 @@ public sealed partial class RewritePanelViewModel : ObservableObject
         }
         finally
         {
-            IsBusy = false;
             if (_recapture == recapture)
             {
                 _recapture = null;
             }
 
+            ReleaseBusy(busy);
             recapture.Dispose();
         }
 
         // Superseded by Close, a new capture, or another action.
-        if (generation != _generation)
+        if (cancelled || generation != _generation)
         {
-            Trace.WriteLine("[RewritePanel] Discarded a superseded recapture.");
+            Trace.WriteLine("[RewritePanel] Discarded a cancelled or superseded recapture.");
             return;
         }
 
@@ -436,11 +458,6 @@ public sealed partial class RewritePanelViewModel : ObservableObject
         {
             // Keep the capture and result so the user can still copy the rewrite.
             Trace.WriteLine($"[RewritePanel] Recapture declined ({ConnectorTrace.Code(result.Error?.Code)}); keeping the current capture.");
-            if (State == RewritePanelState.Running)
-            {
-                Fail(_localizer["Panel.Cancelled"], canRetry: true);
-            }
-
             Notice = ErrorText(result.Error?.Code);
             return;
         }
@@ -460,6 +477,7 @@ public sealed partial class RewritePanelViewModel : ObservableObject
         _session = null;
         _sessionProviderChanged = false;
         _sessionAction = null;
+        _lastResult = null;
         ResultText = "";
         FollowUpText = "";
         Notice = null;
@@ -506,6 +524,7 @@ public sealed partial class RewritePanelViewModel : ObservableObject
 
         _session = null;
         _sessionProviderChanged = false;
+        _lastResult = null;
         _lastAction = action;
         _lastInstruction = instruction;
         try
@@ -537,6 +556,7 @@ public sealed partial class RewritePanelViewModel : ObservableObject
         _historyEntryId = null;
         ResultText = "";
         ErrorMessage = null;
+        CanRetry = false;
         // A known-stale capture stays stale until a new capture arrives, so Apply is not offered again.
         if (!IsDraftChanged)
         {
@@ -552,17 +572,7 @@ public sealed partial class RewritePanelViewModel : ObservableObject
                 + $"{capture.Context.Draft.Length} draft chars, {capture.Context.Thread.Count} messages."
         );
 
-        var preview = IsStreaming
-            ? new InlineProgress<string>(text =>
-                _post(() =>
-                {
-                    if (generation == _generation && State == RewritePanelState.Running)
-                    {
-                        ResultText = text;
-                    }
-                })
-            )
-            : null;
+        var preview = IsStreaming ? new InlineProgress<string>(text => QueuePreview(generation, text)) : null;
 
         try
         {
@@ -580,16 +590,17 @@ public sealed partial class RewritePanelViewModel : ObservableObject
                 $"[RewritePanel] {action.Id} done, {result.Text.Length} chars in {(int)result.Provenance.Duration.TotalMilliseconds} ms."
             );
             RecordHistory(action, capture, result);
+            _lastResult = (result.Text, _historyEntryId);
         }
         catch (ProviderException ex) when (generation == _generation)
         {
             Trace.WriteLine($"[RewritePanel] {action.Id} failed ({ex.Kind}).");
-            Fail(ex.Kind == ProviderFailureKind.Cancelled ? _localizer["Panel.Cancelled"] : ex.Message, canRetry: true);
+            FailRun(ex.Kind == ProviderFailureKind.Cancelled ? _localizer["Panel.Cancelled"] : ex.Message);
         }
         catch (OperationCanceledException) when (generation == _generation)
         {
             Trace.WriteLine($"[RewritePanel] {action.Id} cancelled.");
-            Fail(_localizer["Panel.Cancelled"], canRetry: true);
+            FailRun(_localizer["Panel.Cancelled"]);
         }
         catch (Exception ex) when (generation != _generation && ex is ProviderException or OperationCanceledException)
         {
@@ -637,6 +648,46 @@ public sealed partial class RewritePanelViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    ///     Coalesces previews from the provider thread: only the latest text is kept, and a new post is
+    ///     queued only once the previous one has run.
+    /// </summary>
+    private void QueuePreview(int generation, string text)
+    {
+        lock (_previewLock)
+        {
+            // A superseded run's last chunk can land after the new run's first one; the newer run keeps its preview.
+            if (_pendingPreview is { } pending && pending.Generation > generation)
+            {
+                return;
+            }
+
+            _pendingPreview = (generation, text);
+        }
+
+        if (Interlocked.Exchange(ref _previewPosted, 1) == 0)
+        {
+            _post(ShowPendingPreview);
+        }
+    }
+
+    private void ShowPendingPreview()
+    {
+        // Cleared before reading, so a preview that arrives meanwhile posts again rather than being lost.
+        Interlocked.Exchange(ref _previewPosted, 0);
+        (int Generation, string Text)? pending;
+        lock (_previewLock)
+        {
+            pending = _pendingPreview;
+            _pendingPreview = null;
+        }
+
+        if (pending is { } preview && preview.Generation == _generation && State == RewritePanelState.Running)
+        {
+            ResultText = preview.Text;
+        }
+    }
+
     /// <summary>Cancels the running rewrite or recapture and makes any late result or preview from it stale.</summary>
     private void Supersede()
     {
@@ -645,6 +696,61 @@ public sealed partial class RewritePanelViewModel : ObservableObject
         _run = null;
         _recapture?.Cancel();
         _recapture = null;
+        _busyOwner = null;
+        IsBusy = false;
+        OnPropertyChanged(nameof(CanCancel));
+    }
+
+    private object TakeBusy()
+    {
+        var owner = new object();
+        _busyOwner = owner;
+        IsBusy = true;
+        return owner;
+    }
+
+    private void ReleaseBusy(object owner)
+    {
+        if (_busyOwner != owner)
+        {
+            return;
+        }
+
+        _busyOwner = null;
+        IsBusy = false;
+    }
+
+    /// <summary>Shows a run that a Close or Recapture superseded as cancelled.</summary>
+    private void FailSupersededRun()
+    {
+        if (State == RewritePanelState.Running)
+        {
+            FailRun(_localizer["Panel.Cancelled"]);
+        }
+    }
+
+    /// <summary>
+    ///     A failed later turn puts the session's last result back, still Done so it can be applied, and reports
+    ///     the failure as a notice next to Retry; a failed first turn has nothing to restore.
+    /// </summary>
+    private void FailRun(string message)
+    {
+        if (_lastResult is not { } last)
+        {
+            Fail(message, canRetry: true);
+            return;
+        }
+
+        ResultText = last.Text;
+        _historyEntryId = last.HistoryEntryId;
+        // The draft-changed notice stays: it explains why Apply is off, and Retry still shows the failure.
+        if (!IsDraftChanged)
+        {
+            Notice = _localizer.Format("Panel.Notice.FollowUpFailed", message);
+        }
+
+        CanRetry = true;
+        State = RewritePanelState.Done;
     }
 
     private void Fail(string message, bool canRetry)
@@ -652,6 +758,15 @@ public sealed partial class RewritePanelViewModel : ObservableObject
         ErrorMessage = message;
         CanRetry = canRetry;
         State = RewritePanelState.Failed;
+    }
+
+    private void OnSettingsChanged(AppSettings changed)
+    {
+        RebuildChips(changed);
+        if (_session is null)
+        {
+            ProviderLabel = DescribeProvider(null, null);
+        }
     }
 
     private void SelectChip(RewriteAction? action)
@@ -732,25 +847,7 @@ public sealed partial class RewritePanelViewModel : ObservableObject
     private string DescribeProvider(IModelProvider? provider, string? modelId) =>
         CaptureLabels.Provider(provider, modelId, _settings.Current, _localizer);
 
-    private string ErrorText(string? code) => _localizer[ErrorKeyFor(code)];
-
-    /// <summary>The string table key for a connector error code; unknown codes get a generic message.</summary>
-    public static string ErrorKeyFor(string? code) =>
-        code switch
-        {
-            "no-active-tab" => "Panel.Error.NoActiveTab",
-            "no-adapter" => "Panel.Error.NoAdapter",
-            "no-editor" => "Panel.Error.NoEditor",
-            "no-selection" => "Panel.Error.NoSelection",
-            "page-not-ready" => "Panel.Error.PageNotReady",
-            "editor-gone" => "Panel.Error.EditorGone",
-            ConnectorService.BrowserNotFocusedCode => "Panel.Error.BrowserNotFocused",
-            ConnectorService.NoBrowserCode => "Panel.Error.NoBrowser",
-            ConnectorErrorCodes.Disconnected => "Panel.Error.Disconnected",
-            ConnectorRewriteTarget.TimeoutCode => "Panel.Error.Timeout",
-            ConnectorRewriteTarget.TooLargeCode => "Panel.Error.TooLarge",
-            _ => "Panel.Error.Unknown",
-        };
+    private string ErrorText(string? code) => _localizer[ConnectorErrorLabels.KeyFor(code)];
 
     private async Task ShowCopiedHintAsync()
     {
@@ -769,6 +866,7 @@ public sealed partial class RewritePanelViewModel : ObservableObject
         OnPropertyChanged(nameof(HasContextMessages));
         OnPropertyChanged(nameof(IsIdle));
         OnPropertyChanged(nameof(IsRunning));
+        OnPropertyChanged(nameof(CanCancel));
         OnPropertyChanged(nameof(IsWorking));
         OnPropertyChanged(nameof(HasError));
         OnPropertyChanged(nameof(HasResult));

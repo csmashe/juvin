@@ -539,7 +539,7 @@ public sealed class ActionMenuService
         }
     }
 
-    private string ErrorText(string? code) => _localizer[RewritePanelViewModel.ErrorKeyFor(code)];
+    private string ErrorText(string? code) => _localizer[ConnectorErrorLabels.KeyFor(code)];
 
     private static Task<bool> SendErrorAsync(OpenMenu menu, string text, bool canRetry) =>
         SendUpdateAsync(menu, new MenuUpdateMessage { MenuId = menu.Id, State = MenuStates.Error, Text = text, CanRetry = canRetry });
