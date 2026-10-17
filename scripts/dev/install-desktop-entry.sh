@@ -60,3 +60,4 @@ EOF
 
 echo "Installed $entry."
 echo "App: $app_path"
+echo "Note: the desktop-shortcut backend binds the command 'juvin --trigger', so a Debug run needs a 'juvin' launcher on PATH; Launch at login is reported unsupported under the dotnet host."
