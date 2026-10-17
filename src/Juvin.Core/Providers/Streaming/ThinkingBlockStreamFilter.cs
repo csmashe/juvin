@@ -16,6 +16,10 @@ internal sealed class ThinkingBlockStreamFilter
     private bool _hasVisibleText;
     private bool _trimLeadingWhitespace = true;
 
+    /// <summary>True when the text ended inside an unclosed block, whose content was dropped.</summary>
+    // ReSharper disable once ConvertToAutoPropertyWithPrivateSetter -- the field names the state while streaming, the property what it means once the stream ends
+    public bool EndedInsideBlock => _inside;
+
     public string Push(string delta)
     {
         var text = _pending + delta;

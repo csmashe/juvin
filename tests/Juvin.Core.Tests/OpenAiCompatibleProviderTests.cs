@@ -296,6 +296,80 @@ public sealed class OpenAiCompatibleProviderTests
     }
 
     [Fact]
+    public async Task OpenAi_ReasoningChunksKeepTheStreamAliveWithoutReachingTheReply()
+    {
+        var reasoning = Enumerable.Repeat("data: {\"choices\":[{\"delta\":{\"reasoning\":\"r\"}}]}\n\n", 8);
+        var handler = new FakeHttpHandler().Trickle(
+            "/v1/chat/completions",
+            TimeSpan.FromMilliseconds(150),
+            [.. reasoning, "data: {\"choices\":[{\"delta\":{\"content\":\"done\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"]
+        );
+        var provider = new OpenAiCompatibleProvider(
+            new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(1) },
+            new AppSettings { LocalServerUrl = "http://localhost:1234", LocalModel = "m" }
+        );
+
+        var result = await provider.CompleteAsync(s_request, null, CancellationToken.None);
+
+        Assert.Equal("done", result.Text);
+    }
+
+    [Fact]
+    public async Task Ollama_ThinkingChunksKeepTheStreamAliveWithoutReachingTheReply()
+    {
+        var thinking = Enumerable.Repeat("{\"message\":{\"role\":\"assistant\",\"content\":\"\",\"thinking\":\"t\"},\"done\":false}\n", 8);
+        var handler = Ollama().Trickle(
+            "/api/chat",
+            TimeSpan.FromMilliseconds(150),
+            [.. thinking, "{\"message\":{\"role\":\"assistant\",\"content\":\"done\"},\"done\":true}\n"]
+        );
+        var provider = new OpenAiCompatibleProvider(
+            new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(1) },
+            new AppSettings { LocalServerUrl = "http://localhost:11434", LocalModel = "m" }
+        );
+
+        var result = await provider.CompleteAsync(s_request, null, CancellationToken.None);
+
+        Assert.Equal("done", result.Text);
+    }
+
+    [Fact]
+    public async Task OpenAi_RefusesAConversationTooLongForTheContextBudget()
+    {
+        var handler = new FakeHttpHandler().Route("/v1/chat/completions", OpenAiChat);
+        var request = s_request with { Messages = [new ChatMessage(ChatRole.User, new string('x', 70_000))] };
+
+        var ex = await Assert.ThrowsAsync<ProviderException>(() =>
+            Provider(handler, "m").CompleteAsync(request, null, CancellationToken.None)
+        );
+
+        Assert.Equal(ProviderFailureKind.Configuration, ex.Kind);
+        Assert.DoesNotContain(handler.Requests, r => r.Path == "/v1/chat/completions");
+    }
+
+    [Fact]
+    public async Task OpenAi_AReplyEndingInsideAReasoningBlockIsAProtocolFailure()
+    {
+        var handler = new FakeHttpHandler().Route(
+            "/v1/chat/completions",
+            """
+            data: {"choices":[{"delta":{"content":"<think>private reasoning"},"finish_reason":"stop"}]}
+
+            data: [DONE]
+
+
+            """
+        );
+
+        var ex = await Assert.ThrowsAsync<ProviderException>(() =>
+            Provider(handler, "m").CompleteAsync(s_request, null, CancellationToken.None)
+        );
+
+        Assert.Equal(ProviderFailureKind.Protocol, ex.Kind);
+        Assert.Equal("The model's reply ended inside a reasoning block.", ex.Message);
+    }
+
+    [Fact]
     public async Task Probe_TimesOutWhenTheBodyStallsAfterTheHeaders()
     {
         var handler = new FakeHttpHandler().Stall("/api/version");
@@ -385,6 +459,26 @@ public sealed class OpenAiCompatibleProviderTests
     }
 
     [Fact]
+    public async Task Redirect_FollowedByTheClientToAnotherHostIsAFailure()
+    {
+        using var elsewhere = new LoopbackHttpServer(() => new LoopbackResponse(HttpStatusCode.OK));
+        // ReSharper disable once AccessToDisposedClosure -- server is disposed before elsewhere
+        using var server = new LoopbackHttpServer(() =>
+            new LoopbackResponse(HttpStatusCode.TemporaryRedirect, elsewhere.Url + "api/version")
+        );
+        using var http = new HttpClient();
+        var provider = new OpenAiCompatibleProvider(http, new AppSettings { LocalServerUrl = server.Url, LocalModel = "m" });
+
+        var ex = await Assert.ThrowsAsync<ProviderException>(() =>
+            provider.CompleteAsync(s_request, null, CancellationToken.None)
+        );
+
+        Assert.Equal(ProviderFailureKind.Protocol, ex.Kind);
+        Assert.Equal("The local model server redirected the request to another host.", ex.Message);
+        Assert.True(elsewhere.Requests > 0);
+    }
+
+    [Fact]
     public async Task MissingModel_IsAConfigurationFailure()
     {
         var handler = Ollama().Route("/api/chat", "{\"error\":\"model not found\"}", HttpStatusCode.NotFound);
@@ -470,6 +564,44 @@ public sealed class OpenAiCompatibleProviderTests
         var ex = Assert.Throws<ProviderException>(() => OpenAiCompatibleProvider.NormaliseBaseUrl(url));
 
         Assert.Equal(ProviderFailureKind.Configuration, ex.Kind);
+    }
+
+    [Theory]
+    [InlineData("http://10.0.3.20:11434")]
+    [InlineData("http://[fd00::1]")]
+    [InlineData("http://ollama.lan:11434")]
+    [InlineData("https://models.example.com/")]
+    public void NormaliseBaseUrl_AcceptsLocalAddressesAndHostNames(string url)
+    {
+        OpenAiCompatibleProvider.NormaliseBaseUrl(url);
+    }
+
+    [Theory]
+    [InlineData("https://203.0.113.10/")]
+    [InlineData("http://[2001:db8::1]/")]
+    public void NormaliseBaseUrl_RefusesPublicAddressLiterals(string url)
+    {
+        var ex = Assert.Throws<ProviderException>(() => OpenAiCompatibleProvider.NormaliseBaseUrl(url));
+
+        Assert.Equal(ProviderFailureKind.Configuration, ex.Kind);
+        Assert.Equal("The local server address must be on this machine or your local network.", ex.Message);
+        Assert.Null(OpenAiCompatibleProvider.IsLoopbackServer(url));
+    }
+
+    [Fact]
+    public async Task AHostThatResolvesOutsideTheLocalNetwork_ReportsWhy()
+    {
+        var handler = new FakeHttpHandler().Fail(
+            "/api/version",
+            new HttpRequestException("wrapped", new OutsideLocalNetworkException())
+        );
+
+        var ex = await Assert.ThrowsAsync<ProviderException>(() =>
+            Provider(handler, "m").CompleteAsync(s_request, null, CancellationToken.None)
+        );
+
+        Assert.Equal(ProviderFailureKind.Unreachable, ex.Kind);
+        Assert.Equal(new OutsideLocalNetworkException().Message, ex.Message);
     }
 
     [Theory]
