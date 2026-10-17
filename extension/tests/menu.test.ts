@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { MenuUpdateMessage } from "../src/shared/protocol";
+import { MAX_INSTRUCTION_LENGTH, type MenuUpdateMessage } from "../src/shared/protocol";
 import type { MenuNotice, MenuShowRequest } from "../src/shared/runtime-messages";
 import { EditorRegistry } from "../src/content/editor-registry";
 import { MENU_STRINGS, MenuRenderer, placeBeside } from "../src/content/menu";
@@ -27,6 +27,8 @@ const renderers: MenuRenderer[] = [];
 function setup(isMac = false): Harness {
   document.body.innerHTML = `<div id="editor" contenteditable="true">hello</div><p id="outside">page</p>`;
   const editor = document.getElementById("editor")!;
+  // jsdom lays nothing out, and an empty box reads as a hidden editor.
+  editor.getBoundingClientRect = () => ({ left: 10, top: 100, right: 210, bottom: 200 }) as DOMRect;
   const registry = new EditorRegistry();
   const editorId = registry.idFor(editor);
   const notices: MenuNotice[] = [];
@@ -519,6 +521,22 @@ describe("MenuRenderer", () => {
       expect(h.notices).toEqual([{ kind: "juvin.menu.choose", menuId: "menu-1", action: "custom", instruction: "Make it less formal." }]);
     });
 
+    it("shows a hint instead of sending an instruction over the cap", () => {
+      h.renderer.show(request(h));
+      mark().click();
+      input().value = ` ${"a".repeat(MAX_INSTRUCTION_LENGTH + 1)} `;
+      typeKey(input(), "Enter");
+      typeKey(input(), "Enter");
+      expect(h.notices).toEqual([]);
+      expect(input().maxLength).toBe(MAX_INSTRUCTION_LENGTH);
+      expect(Array.from(h.root().querySelectorAll(".card .hint"), (e) => e.textContent)).toEqual([MENU_STRINGS.instructionTooLong]);
+
+      input().value = ` ${"a".repeat(MAX_INSTRUCTION_LENGTH)} `;
+      typeKey(input(), "Enter");
+      expect(h.notices).toEqual([{ kind: "juvin.menu.choose", menuId: "menu-1", action: "custom", instruction: "a".repeat(MAX_INSTRUCTION_LENGTH) }]);
+      expect(h.root().querySelector(".card .hint")).toBeNull();
+    });
+
     it("keeps typed keys from the page's capture-phase shortcuts", () => {
       const seen: string[] = [];
       const shortcut = (event: Event) => seen.push(`${event.type}:${(event as KeyboardEvent).key}`);
@@ -782,6 +800,129 @@ describe("MenuRenderer", () => {
     h.renderer.show({ ...request(h), more: SLOTS });
     key("ContextMenu");
     expect(h.root().querySelectorAll(".card .row")).toHaveLength(SLOTS.length + 1);
+  });
+
+  it("leaves the context-menu keys to the page while an action runs", () => {
+    h.renderer.show({ ...request(h), more: SLOTS });
+    key("2");
+    h.renderer.update(update({ state: "running", action: "soften" }));
+    expect(key("ContextMenu").defaultPrevented).toBe(false);
+    expect(key("F10", { shiftKey: true }).defaultPrevented).toBe(false);
+    expect(h.root().querySelector(".card")!.hasAttribute("hidden")).toBe(true);
+  });
+
+  it("leaves the arrow keys to the draft while an action runs", () => {
+    h.renderer.show(request(h));
+    key("2");
+    h.renderer.update(update({ state: "running", action: "soften" }));
+    for (const arrow of ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"]) {
+      expect(key(arrow).defaultPrevented).toBe(false);
+    }
+
+    expect(h.root().querySelector(".focused")).toBeNull();
+  });
+
+  it("consumes the arrow that moves the drawn focus from a bubble into a card", () => {
+    h.renderer.show(request(h));
+    h.renderer.update(update({ state: "answer", text: "x" }));
+    const root = h.root();
+    let landed = false;
+    for (let presses = 0; presses < 12 && !landed; presses++) {
+      expect(key("ArrowDown").defaultPrevented).toBe(true);
+      landed = root.querySelector(".card .focused") !== null;
+    }
+
+    expect(landed).toBe(true);
+  });
+
+  it("announces the drawn focus, a run, and each card through a status that is never hidden", () => {
+    h.renderer.show(request(h));
+    const root = h.root();
+    const status = root.querySelector<HTMLElement>("[role=status]")!;
+    const ring = root.querySelector(".ring")!;
+    expect(status.getAttribute("aria-live")).toBe("polite");
+    expect(status.hidden).toBe(false);
+    expect(root.querySelector("[aria-activedescendant]")).toBeNull();
+    expect(Array.from(root.querySelectorAll(".bubble"), (b) => b.getAttribute("aria-keyshortcuts"))).toEqual(["1", "2", "3", "4", "5"]);
+
+    key("ArrowUp");
+    expect(status.textContent).toBe(MENU_STRINGS.focusedAction("Make clearer", 3));
+    key("ArrowUp");
+    expect(status.textContent).toBe(MENU_STRINGS.askPlaceholder);
+
+    key("2");
+    h.renderer.update(update({ state: "running", action: "soften" }));
+    expect(ring.getAttribute("aria-busy")).toBe("true");
+    expect(status.textContent).toBe(MENU_STRINGS.running("Soften"));
+
+    h.renderer.update(update({ state: "draft-changed", text: "the rewrite" }));
+    expect(ring.hasAttribute("aria-busy")).toBe(false);
+    expect(status.textContent).toBe(MENU_STRINGS.draftChangedShown);
+    key("ArrowDown");
+    key("ArrowDown");
+    expect(status.textContent).toBe(MENU_STRINGS.copy);
+    key("ArrowRight");
+    key("ArrowRight");
+    expect(status.textContent).toBe(MENU_STRINGS.close);
+
+    h.renderer.update(update({ state: "answer", text: "- A point" }));
+    expect(status.textContent).toBe(MENU_STRINGS.answerShown("- A point"));
+    h.renderer.update(update({ state: "error", text: "Failed.", canRetry: false, result: "the rewrite" }));
+    expect(status.textContent).toBe(MENU_STRINGS.errorShown("Failed."));
+  });
+
+  it("turns off the spinner and the fade for reduced motion", () => {
+    h.renderer.show(request(h));
+    const css = h.root().querySelector("style")!.textContent!;
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{[^}]*\.spinner \{ animation: none; \}[^}]*\.note \{ transition: none; \}/);
+  });
+
+  it("closes and reports it when the editor is hidden", () => {
+    h.renderer.show(request(h));
+    h.editor.style.display = "none";
+    h.editor.getBoundingClientRect = () => ({ left: 0, top: 0, right: 0, bottom: 0 }) as DOMRect;
+    vi.advanceTimersByTime(600);
+    expect(h.notices).toEqual([{ kind: "juvin.menu.closed", menuId: "menu-1" }]);
+    expect(hosts()).toHaveLength(0);
+  });
+
+  it("keeps a card with a result where the editor last was when the editor is hidden", () => {
+    h.renderer.show(request(h));
+    h.renderer.update(update({ state: "answer", text: "- A point" }));
+    const host = hosts()[0] as HTMLElement;
+    const placed = { left: host.style.left, top: host.style.top };
+    h.editor.style.display = "none";
+    h.editor.getBoundingClientRect = () => ({ left: 0, top: 0, right: 0, bottom: 0 }) as DOMRect;
+    vi.advanceTimersByTime(600);
+    expect(h.notices).toEqual([]);
+    expect({ left: host.style.left, top: host.style.top }).toEqual(placed);
+    expect(host.style.top).not.toBe("8px");
+  });
+
+  it("leaves only Copy and close on a kept card while the editor is hidden", () => {
+    h.renderer.show(request(h));
+    key("2");
+    h.renderer.update(update({ state: "running", action: "soften" }));
+    h.renderer.update(update({ state: "error", text: "Failed.", canRetry: true, result: "the rewrite" }));
+    h.notices.length = 0;
+    key("ArrowUp");
+    h.editor.getBoundingClientRect = () => ({ left: 0, top: 0, right: 0, bottom: 0 }) as DOMRect;
+    vi.advanceTimersByTime(600);
+    expect(h.root().querySelector(".ring.gone")).not.toBeNull();
+    expect(h.root().querySelector(".bubble.focused")).toBeNull();
+    expect(key("2").defaultPrevented).toBe(false);
+    h.root().querySelectorAll<HTMLButtonElement>(".bubble")[1]!.click();
+    buttonByText(h.root(), MENU_STRINGS.tryAgain)!.click();
+    expect(h.notices).toEqual([]);
+    key("ArrowUp");
+    expect(h.root().querySelector(".bubble.focused, .mark.focused")).toBeNull();
+    expect(h.root().querySelector(".card .result")!.textContent).toBe("the rewrite");
+  });
+
+  it("answers editor-gone for a hidden editor", () => {
+    h.editor.getBoundingClientRect = () => ({ left: 0, top: 0, right: 0, bottom: 0 }) as DOMRect;
+    expect(h.renderer.show(request(h))).toMatchObject({ ok: false, error: { code: "editor-gone" } });
+    expect(hosts()).toHaveLength(0);
   });
 
   it("reaches the card from the keyboard after the editor is gone", () => {
