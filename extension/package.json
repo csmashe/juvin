@@ -5,8 +5,11 @@
   "description": "Juvin browser extension for Chrome and Firefox.",
   "license": "GPL-3.0-only",
   "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
-    "build": "tsc --noEmit && node build.mjs",
+    "build": "tsc --noEmit && tsc --noEmit -p tests && node build.mjs",
     "watch": "node build.mjs --watch",
     "test": "vitest run",
     "lint:firefox": "web-ext lint --source-dir dist/firefox"

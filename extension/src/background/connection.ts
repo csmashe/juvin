@@ -11,7 +11,10 @@ const BADGE_COLOR = "#F5A623";
 /** Sends a reply on the connection that delivered the request; a no-op once that connection is gone. */
 export type Reply = (message: OutgoingMessage) => void;
 
-type RequestHandler = (message: IncomingMessage, reply: Reply) => void;
+/** True while the connection that delivered the request is still the live one. */
+export type IsLive = () => boolean;
+
+type RequestHandler = (message: IncomingMessage, reply: Reply, isLive: IsLive) => void;
 
 interface Waiter {
   resolve: () => void;
@@ -38,7 +41,10 @@ export class Connection {
   private nextId = 1;
   private generation_ = 0;
 
-  constructor(private readonly onRequest: RequestHandler) {}
+  constructor(
+    private readonly onRequest: RequestHandler,
+    private readonly onDropped: () => void = () => undefined,
+  ) {}
 
   status(): Status {
     return { connected: this.config !== undefined, connecting: this.port !== undefined && this.config === undefined, lastError: this.lastError, shortcut: this.config?.shortcut };
@@ -63,13 +69,15 @@ export class Connection {
     return ready;
   }
 
-  send(message: OutgoingMessage): void {
+  /** False when there is no connection to send on. */
+  send(message: OutgoingMessage): boolean {
     if (!this.port) {
       warn("send.dropped", { type: message.type });
-      return;
+      return false;
     }
 
     this.port.postMessage(message);
+    return true;
   }
 
   async ping(): Promise<number> {
@@ -91,7 +99,10 @@ export class Connection {
           reject(error);
         },
       });
-      this.send(ping(id));
+      if (!this.send(ping(id))) {
+        this.pendingPings.get(id)?.reject(new Error(this.lastError ?? "The connection to Juvin closed."));
+        this.pendingPings.delete(id);
+      }
     });
     return Math.round(performance.now() - started);
   }
@@ -156,14 +167,20 @@ export class Connection {
       case "error":
         warn("app.error", { id: message.id, code: message.error.code });
         return;
-      default:
-        this.onRequest(message, (reply) => {
-          if (generation === this.generation_ && this.port) {
-            this.send(reply);
-          } else {
-            warn("reply.stale", { type: reply.type });
-          }
-        });
+      default: {
+        const isLive = (): boolean => generation === this.generation_ && this.port !== undefined;
+        this.onRequest(
+          message,
+          (reply) => {
+            if (isLive()) {
+              this.send(reply);
+            } else {
+              warn("reply.stale", { type: reply.type });
+            }
+          },
+          isLive,
+        );
+      }
     }
   }
 
@@ -185,6 +202,7 @@ export class Connection {
     this.pendingPings.forEach((w) => w.reject(new Error(reason)));
     this.pendingPings.clear();
     this.fail(reason);
+    this.onDropped();
   }
 
   private fail(reason: string): void {

@@ -25,20 +25,21 @@ import {
   type ApplyResult,
   type CaptureResult,
   type ContentRequest,
+  type MenuDeliveryResult,
   type MenuNotice,
   type MenuShowResult,
   type PingResult,
   type PopupRequest,
   type Status,
 } from "../shared/runtime-messages";
-import { Connection, type Reply } from "./connection";
+import { Connection, type IsLive, type Reply } from "./connection";
 import { EditorTabs } from "./editor-tabs";
 import { ShortcutTabs } from "./shortcut-tabs";
 import { buildTrimmedContextResponse } from "./trim";
 
 const CONTENT_SCRIPT = "content.js";
 
-const connection = new Connection(onAppRequest);
+const connection = new Connection(onAppRequest, onDisconnected);
 
 const editorTabs = new EditorTabs((tabId) => browser.tabs.get(tabId));
 
@@ -68,6 +69,7 @@ function errorName(e: unknown): string {
   return e instanceof Error ? e.name : "unknown";
 }
 
+/** Undefined when no content script answered: every content request has a reply. */
 async function sendToTab(tabId: number, request: ContentRequest): Promise<unknown> {
   try {
     const reply = await browser.tabs.sendMessage(tabId, request);
@@ -165,8 +167,14 @@ async function handleContextRequest({ id, editorId, requireFocus }: ContextReque
   reply(response);
 }
 
-async function handleApplyRequest({ id, editorId, expectedHash, start, end, text, format, expectedFormatHash }: ApplyRequestMessage, reply: Reply): Promise<void> {
+async function handleApplyRequest({ id, editorId, expectedHash, start, end, text, format, expectedFormatHash }: ApplyRequestMessage, reply: Reply, isLive: IsLive): Promise<void> {
   const tab = await editorTabs.find(editorId);
+  // The app that asked is gone and can no longer see or undo this apply.
+  if (!isLive()) {
+    log("apply.stale", { id });
+    return;
+  }
+
   const gone = applyError(id, { code: "editor-gone", message: "The editor is no longer open." });
   if (!tab) {
     reply(gone);
@@ -242,12 +250,27 @@ async function handleMenuUpdate(update: MenuUpdateMessage): Promise<void> {
   }
 
   log("menu.update", { menuId: update.menuId, state: update.state, textLength: "text" in update ? update.text.length : undefined });
-  const { tabId } = openMenu;
+  const menu = openMenu;
   if (update.state === "applied") {
     openMenu = undefined;
   }
 
-  await sendToTab(tabId, { kind: "juvin.menu.update", update });
+  const result = (await sendToTab(menu.tabId, { kind: "juvin.menu.update", update })) as MenuDeliveryResult | undefined;
+  // Menu ids repeat after an app restart, so only this menu object's failure may close it.
+  if (result?.ok !== true && openMenu === menu) {
+    menuLost("menu.lost");
+  }
+}
+
+/** The page no longer draws the open menu; the app stops whatever it was running for it. */
+function menuLost(event: string): void {
+  if (!openMenu) {
+    return;
+  }
+
+  log(event, { menuId: openMenu.menuId });
+  connection.send(menuClose(openMenu.menuId));
+  openMenu = undefined;
 }
 
 async function handleMenuClose({ menuId }: MenuCloseMessage): Promise<void> {
@@ -265,16 +288,18 @@ async function handleMenuClose({ menuId }: MenuCloseMessage): Promise<void> {
   await sendToTab(tabId, { kind: "juvin.menu.close", menuId });
 }
 
-function onMenuNotice(notice: MenuNotice, sender: Runtime.MessageSender): void {
+/** Rejects a choice the app will not receive, so the menu stops waiting for its update. */
+function onMenuNotice(notice: MenuNotice, sender: Runtime.MessageSender): Promise<void> | undefined {
+  const notDelivered = (): Promise<void> | undefined => (notice.kind === "juvin.menu.choose" ? Promise.reject(new Error("The choice did not reach Juvin.")) : undefined);
   if (openMenu?.menuId !== notice.menuId || openMenu.tabId !== sender.tab?.id) {
-    return;
+    return notDelivered();
   }
 
   if (notice.kind === "juvin.menu.closed") {
     log("menu.closed", { menuId: notice.menuId });
     openMenu = undefined;
     connection.send(menuClose(notice.menuId));
-    return;
+    return undefined;
   }
 
   log("menu.choose", { menuId: notice.menuId, action: notice.action, instructionLength: notice.instruction?.length });
@@ -283,7 +308,19 @@ function onMenuNotice(notice: MenuNotice, sender: Runtime.MessageSender): void {
     openMenu = undefined;
   }
 
-  connection.send(menuChoose(notice.menuId, notice.action, notice.instruction));
+  return connection.send(menuChoose(notice.menuId, notice.action, notice.instruction)) ? undefined : notDelivered();
+}
+
+function onDisconnected(): void {
+  if (pendingShow) {
+    pendingShow.cancelled = true;
+  }
+
+  if (openMenu) {
+    log("menu.disconnected", { menuId: openMenu.menuId });
+    void sendToTab(openMenu.tabId, { kind: "juvin.menu.disconnected", menuId: openMenu.menuId });
+    openMenu = undefined;
+  }
 }
 
 async function handleTestPageRequest({ id }: TestPageRequestMessage, reply: Reply): Promise<void> {
@@ -303,12 +340,12 @@ async function handleTestPageRequest({ id }: TestPageRequestMessage, reply: Repl
   reply(testPageOk(id));
 }
 
-function handleAppRequest(message: IncomingMessage, reply: Reply): Promise<void> {
+function handleAppRequest(message: IncomingMessage, reply: Reply, isLive: IsLive): Promise<void> {
   switch (message.type) {
     case "context.request":
       return handleContextRequest(message, reply);
     case "apply.request":
-      return handleApplyRequest(message, reply);
+      return handleApplyRequest(message, reply, isLive);
     case "testpage.request":
       return handleTestPageRequest(message, reply);
     case "menu.show":
@@ -322,9 +359,9 @@ function handleAppRequest(message: IncomingMessage, reply: Reply): Promise<void>
   }
 }
 
-function onAppRequest(message: IncomingMessage, reply: Reply): void {
+function onAppRequest(message: IncomingMessage, reply: Reply, isLive: IsLive): void {
   log("request", { type: message.type, id: "id" in message ? message.id : undefined });
-  handleAppRequest(message, reply).catch((e: unknown) => {
+  handleAppRequest(message, reply, isLive).catch((e: unknown) => {
     warn("request.failed", { type: message.type, error: errorName(e) });
     switch (message.type) {
       case "context.request":
@@ -383,7 +420,7 @@ browser.runtime.onMessage.addListener((message: unknown, sender: Runtime.Message
   }
 
   if (isMenuNotice(message)) {
-    onMenuNotice(message, sender);
+    return onMenuNotice(message, sender);
   }
 
   return undefined;
@@ -392,8 +429,22 @@ browser.runtime.onMessage.addListener((message: unknown, sender: Runtime.Message
 browser.tabs.onRemoved.addListener((tabId: number) => {
   editorTabs.forgetTab(tabId);
   if (openMenu?.tabId === tabId) {
-    log("menu.tab-closed", { menuId: openMenu.menuId });
-    connection.send(menuClose(openMenu.menuId));
-    openMenu = undefined;
+    menuLost("menu.tab-closed");
   }
+});
+
+// A same-document navigation (Gmail changes the URL as a draft saves) keeps the menu, so ask the page rather than assume a reload.
+browser.tabs.onUpdated.addListener((tabId: number, changeInfo: Tabs.OnUpdatedChangeInfoType) => {
+  const menu = openMenu;
+  if (changeInfo.status !== "complete" || menu?.tabId !== tabId) {
+    return;
+  }
+
+  void sendToTab(tabId, { kind: "juvin.menu.check", menuId: menu.menuId }).then((result) => {
+    if ((result as MenuDeliveryResult | undefined)?.ok !== true && openMenu === menu) {
+      // The editor ids died with the document.
+      editorTabs.forgetTab(tabId);
+      menuLost("menu.tab-reloaded");
+    }
+  });
 });

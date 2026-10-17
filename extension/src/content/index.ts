@@ -1,5 +1,5 @@
 import browser from "webextension-polyfill";
-import { isContentRequest, type ApplyResult, type CaptureResult, type ContentRequest, type MenuNotice, type MenuShowResult } from "../shared/runtime-messages";
+import { isContentRequest, type ApplyResult, type CaptureResult, type ContentRequest, type MenuDeliveryResult, type MenuNotice, type MenuShowResult } from "../shared/runtime-messages";
 import { applyReplacement } from "./apply";
 import { captureContext } from "./capture";
 import { EditorRegistry } from "./editor-registry";
@@ -11,7 +11,7 @@ declare global {
   }
 }
 
-async function handle(registry: EditorRegistry, menu: MenuRenderer, request: ContentRequest): Promise<CaptureResult | ApplyResult | MenuShowResult | undefined> {
+async function handle(registry: EditorRegistry, menu: MenuRenderer, request: ContentRequest): Promise<CaptureResult | ApplyResult | MenuShowResult | MenuDeliveryResult> {
   try {
     switch (request.kind) {
       case "juvin.capture":
@@ -21,11 +21,13 @@ async function handle(registry: EditorRegistry, menu: MenuRenderer, request: Con
       case "juvin.menu.show":
         return menu.show(request);
       case "juvin.menu.update":
-        menu.update(request.update);
-        return undefined;
+        return { ok: menu.update(request.update) };
       case "juvin.menu.close":
-        menu.close(request.menuId);
-        return undefined;
+        return { ok: menu.close(request.menuId) };
+      case "juvin.menu.disconnected":
+        return { ok: menu.disconnected(request.menuId) };
+      case "juvin.menu.check":
+        return { ok: menu.has(request.menuId) };
     }
   } catch (e) {
     return { ok: false, error: { code: "internal", message: `Content script failed: ${e instanceof Error ? e.name : "unknown"}.` } };

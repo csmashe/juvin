@@ -209,7 +209,7 @@ The TypeWhisper code is Linux-only and has no OS abstraction layer. Juvin needs 
 | Manifest | MV3, permissions: `nativeMessaging`, `activeTab`, `scripting`, `storage`, `commands`. Host permissions only for supported webmail origins plus optional all-sites for the generic adapter |
 | Background | Connects to the native host on demand, relays requests and results, surfaces connection errors as a badge |
 | Content script | Adapter registry: Gmail, generic, test page. Captures selection and thread; applies replacement; verifies draft hash before apply; draws the action menu the app sends (section 2.8) |
-| Popup | Connection status, "Open Juvin", shortcut reminder. No chat UI; the action menu sits in the page and Review opens the desktop panel |
+| Popup | Connection status, a Connect button, shortcut reminder. No chat UI; the action menu sits in the page and Review opens the desktop panel |
 | Builds | One source, two outputs. Firefox needs `browser_specific_settings.gecko.id`; Chrome needs a stable extension ID (publish or pin a `key`) because the host manifest allowlists it |
 
 ### 4.5 Native messaging protocol

@@ -399,7 +399,7 @@
   "Panel.Error.NoEditor": "Juvin found no draft editor. Click into your draft and try again.",
   "Panel.Error.NoSelection": "Nothing is selected. Select the text of your draft, then try again.",
   "Panel.Error.PageNotReady": "The page is not ready for Juvin. Reload it and try again.",
-  "Panel.Error.NoBrowser": "No browser is connected to Juvin. Open your browser with the Juvin extension, then press the shortcut again.",
+  "Panel.Error.NoBrowser": "No browser is connected to Juvin. Click into your browser with the Juvin extension and press the shortcut there to reconnect it.",
   "Panel.Error.BrowserNotFocused": "Focus the browser with your draft and press the shortcut again.",
   "Panel.Error.EditorGone": "The draft editor is no longer on the page. Copy the rewrite instead.",
   "Panel.Error.Disconnected": "The browser disconnected. Copy the rewrite, or press the shortcut again in the browser.",
