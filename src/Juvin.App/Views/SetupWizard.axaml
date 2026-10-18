@@ -118,6 +118,7 @@
                                                 <StackPanel Grid.Column="1" Spacing="2">
                                                     <TextBlock Classes="row-title" Text="{Binding Title}" />
                                                     <TextBlock Classes="row-hint" Text="{Binding Summary}" />
+                                                    <controls:CodexInstallHelp Margin="0,4,0,0" IsVisible="{Binding IsCodexMissing}" />
                                                 </StackPanel>
                                                 <StackPanel Grid.Column="2" Spacing="4" VerticalAlignment="Center" MinWidth="90">
                                                     <ProgressBar IsIndeterminate="True" Height="4" IsVisible="{Binding IsBusy}" />

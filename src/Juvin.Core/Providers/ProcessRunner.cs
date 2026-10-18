@@ -29,15 +29,18 @@ public sealed class ProcessRunner : IProcessRunner
     private static readonly SearchValues<char> s_cmdMetacharacters = SearchValues.Create("\"%!^&|<>");
     private static readonly UTF8Encoding s_utf8 = new(encoderShouldEmitUTF8Identifier: false);
 
-    private readonly IReadOnlyList<string> _extraPathDirectories;
+    private readonly Func<IReadOnlyList<string>> _extraPathDirectories;
 
     public ProcessRunner()
-        : this([])
+        : this(() => [])
     {
     }
 
-    /// <param name="extraPathDirectories">Appended to each child's PATH, for tools installed where a desktop-started process does not look.</param>
-    public ProcessRunner(IReadOnlyList<string> extraPathDirectories)
+    /// <param name="extraPathDirectories">
+    ///     Read for each child and appended to its PATH, for tools installed where a desktop-started
+    ///     process does not look or after the app started.
+    /// </param>
+    public ProcessRunner(Func<IReadOnlyList<string>> extraPathDirectories)
     {
         _extraPathDirectories = extraPathDirectories;
     }
@@ -61,7 +64,7 @@ public sealed class ProcessRunner : IProcessRunner
         startInfo.StandardErrorEncoding = s_utf8;
         startInfo.WorkingDirectory = workingDirectory ?? "";
         var inheritedPath = Environment.GetEnvironmentVariable("PATH");
-        var childPath = ChildPath(inheritedPath, fileName, _extraPathDirectories);
+        var childPath = ChildPath(inheritedPath, fileName, _extraPathDirectories());
         if (childPath != (inheritedPath ?? ""))
         {
             startInfo.Environment["PATH"] = childPath;

@@ -282,7 +282,22 @@ public sealed class CodexCliProviderTests : IDisposable
     {
         var provider = new CodexCliProvider(new AppSettings(), new FakeProcessRunner(_ => throw new InvalidOperationException()), null, TimeSpan.FromMinutes(1));
 
-        Assert.Equal(ProviderStatusKind.NotInstalled, (await provider.ProbeAsync(CancellationToken.None)).Kind);
+        var status = await provider.ProbeAsync(CancellationToken.None);
+
+        Assert.Equal(ProviderStatusKind.NotInstalled, status.Kind);
+        Assert.Equal("Provider.Status.NotInstalled", status.MessageKey);
+    }
+
+    [Fact]
+    public async Task Probe_WithAConfiguredPathThatIsMissing_SaysSoInsteadOfNotInstalled()
+    {
+        var settings = new AppSettings { CodexBinaryPath = "/nowhere/codex" };
+        var provider = new CodexCliProvider(settings, new FakeProcessRunner(_ => throw new InvalidOperationException()), null, TimeSpan.FromMinutes(1));
+
+        var status = await provider.ProbeAsync(CancellationToken.None);
+
+        Assert.Equal(ProviderStatusKind.NotInstalled, status.Kind);
+        Assert.Equal("Provider.Status.CodexPathMissing", status.MessageKey);
     }
 
     [Fact]
@@ -315,6 +330,47 @@ public sealed class CodexCliProviderTests : IDisposable
 
         File.WriteAllText(Path.Join(onPath, "codex"), "");
         Assert.Equal(Path.Join(onPath, "codex"), CodexCliProvider.ResolveBinary(null, SearchPath.Append(onPath, [homebrew]), isWindows: false));
+    }
+
+    [Fact]
+    public void ResolveBinary_SearchesPathThenTheSavedPathThenTheInstallDirectories()
+    {
+        var onPath = Directory.CreateDirectory(_temp.File("path")).FullName;
+        var saved = Directory.CreateDirectory(_temp.File("saved")).FullName;
+        var npm = Directory.CreateDirectory(_temp.File("npm")).FullName;
+        File.WriteAllText(Path.Join(npm, "codex.cmd"), "");
+        var search = SearchPath.Append(onPath, [saved, npm]);
+
+        Assert.Equal(Path.Join(npm, "codex.cmd"), CodexCliProvider.ResolveBinary(null, search, isWindows: true));
+
+        File.WriteAllText(Path.Join(saved, "codex.exe"), "");
+        Assert.Equal(Path.Join(saved, "codex.exe"), CodexCliProvider.ResolveBinary(null, search, isWindows: true));
+
+        File.WriteAllText(Path.Join(onPath, "codex.cmd"), "");
+        Assert.Equal(Path.Join(onPath, "codex.cmd"), CodexCliProvider.ResolveBinary(null, search, isWindows: true));
+    }
+
+    [Fact]
+    public void CreateDefault_ReadsTheSearchDirectoriesOnEachCodexSelection()
+    {
+        using var http = new HttpClient();
+        var reads = 0;
+        var selector = ProviderSelector.CreateDefault(
+            http,
+            new FakeProcessRunner(_ => throw new InvalidOperationException()),
+            () =>
+            {
+                reads++;
+                return [];
+            }
+        );
+        var settings = new AppSettings { ProcessingMode = ProcessingMode.Codex };
+
+        selector.Select(settings);
+        selector.Select(settings);
+        selector.Select(settings with { ProcessingMode = ProcessingMode.Local });
+
+        Assert.Equal(2, reads);
     }
 
     [Fact]
@@ -530,7 +586,7 @@ public sealed class CodexCliProviderTests : IDisposable
     }
 
     [Fact]
-    public async Task ArgumentsTheShellCannotTake_AreAConfigurationFailureAndANotInstalledProbe()
+    public async Task ArgumentsTheShellCannotTake_AreAConfigurationFailureAndACannotStartProbe()
     {
         var runner = new FakeProcessRunner(_ => throw new ArgumentException("bad"));
         var provider = Provider(runner);
@@ -538,7 +594,9 @@ public sealed class CodexCliProviderTests : IDisposable
         var ex = await Assert.ThrowsAsync<ProviderException>(() => provider.CompleteAsync(s_request, null, CancellationToken.None));
 
         Assert.Equal(ProviderFailureKind.Configuration, ex.Kind);
-        Assert.Equal(ProviderStatusKind.NotInstalled, (await provider.ProbeAsync(CancellationToken.None)).Kind);
+        var status = await provider.ProbeAsync(CancellationToken.None);
+        Assert.Equal(ProviderStatusKind.NotInstalled, status.Kind);
+        Assert.Equal("Provider.Status.CodexCannotStart", status.MessageKey);
     }
 
     [Fact]

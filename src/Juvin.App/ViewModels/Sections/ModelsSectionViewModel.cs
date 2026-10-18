@@ -34,6 +34,9 @@ public sealed partial class ModelsSectionViewModel : ObservableObject
     private string? _codexStatus;
 
     [ObservableProperty]
+    private bool _isCodexMissing;
+
+    [ObservableProperty]
     private bool _isCodexProbing;
 
     [ObservableProperty]
@@ -206,6 +209,7 @@ public sealed partial class ModelsSectionViewModel : ObservableObject
         if (_probedCodex == (_settings.Current.CodexBinaryPath, _settings.Current.CodexModel))
         {
             CodexStatus = _probes.DescribeCodex(status);
+            IsCodexMissing = ModelProbeService.IsCodexMissing(status);
         }
     }
 
@@ -245,9 +249,11 @@ public sealed partial class ModelsSectionViewModel : ObservableObject
                 LocalStatus = _probes.DescribeLocal(ModelProbeService.WithSelectedModel(_probedStatus, settings.LocalModel));
             }
 
+            // ReSharper disable once InvertIf -- reads as one of the sibling staleness checks above
             if (_probedCodex is not null && _probedCodex != (settings.CodexBinaryPath, settings.CodexModel))
             {
                 CodexStatus = null;
+                IsCodexMissing = false;
             }
         }
         finally

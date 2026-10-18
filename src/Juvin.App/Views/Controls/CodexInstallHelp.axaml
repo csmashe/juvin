@@ -1,0 +1,14 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:services="using:Juvin.App.Services"
+             xmlns:loc="using:Juvin.App.Localization"
+             x:Class="Juvin.App.Views.Controls.CodexInstallHelp">
+    <StackPanel Spacing="6">
+        <TextBlock Classes="row-hint" Text="{loc:Str Models.CodexInstallHint}" />
+        <TextBox Classes="command" Text="{x:Static services:ModelProbeService.CodexInstallCommand}" />
+        <TextBlock Classes="row-hint" Margin="0" Text="{loc:Str Models.CodexSignInHint}" />
+        <HyperlinkButton Padding="0"
+                         Content="{loc:Str Models.CodexInstallGuide}"
+                         NavigateUri="{x:Static services:ModelProbeService.CodexInstallGuideUrl}" />
+    </StackPanel>
+</UserControl>

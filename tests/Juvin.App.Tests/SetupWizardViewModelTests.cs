@@ -757,6 +757,21 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task TheCodexRow_OffersInstallHelpOnlyWhileTheCliIsMissing()
+    {
+        var vm = await CreateOnModeStepAsync();
+        var codex = vm.Detections.Single(row => !row.IsServer);
+
+        Assert.True(codex.IsCodexMissing);
+        Assert.DoesNotContain(vm.Detections, row => row is { IsServer: true, IsCodexMissing: true });
+
+        _providers.Codex = new ProviderStatus(ProviderStatusKind.NotSignedIn, "Provider.Status.NotSignedIn", []);
+        await vm.DetectModelsCommand.ExecuteAsync(null);
+
+        Assert.False(vm.Detections.Single(row => !row.IsServer).IsCodexMissing);
+    }
+
+    [Fact]
     public async Task ReenteringTheConfiguredServer_CountsAsChoosingIt()
     {
         _providers.Servers[ModelProbeService.OllamaUrl] = FakeProviders.Reachable("0.12.3");

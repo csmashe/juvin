@@ -994,7 +994,8 @@ public sealed partial class DetectionRow : ObservableObject
         nameof(NeedsAttention),
         nameof(StatusSymbol),
         nameof(CanUse),
-        nameof(IsInUse)
+        nameof(IsInUse),
+        nameof(IsCodexMissing)
     )]
     private ProviderStatus? _status;
 
@@ -1026,6 +1027,7 @@ public sealed partial class DetectionRow : ObservableObject
 
     public bool CanUse => IsServer && IsReachable && !IsSelected;
     public bool IsInUse => IsServer && IsReachable && IsSelected;
+    public bool IsCodexMissing => !IsServer && Status is { } status && ModelProbeService.IsCodexMissing(status);
 
     public Symbol StatusSymbol =>
         Status switch
