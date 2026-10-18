@@ -6,6 +6,7 @@ name: Release macOS
 
 on:
   push:
+    branches: [mac-prep-ci]
     tags:
       - "v*"
   workflow_dispatch:
