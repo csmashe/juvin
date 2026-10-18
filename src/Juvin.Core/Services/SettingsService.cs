@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Juvin.Core.Interfaces;
 using Juvin.Core.Models;
@@ -44,6 +45,7 @@ public sealed class SettingsService : ISettingsService
             new AtomicJsonStoreOptions<AppSettings>
             {
                 JsonOptions = s_jsonOptions,
+                Deserialize = OverDefaults,
                 BackupMode = backupMode,
                 CorruptFilePolicy = corruptFilePolicy,
                 Diagnostic = d =>
@@ -61,6 +63,23 @@ public sealed class SettingsService : ISettingsService
         new(filePath, new AppSettings(), AtomicJsonBackupMode.None, AtomicJsonCorruptFilePolicy.Throw);
 
     public AppSettings Current => _store.Current;
+
+    // A property the file lacks takes the per-OS default rather than the record's initializer.
+    private AppSettings OverDefaults(string json)
+    {
+        if (JsonSerializer.Deserialize<JsonNode>(json, s_jsonOptions) is not JsonObject saved)
+        {
+            throw new JsonException("The settings file does not hold a JSON object.");
+        }
+
+        var merged = JsonSerializer.SerializeToNode(_defaults, s_jsonOptions)!.AsObject();
+        foreach (var (name, value) in saved)
+        {
+            merged[name] = value?.DeepClone();
+        }
+
+        return merged.Deserialize<AppSettings>(s_jsonOptions)!;
+    }
 
     public event Action<AppSettings>? SettingsChanged;
 

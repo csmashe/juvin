@@ -97,7 +97,8 @@ expect_plist() {
     [[ $actual == "$2" ]] || fail "Info.plist $1 is '$actual', expected '$2'"
 }
 
-# Checks that a file carries a valid signature with the hardened runtime and, for executables, the JIT entitlement.
+# Checks that a file carries a valid signature with the hardened runtime and, for executables, the JIT entitlement
+# and no DYLD environment entitlement.
 expect_signed() {
     local details
     codesign --verify --strict "$1" 2>"$WORK/codesign.err" || {
@@ -108,8 +109,9 @@ expect_signed() {
     [[ $details == *"(runtime)"* || $details == *",runtime"* || $details == *"runtime,"* ]] \
         || fail "$1 is not signed with the hardened runtime"
     if [[ ${2:-} == executable ]]; then
-        codesign --display --entitlements - --xml "$1" 2>/dev/null | grep -q "$ENTITLEMENT" \
-            || fail "$1 lacks the $ENTITLEMENT entitlement"
+        details=$(codesign --display --entitlements - --xml "$1" 2>/dev/null)
+        [[ $details == *"$ENTITLEMENT"* ]] || fail "$1 lacks the $ENTITLEMENT entitlement"
+        [[ $details != *allow-dyld-environment-variables* ]] || fail "$1 allows DYLD environment variables"
     fi
 }
 

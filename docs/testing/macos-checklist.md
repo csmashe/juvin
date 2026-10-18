@@ -206,9 +206,9 @@ A is automated, H is by hand. Block is 1 or 2.
   - Typing in the draft before Apply gives "Draft changed" with Copy and Recapture. After Copy, `pbpaste | wc -c` matches the result's length.
   - Escape, then the shortcut again, reopens the panel in the same corner.
 
-**M-20** (MacPanelWindowSupport, a no-op today; H; block 2). Spaces and full screen.
+**M-20** (MacPanelWindowSupport; H; block 2). Spaces and full screen.
 - Steps: put Chrome in full screen (its own Space) and open Review there. Switch Spaces with Control+Right.
-- Record: whether the panel shows over the full-screen browser and whether it follows the Space switch. There is no pass bar. The result decides whether `MacPanelWindowSupport` needs to set `canJoinAllSpaces` or the full-screen auxiliary behavior.
+- Pass: the panel shows over the full-screen browser without switching Spaces, and after Control+Right it is on the new Space when shown again. Console shows no `NSInternalInconsistencyException` about collection behavior. Record what Stage Manager does if it is on.
 
 ### Tray and window
 

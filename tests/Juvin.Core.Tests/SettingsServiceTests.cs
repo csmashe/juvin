@@ -226,6 +226,22 @@ public sealed class SettingsServiceTests : IDisposable
     }
 
     [Fact]
+    public void Defaults_FillPropertiesTheFileLacks_AndSavedValuesWin()
+    {
+        var path = _temp.File("settings.json");
+        File.WriteAllText(path, """{ "schemaVersion": 1, "historyEnabled": true }""");
+
+        var loaded = new SettingsService(path, AppSettings.CreateDefault(isMac: true)).Current;
+
+        Assert.Equal(AppSettings.DefaultRewriteShortcutMac, loaded.RewriteShortcut);
+        Assert.True(loaded.HistoryEnabled);
+
+        File.WriteAllText(path, """{ "schemaVersion": 1, "rewriteShortcut": "Ctrl+Alt+J" }""");
+
+        Assert.Equal("Ctrl+Alt+J", new SettingsService(path, AppSettings.CreateDefault(isMac: true)).Current.RewriteShortcut);
+    }
+
+    [Fact]
     public void Reset_RaisesSettingsResetAfterTheDefaultsAreSaved()
     {
         var service = new SettingsService(_temp.File("settings.json"));
