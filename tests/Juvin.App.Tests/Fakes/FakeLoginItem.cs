@@ -9,6 +9,9 @@ public sealed class FakeLoginItem : ILoginItem
 
     public bool Fail { get; set; }
 
+    /// <summary>The <see cref="LoginItemException.UserMessage" /> a failure carries.</summary>
+    public string? FailureMessage { get; set; }
+
     public bool Enabled { get; private set; }
 
     public int EnableCount { get; private set; }
@@ -31,7 +34,7 @@ public sealed class FakeLoginItem : ILoginItem
     {
         if (Fail)
         {
-            return Task.FromException(new LoginItemException("refused", new UnauthorizedAccessException()));
+            return Task.FromException(new LoginItemException("refused", new UnauthorizedAccessException()) { UserMessage = FailureMessage });
         }
 
         Enabled = enabled;

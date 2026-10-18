@@ -15,23 +15,32 @@ public sealed class SettingsService : ISettingsService
         Converters = { new JsonStringEnumConverter(allowIntegerValues: false) },
     };
 
+    private readonly AppSettings _defaults;
     private readonly AtomicJsonStore<AppSettings> _store;
 
-    public SettingsService()
-        : this(JuvinEnvironment.SettingsFilePath)
-    {
-    }
-
     public SettingsService(string filePath)
-        : this(filePath, AtomicJsonBackupMode.LastKnownGood, AtomicJsonCorruptFilePolicy.PreserveAndReset)
+        : this(filePath, new AppSettings())
     {
     }
 
-    private SettingsService(string filePath, AtomicJsonBackupMode backupMode, AtomicJsonCorruptFilePolicy corruptFilePolicy)
+    /// <param name="filePath">The settings file.</param>
+    /// <param name="defaults">The settings a missing, reset, or unreadable file starts from.</param>
+    public SettingsService(string filePath, AppSettings defaults)
+        : this(filePath, defaults, AtomicJsonBackupMode.LastKnownGood, AtomicJsonCorruptFilePolicy.PreserveAndReset)
     {
+    }
+
+    private SettingsService(
+        string filePath,
+        AppSettings defaults,
+        AtomicJsonBackupMode backupMode,
+        AtomicJsonCorruptFilePolicy corruptFilePolicy
+    )
+    {
+        _defaults = defaults;
         _store = new AtomicJsonStore<AppSettings>(
             filePath,
-            () => new AppSettings(),
+            () => _defaults,
             new AtomicJsonStoreOptions<AppSettings>
             {
                 JsonOptions = s_jsonOptions,
@@ -49,7 +58,7 @@ public sealed class SettingsService : ISettingsService
     ///     <see cref="JsonException" /> surfacing from <see cref="Current" />.
     /// </summary>
     public static SettingsService OpenForReading(string filePath) =>
-        new(filePath, AtomicJsonBackupMode.None, AtomicJsonCorruptFilePolicy.Throw);
+        new(filePath, new AppSettings(), AtomicJsonBackupMode.None, AtomicJsonCorruptFilePolicy.Throw);
 
     public AppSettings Current => _store.Current;
 
@@ -73,7 +82,7 @@ public sealed class SettingsService : ISettingsService
 
     public void Reset()
     {
-        Update(_ => new AppSettings());
+        Update(_ => _defaults);
         try
         {
             _store.DeleteCopies();

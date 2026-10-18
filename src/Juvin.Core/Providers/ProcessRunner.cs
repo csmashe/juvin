@@ -29,6 +29,19 @@ public sealed class ProcessRunner : IProcessRunner
     private static readonly SearchValues<char> s_cmdMetacharacters = SearchValues.Create("\"%!^&|<>");
     private static readonly UTF8Encoding s_utf8 = new(encoderShouldEmitUTF8Identifier: false);
 
+    private readonly IReadOnlyList<string> _extraPathDirectories;
+
+    public ProcessRunner()
+        : this([])
+    {
+    }
+
+    /// <param name="extraPathDirectories">Appended to each child's PATH, for tools installed where a desktop-started process does not look.</param>
+    public ProcessRunner(IReadOnlyList<string> extraPathDirectories)
+    {
+        _extraPathDirectories = extraPathDirectories;
+    }
+
     public async Task<ProcessResult> RunAsync(
         string fileName,
         IReadOnlyList<string> arguments,
@@ -47,6 +60,12 @@ public sealed class ProcessRunner : IProcessRunner
         startInfo.StandardOutputEncoding = s_utf8;
         startInfo.StandardErrorEncoding = s_utf8;
         startInfo.WorkingDirectory = workingDirectory ?? "";
+        var inheritedPath = Environment.GetEnvironmentVariable("PATH");
+        var childPath = ChildPath(inheritedPath, fileName, _extraPathDirectories);
+        if (childPath != (inheritedPath ?? ""))
+        {
+            startInfo.Environment["PATH"] = childPath;
+        }
 
         using var process = new Process();
         process.StartInfo = startInfo;
@@ -68,6 +87,16 @@ public sealed class ProcessRunner : IProcessRunner
             throw;
         }
     }
+
+    /// <summary>
+    ///     The inherited PATH plus the program's own directory and the extra ones. An npm shim runs
+    ///     <c>/usr/bin/env node</c>, and node is often installed beside it.
+    /// </summary>
+    internal static string ChildPath(string? inherited, string fileName, IReadOnlyList<string> extraDirectories) =>
+        SearchPath.Append(
+            inherited,
+            Path.IsPathFullyQualified(fileName) ? extraDirectories.Prepend(Path.GetDirectoryName(fileName) ?? "") : extraDirectories
+        );
 
     /// <summary>
     ///     A Windows batch shim (the npm <c>codex.cmd</c>) cannot be started directly; it has to go

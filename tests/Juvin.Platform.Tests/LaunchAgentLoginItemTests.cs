@@ -1,5 +1,6 @@
 using System.Runtime.Versioning;
 using System.Xml.Linq;
+using Juvin.Core.Localization;
 using Juvin.Platform.Mac.Launcher;
 
 namespace Juvin.Platform.Tests;
@@ -19,7 +20,10 @@ public sealed class LaunchAgentLoginItemTests : IDisposable
 
     private string PlistPath => Path.Join(Home, "Library", "LaunchAgents", "com.juvin.app.plist");
 
-    private LaunchAgentLoginItem Create(string? processPath = "/Applications/Juvin.app/Contents/MacOS/juvin") => new(processPath, Home);
+    private bool _writable = true;
+
+    private LaunchAgentLoginItem Create(string? processPath = "/Applications/Juvin.app/Contents/MacOS/juvin") =>
+        new(processPath, Home, new Localizer(), _ => _writable);
 
     private static string Value(XElement dict, string key) =>
         dict.Elements("key").Single(k => k.Value == key).ElementsAfterSelf().First().ToString(SaveOptions.DisableFormatting);
@@ -72,6 +76,27 @@ public sealed class LaunchAgentLoginItemTests : IDisposable
 
         Assert.False(item.IsSupported);
         await Assert.ThrowsAsync<LoginItemException>(() => item.EnableAsync(CancellationToken.None));
+    }
+
+    [Theory]
+    [InlineData("/private/var/folders/xy/T/AppTranslocation/1A2B/d/Juvin.app/Contents/MacOS/juvin", true)]
+    [InlineData("/Volumes/Juvin/Juvin.app/Contents/MacOS/juvin", false)]
+    public async Task Enable_RefusesAnAppThatIsNotInstalled(string processPath, bool writable)
+    {
+        _writable = writable;
+
+        var error = await Assert.ThrowsAsync<LoginItemException>(() => Create(processPath).EnableAsync(CancellationToken.None));
+
+        Assert.Equal(new Localizer()["LoginItem.Mac.NotInstalled"], error.UserMessage);
+        Assert.False(File.Exists(PlistPath));
+    }
+
+    [Fact]
+    public async Task Enable_AcceptsAnAppOnAWritableExternalVolume()
+    {
+        await Create("/Volumes/External/Applications/Juvin.app/Contents/MacOS/juvin").EnableAsync(CancellationToken.None);
+
+        Assert.True(File.Exists(PlistPath));
     }
 
     [Fact]

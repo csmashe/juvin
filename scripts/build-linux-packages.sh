@@ -43,7 +43,7 @@ HOST_LEFTOVERS=(juvin-host.dll juvin-host.deps.json juvin-host.runtimeconfig.jso
 # Runtime libraries, derived from the publish output (re-derive after a dependency upgrade):
 #   readelf -d on every ELF file: libc.so.6, libm.so.6, libdl.so.2, libpthread.so.0, librt.so.1,
 #     ld-linux-x86-64.so.2 (all glibc), libgcc_s.so.1, libstdc++.so.6, libfontconfig.so.1 (SkiaSharp),
-#     libX11.so.6, libXtst.so.6, libXt.so.6, libXinerama.so.1 (libuiohook). liblttng-ust.so.0 is
+#     libX11.so.6, libXtst.so.6, libXt.so.6, libXinerama.so.1, libxkbcommon.so.0 (libuiohook). liblttng-ust.so.0 is
 #     needed only by libcoreclrtraceptprovider.so, which the runtime loads only when LTTng tracing is on.
 #   P/Invoke and dlopen names in the managed assemblies (strings over *.dll):
 #     Avalonia.X11: libX11.so.6, libXext.so.6, libXi.so.6, libXrandr.so.2, libXcursor.so.1,
@@ -55,14 +55,14 @@ HOST_LEFTOVERS=(juvin-host.dll juvin-host.deps.json juvin-host.runtimeconfig.jso
 DEB_DEPENDS=(
     "libgcc-s1" "libstdc++6" "zlib1g" "libssl3t64 | libssl3" "libicu78 | libicu76 | libicu74 | libicu72 | libicu70"
     "libfontconfig1" "libx11-6" "libxext6" "libxi6" "libxrandr2" "libxcursor1" "libice6" "libsm6"
-    "libxtst6" "libxt6t64 | libxt6" "libxinerama1" "ca-certificates" "tzdata"
+    "libxtst6" "libxt6t64 | libxt6" "libxinerama1" "libxkbcommon0" "ca-certificates" "tzdata"
 )
 DEB_RECOMMENDS=("libgl1" "libegl1" "libdbus-1-3" "libglib2.0-bin" "xdg-utils")
 RPM_REQUIRES=(
     "libgcc_s.so.1()(64bit)" "libstdc++.so.6()(64bit)" "libz.so.1()(64bit)" "libssl.so.3()(64bit)"
     "libcrypto.so.3()(64bit)" "libicu" "libfontconfig.so.1()(64bit)" "libX11.so.6()(64bit)" "libXext.so.6()(64bit)"
     "libXi.so.6()(64bit)" "libXrandr.so.2()(64bit)" "libXcursor.so.1()(64bit)" "libICE.so.6()(64bit)"
-    "libSM.so.6()(64bit)" "libXtst.so.6()(64bit)" "libXt.so.6()(64bit)" "libXinerama.so.1()(64bit)"
+    "libSM.so.6()(64bit)" "libXtst.so.6()(64bit)" "libXt.so.6()(64bit)" "libXinerama.so.1()(64bit)" "libxkbcommon.so.0()(64bit)"
     "ca-certificates" "tzdata"
 )
 RPM_RECOMMENDS=("libglvnd-glx" "libglvnd-egl" "dbus-libs" "glib2" "xdg-utils")

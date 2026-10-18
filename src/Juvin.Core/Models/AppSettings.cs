@@ -15,12 +15,23 @@ namespace Juvin.Core.Models;
 /// </summary>
 public sealed record AppSettings
 {
-    public const string DefaultRewriteShortcut = "Ctrl+Shift+F";
+    private const string DefaultRewriteShortcut = "Ctrl+Shift+F";
+
+    /// <summary>
+    ///     The physical Control+Shift+F, the same keys as on Linux and Windows: <see cref="Hotkeys.ChordModifiers.Super" />
+    ///     is Control on macOS. Command+Shift+F is Firefox's full screen there.
+    /// </summary>
+    public const string DefaultRewriteShortcutMac = "Super+Shift+F";
 
     private const int CurrentSchemaVersion = 1;
     private const string DefaultLocalServerUrl = "http://localhost:11434";
 
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
+
+    public static string DefaultRewriteShortcutFor(bool isMac) => isMac ? DefaultRewriteShortcutMac : DefaultRewriteShortcut;
+
+    /// <summary>Fresh settings for the OS: only the default shortcut differs.</summary>
+    public static AppSettings CreateDefault(bool isMac) => new() { RewriteShortcut = DefaultRewriteShortcutFor(isMac) };
 
     public ProcessingMode ProcessingMode { get; init; } = ProcessingMode.Local;
     public string LocalServerUrl

@@ -1,6 +1,6 @@
 using Juvin.Core.Hotkeys;
 using Juvin.Platform.Hotkeys;
-using SharpHook.Native;
+using SharpHook.Data;
 
 namespace Juvin.Platform.Tests;
 
@@ -30,14 +30,23 @@ public sealed class SharpHookHotkeyBackendTests
     }
 
     [Theory]
-    [InlineData(ModifierMask.LeftCtrl | ModifierMask.RightShift, false, ChordModifiers.Ctrl | ChordModifiers.Shift)]
-    [InlineData(ModifierMask.LeftMeta | ModifierMask.LeftAlt, false, ChordModifiers.Super | ChordModifiers.Alt)]
-    [InlineData(ModifierMask.LeftMeta | ModifierMask.LeftShift, true, ChordModifiers.Ctrl | ChordModifiers.Shift)]
-    [InlineData(ModifierMask.RightCtrl, true, ChordModifiers.Super)]
-    [InlineData(ModifierMask.LeftCtrl | ModifierMask.NumLock | ModifierMask.CapsLock, false, ChordModifiers.Ctrl)]
-    public void ModifiersOf_MapsCommandToTheChordsPrimaryModifierOnMac(ModifierMask mask, bool isMac, ChordModifiers expected)
+    [InlineData(EventMask.LeftCtrl | EventMask.RightShift, false, ChordModifiers.Ctrl | ChordModifiers.Shift)]
+    [InlineData(EventMask.LeftMeta | EventMask.LeftAlt, false, ChordModifiers.Super | ChordModifiers.Alt)]
+    [InlineData(EventMask.LeftMeta | EventMask.LeftShift, true, ChordModifiers.Ctrl | ChordModifiers.Shift)]
+    [InlineData(EventMask.RightCtrl, true, ChordModifiers.Super)]
+    [InlineData(EventMask.LeftCtrl | EventMask.NumLock | EventMask.CapsLock, false, ChordModifiers.Ctrl)]
+    public void ModifiersOf_MapsCommandToTheChordsPrimaryModifierOnMac(EventMask mask, bool isMac, ChordModifiers expected)
     {
         Assert.Equal(expected, SharpHookHotkeyBackend.ModifiersOf(mask, isMac));
+    }
+
+    [Theory]
+    [InlineData(UioHookResult.ErrorAxApiDisabled, true)]
+    [InlineData(UioHookResult.ErrorAxApiRevoked, true)]
+    [InlineData(UioHookResult.Failure, false)]
+    public void IsAccessibilityFailure_CoversDeniedAndRevokedAccess(UioHookResult result, bool expected)
+    {
+        Assert.Equal(expected, SharpHookHotkeyBackend.IsAccessibilityFailure(result));
     }
 
     [Theory]

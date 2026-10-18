@@ -1,4 +1,5 @@
 using Juvin.Core.Hotkeys;
+using Juvin.Core.Models;
 
 namespace Juvin.Core.Tests;
 
@@ -61,7 +62,9 @@ public sealed class KeyChordTests
     [Theory]
     [InlineData("Ctrl+Shift+F", false, "Ctrl+Shift+F")]
     [InlineData("Ctrl+Shift+F", true, "Cmd+Shift+F")]
-    [InlineData("Ctrl+Alt+Super+K", true, "Cmd+Option+Ctrl+K")]
+    [InlineData("Ctrl+Alt+Super+K", true, "Ctrl+Cmd+Option+K")]
+    [InlineData("Super+Shift+F", true, "Ctrl+Shift+F")]
+    [InlineData("Super+Shift+F", false, "Shift+Super+F")]
     [InlineData("Ctrl+Alt+Super+K", false, "Ctrl+Alt+Super+K")]
     public void ToDisplayString_UsesTheMacKeyNamesOnlyOnMac(string text, bool isMac, string expected)
     {
@@ -143,7 +146,7 @@ public sealed class KeyChordTests
 
     [Theory]
     [InlineData("Ctrl+Shift+F", false)]
-    [InlineData("Ctrl+Shift+F", true)]
+    [InlineData("Super+Shift+F", true)]
     [InlineData("Alt+Shift+Tab", false)]
     public void TryCreate_WithTheOs_AcceptsOrdinaryShortcuts(string text, bool isMac)
     {
@@ -151,6 +154,18 @@ public sealed class KeyChordTests
 
         Assert.True(KeyChord.TryCreate(parsed.Modifiers, parsed.Key, isMac, out var chord));
         Assert.Equal(parsed, chord);
+    }
+
+    [Theory]
+    [InlineData(false, "Ctrl+Shift+F")]
+    [InlineData(true, "Ctrl+Shift+F")]
+    public void DefaultRewriteShortcut_IsThePhysicalControlShiftFOnEveryOs(bool isMac, string expected)
+    {
+        Assert.True(KeyChord.TryParse(AppSettings.DefaultRewriteShortcutFor(isMac), out var parsed));
+        Assert.True(KeyChord.TryCreate(parsed.Modifiers, parsed.Key, isMac, out var chord));
+
+        Assert.Equal(expected, chord.ToDisplayString(isMac));
+        Assert.Equal(isMac ? ChordModifiers.Super | ChordModifiers.Shift : ChordModifiers.Ctrl | ChordModifiers.Shift, chord.Modifiers);
     }
 
     [Fact]

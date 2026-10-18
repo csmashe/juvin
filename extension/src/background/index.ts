@@ -49,6 +49,13 @@ let openMenu: { menuId: string; tabId: number } | undefined;
 // A menu.show still waiting for its tab; a close or a newer show meanwhile makes its result stale.
 let pendingShow: { menuId: string; cancelled: boolean } | undefined;
 
+let macPlatform: Promise<boolean> | undefined;
+
+function isMac(): Promise<boolean> {
+  macPlatform ??= browser.runtime.getPlatformInfo().then((info) => info.os === "mac", () => false);
+  return macPlatform;
+}
+
 async function activeTab(): Promise<Tabs.Tab | undefined> {
   const [tab] = await browser.tabs.query({ active: true, lastFocusedWindow: true });
   return tab;
@@ -181,6 +188,8 @@ async function handleApplyRequest({ id, editorId, expectedHash, start, end, text
     return;
   }
 
+  // An in-page menu applies with the browser in front; any other apply came from the desktop panel.
+  const fromPanel = openMenu?.tabId !== tab.id;
   // No injection here: a freshly injected script would not know the editor id.
   const result = (await sendToTab(tab.id, { kind: "juvin.apply", editorId, expectedHash, start, end, text, ...(format ? { format, expectedFormatHash } : {}) })) as ApplyResult | undefined;
   if (!result) {
@@ -190,6 +199,26 @@ async function handleApplyRequest({ id, editorId, expectedHash, start, end, text
 
   log("apply.done", { id, editorId, textLength: text.length, format: format ?? "plain", code: result.ok ? "ok" : result.error.code });
   reply(result.ok ? applyOk(id) : applyError(id, result.error));
+  if (result.ok && fromPanel) {
+    await focusDraftWindow(tab);
+  }
+}
+
+/**
+ * Hiding the panel leaves Juvin the active app on macOS, so Cmd+Z would not reach the draft until its tab is active
+ * and its window in front.
+ */
+async function focusDraftWindow(tab: Tabs.Tab): Promise<void> {
+  if (typeof tab.id !== "number" || typeof tab.windowId !== "number" || !(await isMac())) {
+    return;
+  }
+
+  try {
+    await browser.tabs.update(tab.id, { active: true });
+    await browser.windows.update(tab.windowId, { focused: true });
+  } catch {
+    log("apply.focus-failed", { tabId: tab.id });
+  }
 }
 
 async function handleMenuShow({ id, menuId, editorId, slots, more, status }: MenuShowMessage, reply: Reply): Promise<void> {

@@ -22,6 +22,7 @@ public static class PlatformServices
         services.AddSingleton<IConnectorSocketClient, NamedPipeConnectorClient>();
         services.AddSingleton<ITrayHostProbe, NotificationAreaTrayHostProbe>();
         services.AddSingleton<IPanelWindowSupport, WindowsPanelWindowSupport>();
+        services.AddSingleton<IToolSearchPaths, WindowsToolSearchPaths>();
         services.AddSingleton<INativeHostRegistrar>(_ => new WindowsNativeHostRegistrar(NativeHost.Locate));
         // The installer carries the launcher entry.
         services.AddSingleton<ILauncherIntegration, NoLauncherIntegration>();

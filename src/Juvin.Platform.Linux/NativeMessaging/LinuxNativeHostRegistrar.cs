@@ -4,6 +4,7 @@ using Juvin.Core;
 using Juvin.Core.Localization;
 using Juvin.Core.Providers;
 using Juvin.Core.Services;
+using Juvin.Platform.Unix;
 using Juvin.Platform.Unix.Ipc;
 
 namespace Juvin.Platform.Linux.NativeMessaging;
@@ -130,11 +131,12 @@ public sealed class LinuxNativeHostRegistrar : INativeHostRegistrar
         var hostPath = _locateHost();
         if (HostCopyPath(definition) is not { } copy)
         {
-            return NativeHostManifest.Check(ManifestPath(definition), definition.Family, hostPath);
+            var direct = NativeHostManifest.Check(ManifestPath(definition), definition.Family, hostPath);
+            return direct == HostRegistration.Registered && !UnixFileAccess.CanExecute(hostPath!) ? HostRegistration.Stale : direct;
         }
 
         var state = NativeHostManifest.Check(ManifestPath(definition), definition.Family, hostPath is null ? null : copy);
-        return state == HostRegistration.Registered && !IsCurrentCopy(copy, hostPath!)
+        return state == HostRegistration.Registered && (!IsCurrentCopy(copy, hostPath!) || !UnixFileAccess.CanExecute(copy))
             ? HostRegistration.Stale
             : state;
     }
@@ -162,6 +164,12 @@ public sealed class LinuxNativeHostRegistrar : INativeHostRegistrar
             {
                 CopyHost(hostPath, _stableHostPath);
                 manifestHost = _stableHostPath;
+            }
+
+            // A copy is made executable; the host itself can lose its mode in an archive or a manual copy.
+            if (!UnixFileAccess.CanExecute(manifestHost))
+            {
+                throw new NativeHostRegistrationException(_localizer["BrowserConnector.HostNotExecutable"]);
             }
 
             Directory.CreateDirectory(definition.ManifestDirectory);

@@ -27,7 +27,10 @@ public sealed class MacNativeHostRegistrarTests : IDisposable
 
     private string HostPath => _temp.File("juvin-host");
 
-    private MacNativeHostRegistrar CreateRegistrar(string? hostPath = null) => new(() => hostPath ?? HostPath, new Localizer(), Home, SystemApplications);
+    private bool _hostExecutable = true;
+
+    private MacNativeHostRegistrar CreateRegistrar(string? hostPath = null) =>
+        new(() => hostPath ?? HostPath, new Localizer(), Home, SystemApplications, _ => _hostExecutable);
 
     private string ChromeManifestPath => Path.Join(Home, "Library", "Application Support", "Google", "Chrome", "NativeMessagingHosts", NativeHostManifest.FileName);
 
@@ -78,7 +81,7 @@ public sealed class MacNativeHostRegistrarTests : IDisposable
     [Fact]
     public async Task Register_ThrowsWhenTheHostWasNotFound()
     {
-        var registrar = new MacNativeHostRegistrar(() => null, new Localizer(), Home, SystemApplications);
+        var registrar = new MacNativeHostRegistrar(() => null, new Localizer(), Home, SystemApplications, _ => true);
         var edge = new BrowserTarget("edge", "Microsoft Edge", BrowserFamily.Chromium, BrowserPackaging.Native);
 
         await Assert.ThrowsAsync<NativeHostRegistrationException>(() => registrar.RegisterAsync(edge, CancellationToken.None));
@@ -104,5 +107,25 @@ public sealed class MacNativeHostRegistrarTests : IDisposable
 
         Assert.Contains("Applications", error.Message);
         Assert.False(File.Exists(ChromeManifestPath));
+    }
+
+    [Fact]
+    public async Task Register_RefusesAHostThatCannotBeRun()
+    {
+        _hostExecutable = false;
+
+        var error = await Assert.ThrowsAsync<NativeHostRegistrationException>(() => CreateRegistrar().RegisterAsync(Chrome, CancellationToken.None));
+
+        Assert.Equal(new Localizer()["BrowserConnector.HostNotExecutable"], error.Message);
+        Assert.False(File.Exists(ChromeManifestPath));
+    }
+
+    [Fact]
+    public async Task CheckRegistration_IsStaleOnceTheHostCannotBeRun()
+    {
+        await CreateRegistrar().RegisterAsync(Chrome, CancellationToken.None);
+        _hostExecutable = false;
+
+        Assert.Equal(HostRegistration.Stale, CreateRegistrar().CheckRegistration(Chrome));
     }
 }

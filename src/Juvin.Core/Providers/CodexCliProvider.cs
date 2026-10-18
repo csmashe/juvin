@@ -41,13 +41,16 @@ public sealed class CodexCliProvider : IModelProvider
     private IReadOnlySet<string>? _features;
     private IReadOnlyList<string>? _mcpServers;
 
-    public CodexCliProvider(AppSettings settings, IProcessRunner runner)
+    /// <param name="settings">The configured binary and model.</param>
+    /// <param name="runner">Runs the CLI.</param>
+    /// <param name="searchDirectories">Searched after PATH, which lacks the usual install locations when the desktop started the app.</param>
+    public CodexCliProvider(AppSettings settings, IProcessRunner runner, IReadOnlyList<string> searchDirectories)
         : this(
             settings,
             runner,
             ResolveBinary(
                 settings.CodexBinaryPath,
-                Environment.GetEnvironmentVariable("PATH"),
+                SearchPath.Append(Environment.GetEnvironmentVariable("PATH"), searchDirectories),
                 OperatingSystem.IsWindows()
             ),
             s_defaultTimeout

@@ -212,6 +212,20 @@ public sealed class SettingsServiceTests : IDisposable
     }
 
     [Fact]
+    public void Defaults_SeedAMissingFileAndAReset()
+    {
+        var path = _temp.File("settings.json");
+        var service = new SettingsService(path, AppSettings.CreateDefault(isMac: true));
+        Assert.Equal(AppSettings.DefaultRewriteShortcutMac, service.Current.RewriteShortcut);
+
+        service.Update(s => s with { RewriteShortcut = "Ctrl+Alt+J" });
+        service.Reset();
+
+        Assert.Equal(AppSettings.DefaultRewriteShortcutMac, service.Current.RewriteShortcut);
+        Assert.Equal(AppSettings.DefaultRewriteShortcutMac, new SettingsService(path).Current.RewriteShortcut);
+    }
+
+    [Fact]
     public void Reset_RaisesSettingsResetAfterTheDefaultsAreSaved()
     {
         var service = new SettingsService(_temp.File("settings.json"));

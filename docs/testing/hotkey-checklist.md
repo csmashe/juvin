@@ -1,6 +1,6 @@
 # Global hotkey manual checklist
 
-The desktop hotkey (default Ctrl+Shift+F, Cmd+Shift+F on macOS) is the second trigger next to the extension command. The app listens through the first backend that starts, in this order: evdev (Linux, needs keyboard access), the SharpHook hook (Windows, macOS, and X11 sessions), then the desktop's own shortcut (GNOME, KDE, Hyprland, Sway) pointed at `juvin --trigger`. The Shortcuts section and wizard step 4 show which one is listening.
+The desktop hotkey (default Ctrl+Shift+F, the Control key on macOS too) is the second trigger next to the extension command. The app listens through the first backend that starts, in this order: evdev (Linux, needs keyboard access), the SharpHook hook (Windows, macOS, and X11 sessions), then the desktop's own shortcut (GNOME, KDE, Hyprland, Sway) pointed at `juvin --trigger`. The Shortcuts section and wizard step 4 show which one is listening.
 
 ## Steps (any OS)
 

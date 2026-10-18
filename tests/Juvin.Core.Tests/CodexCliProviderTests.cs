@@ -305,6 +305,45 @@ public sealed class CodexCliProviderTests : IDisposable
     }
 
     [Fact]
+    public void ResolveBinary_FindsTheCliInASearchDirectoryAfterPath()
+    {
+        var onPath = Directory.CreateDirectory(_temp.File("path")).FullName;
+        var homebrew = Directory.CreateDirectory(_temp.File("homebrew")).FullName;
+        File.WriteAllText(Path.Join(homebrew, "codex"), "");
+
+        Assert.Equal(Path.Join(homebrew, "codex"), CodexCliProvider.ResolveBinary(null, SearchPath.Append(onPath, [homebrew]), isWindows: false));
+
+        File.WriteAllText(Path.Join(onPath, "codex"), "");
+        Assert.Equal(Path.Join(onPath, "codex"), CodexCliProvider.ResolveBinary(null, SearchPath.Append(onPath, [homebrew]), isWindows: false));
+    }
+
+    [Fact]
+    public void SearchPath_AppendsOnlyMissingFullyQualifiedDirectories()
+    {
+        var a = _temp.File("a");
+        var b = _temp.File("b");
+        var sep = Path.PathSeparator;
+
+        Assert.Equal($"{a}{sep}{b}", SearchPath.Append(a, [a, "relative", b, b]));
+        Assert.Equal(b, SearchPath.Append(null, [b]));
+        Assert.Equal($"{sep}{a}", SearchPath.Append($"{sep}{a}", [a]));
+        Assert.Equal("", SearchPath.Append("", []));
+    }
+
+    [Fact]
+    public void ChildPath_AddsTheProgramsOwnDirectoryBeforeTheExtraOnes()
+    {
+        var nvm = _temp.File("nvm-bin");
+        var extra = _temp.File("extra");
+        var sep = Path.PathSeparator;
+        var inherited = string.Join(sep, "/usr/bin", "/bin");
+
+        Assert.Equal($"{inherited}{sep}{nvm}{sep}{extra}", ProcessRunner.ChildPath(inherited, Path.Join(nvm, "codex"), [extra]));
+        Assert.Equal($"{inherited}{sep}{extra}", ProcessRunner.ChildPath(inherited, "open", [extra]));
+        Assert.Equal(inherited, ProcessRunner.ChildPath(inherited, "open", []));
+    }
+
+    [Fact]
     public void ResolveBinary_IgnoresRelativePathEntries()
     {
         var absolute = Directory.CreateDirectory(_temp.File("abs")).FullName;

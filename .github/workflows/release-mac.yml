@@ -1,0 +1,112 @@
+# Builds the macOS dmg (ad-hoc signed, not notarized) and smoke-tests it with a copy of the app,
+# its signatures, and a start of the app. A pushed v* tag also attaches the dmg to the draft GitHub
+# release (shared with Release Linux and Release Windows) once JUVIN_MAC_RELEASE is true; "Run workflow"
+# builds and uploads the artifact only.
+name: Release macOS
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Package version (MAJOR.MINOR.PATCH[-word[.number]]); defaults to the version in Directory.Build.props"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    # Apple Silicon, the architecture the dmg is built for.
+    runs-on: macos-26
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Resolve version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            version=$GITHUB_REF_NAME
+          elif [ -n "$INPUT_VERSION" ]; then
+            version=$INPUT_VERSION
+          else
+            version=$(sed -n 's/.*<Version[^>]*>\(.*\)<\/Version>.*/\1/p' Directory.Build.props)
+          fi
+          version=${version#v}
+          if ! [[ $version =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[A-Za-z]+(\.(0|[1-9][0-9]*))?)?$ ]]; then
+            echo "::error::'$version' is not MAJOR.MINOR.PATCH with an optional -word or -word.number prerelease"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Restore
+        run: dotnet restore Juvin.slnx
+
+      - name: Build
+        run: dotnet build Juvin.slnx -c Release --no-restore -p:Version=${{ steps.version.outputs.version }}
+
+      - name: Test
+        run: dotnet test Juvin.slnx -c Release --no-build
+
+      - name: Build dmg
+        env:
+          JUVIN_SENTRY_DSN: ${{ secrets.JUVIN_SENTRY_DSN }}
+          # Set only for a pushed v* tag; "Run workflow" builds have no tag to link to.
+          JUVIN_RELEASE_TAG: ${{ github.ref_type == 'tag' && 'true' || '' }}
+        run: /bin/bash scripts/build-mac-dmg.sh "${{ steps.version.outputs.version }}" dist
+
+      - name: Smoke test dmg
+        run: /bin/bash scripts/smoke-test-mac-dmg.sh "${{ steps.version.outputs.version }}" dist
+
+      - name: Upload dmg
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: juvin-mac-${{ steps.version.outputs.version }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    # Off until the dmg is notarized and has run on a Mac: set the JUVIN_MAC_RELEASE repository variable to true.
+    if: github.ref_type == 'tag' && vars.JUVIN_MAC_RELEASE == 'true'
+    needs: package
+    runs-on: ubuntu-24.04
+    # Shared with the other release workflows so only one creates the draft; queue: max keeps a rerun
+    # from cancelling another platform's waiting job.
+    concurrency:
+      group: release-${{ github.ref_name }}
+      queue: max
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: juvin-mac-${{ needs.package.outputs.version }}
+          path: dist
+
+      # Release Linux and Release Windows attach to the same draft; whichever release job runs first creates it.
+      - name: Attach to the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! is_draft=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null); then
+            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft \
+              --title "Juvin ${{ needs.package.outputs.version }}" --generate-notes
+          elif [ "$is_draft" != true ]; then
+            echo "::error::Release $GITHUB_REF_NAME is already published; refusing to replace its assets"
+            exit 1
+          fi
+          gh release upload "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --clobber

@@ -32,12 +32,18 @@ interface Harness {
   /** How the content script answers; undefined means no content script. */
   answer: (request: ContentRequest) => unknown;
   /** How tabs.get answers; replace it to hold a lookup open. */
-  getTab: (tabId: number) => Promise<{ id: number }>;
+  getTab: (tabId: number) => Promise<{ id: number; windowId?: number }>;
   runtimeMessage: (message: unknown, sender?: { tab?: { id: number } }) => unknown;
   tabUpdated: FakeEvent<(tabId: number, changeInfo: { status?: string }) => void>;
+  os: string;
+  /** Windows the extension asked to focus, in order. */
+  focused: number[];
+  /** Tabs the extension asked to make active, in order. */
+  activated: number[];
 }
 
 const TAB = 5;
+const WINDOW = 3;
 
 const CONFIG = { v: 1, type: "config", actions: [], adapters: ["test-page"], shortcut: "Ctrl+Shift+F", health: { mode: "local", modelReachable: null } };
 
@@ -91,6 +97,7 @@ function fakeBrowser(h: Harness): unknown {
       },
       getManifest: () => ({ version: "0.1.0" }),
       getURL: (path: string) => `moz-extension://abc/${path}`,
+      getPlatformInfo: () => Promise.resolve({ os: h.os }),
       sendMessage: () => Promise.reject(new Error("No receiver.")),
       onMessage,
       onStartup: noop,
@@ -99,6 +106,13 @@ function fakeBrowser(h: Harness): unknown {
     action: { setBadgeText: () => Promise.resolve(), setBadgeBackgroundColor: () => Promise.resolve() },
     tabs: {
       get: (tabId: number) => h.getTab(tabId),
+      update: (tabId: number, info: { active?: boolean }) => {
+        if (info.active) {
+          h.activated.push(tabId);
+        }
+
+        return Promise.resolve({ id: tabId });
+      },
       query: () => Promise.resolve([{ id: TAB }]),
       sendMessage: (_tabId: number, request: ContentRequest) => {
         h.content.push(request);
@@ -109,7 +123,16 @@ function fakeBrowser(h: Harness): unknown {
       onUpdated: h.tabUpdated,
     },
     commands: { onCommand: noop },
-    windows: { getLastFocused: () => Promise.resolve({ focused: true }) },
+    windows: {
+      getLastFocused: () => Promise.resolve({ focused: true }),
+      update: (windowId: number, info: { focused?: boolean }) => {
+        if (info.focused) {
+          h.focused.push(windowId);
+        }
+
+        return Promise.resolve({ id: windowId });
+      },
+    },
     scripting: { executeScript: () => Promise.reject(new Error("Not allowed.")) },
   };
 }
@@ -124,9 +147,12 @@ function newHarness(): Harness {
     port: () => h.ports[h.ports.length - 1]!,
     content: [],
     answer: defaultAnswer,
-    getTab: (tabId) => Promise.resolve({ id: tabId }),
+    getTab: (tabId) => Promise.resolve({ id: tabId, windowId: WINDOW }),
     runtimeMessage: () => undefined,
     tabUpdated: new FakeEvent(),
+    os: "linux",
+    focused: [],
+    activated: [],
   };
   vi.doMock("webextension-polyfill", () => ({ default: fakeBrowser(h) }));
   return h;
@@ -266,6 +292,50 @@ describe("background", () => {
     expect(h.content.some((r) => r.kind === "juvin.apply")).toBe(false);
     expect(sentToApp(h, first)).toEqual([]);
     expect(sentToApp(h)).toEqual([]);
+  });
+
+  const APPLY = { type: "apply.request", id: "a1", editorId: "e-1", expectedHash: "sha256:00", start: 0, end: 7, text: "Hello" };
+
+  it("brings the draft's tab and window to the front after a panel apply on macOS", async () => {
+    h.os = "mac";
+    await connect(h);
+    await fromApp(h, { type: "context.request", id: "c1" });
+    await fromApp(h, APPLY);
+
+    expect(sentToApp(h).at(-1)).toMatchObject({ type: "apply.response", id: "a1", ok: true });
+    expect(h.activated).toEqual([TAB]);
+    expect(h.focused).toEqual([WINDOW]);
+  });
+
+  it("leaves tab and window focus alone off macOS", async () => {
+    await connect(h);
+    await fromApp(h, { type: "context.request", id: "c1" });
+    await fromApp(h, APPLY);
+
+    expect(sentToApp(h).at(-1)).toMatchObject({ type: "apply.response", id: "a1", ok: true });
+    expect(h.activated).toEqual([]);
+    expect(h.focused).toEqual([]);
+  });
+
+  it("leaves tab and window focus alone after a failed apply", async () => {
+    h.os = "mac";
+    await connect(h);
+    await fromApp(h, { type: "context.request", id: "c1" });
+    h.answer = (request) => (request.kind === "juvin.apply" ? { ok: false, error: { code: "draft-changed", message: "x" } } : defaultAnswer(request));
+    await fromApp(h, APPLY);
+
+    expect(h.activated).toEqual([]);
+    expect(h.focused).toEqual([]);
+  });
+
+  it("leaves tab and window focus alone for an apply from the in-page menu", async () => {
+    h.os = "mac";
+    await openMenu();
+    await fromApp(h, APPLY);
+
+    expect(sentToApp(h).at(-1)).toMatchObject({ type: "apply.response", id: "a1", ok: true });
+    expect(h.activated).toEqual([]);
+    expect(h.focused).toEqual([]);
   });
 
   it("tells the menu the connection is gone and refuses its choices", async () => {

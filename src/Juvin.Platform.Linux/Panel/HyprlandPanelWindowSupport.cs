@@ -34,6 +34,8 @@ public sealed class HyprlandPanelWindowSupport : IPanelWindowSupport
         _retryDelay = retryDelay;
     }
 
+    public void PrepareWindow(nint windowHandle, string? handleDescriptor) => _inner.PrepareWindow(windowHandle, handleDescriptor);
+
     public void ShowOnAllWorkspaces(nint windowHandle, string? handleDescriptor, string title)
     {
         _inner.ShowOnAllWorkspaces(windowHandle, handleDescriptor, title);

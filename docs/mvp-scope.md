@@ -67,7 +67,7 @@ The user edits the shortcut in Juvin's settings. Two triggers map to it:
 - **Desktop global hotkey.** Owned by the Juvin app. On Linux this reuses TypeWhisper's backend chain (evdev on Wayland with the uaccess udev rule, SharpHook on X11, desktop-environment shortcut writers for GNOME/KDE/Hyprland/Sway). On Windows and macOS, SharpHook provides a global hook, with macOS needing Accessibility permission. On press, the app asks the extension for the context of the active tab in the focused browser window.
 - **Extension command shortcut.** WebExtensions have a `commands` API with a user-configurable shortcut that works whenever the browser has focus, on every OS, with no Wayland caveats. The extension forwards the press to the desktop app. Juvin's settings show both and deep-link to the browser's shortcut page (`chrome://extensions/shortcuts`, Firefox "Manage Extension Shortcuts") when the two drift.
 
-The default is Ctrl+Shift+F (Cmd+Shift+F on macOS). Ctrl+Shift+Y was the first choice and was dropped on October 10, 2026: Firefox binds it to Downloads on Linux and a browser's own shortcuts win over extension commands, so the key had to be one no browser binds on any OS.
+The default is Ctrl+Shift+F on every OS, the physical Control key on macOS too. Ctrl+Shift+Y was the first choice and was dropped on October 10, 2026: Firefox binds it to Downloads on Linux and a browser's own shortcuts win over extension commands, so the key had to be one no browser binds on any OS. Cmd+Shift+F, the macOS default until October 18, 2026, is Firefox's full screen command and a Chrome toolbar command there, so macOS uses the same physical keys as Linux and Windows: the stored chord is `Super+Shift+F` (Super is the Control key on macOS, and `Ctrl` in a stored chord is Command), shown as Ctrl+Shift+F, and the extension suggests `MacCtrl+Shift+F`.
 
 Recommendation: ship both. The extension command is the one that always works; the global hotkey is the one the user asked for and keeps the door open for non-browser apps later. If Phase 0 shows the global hotkey is unreliable on one platform, the extension command carries that platform alone.
 
@@ -169,7 +169,7 @@ The TypeWhisper code is Linux-only and has no OS abstraction layer. Juvin needs 
 
 | Feature | Detail |
 | --- | --- |
-| Trigger | Global hotkey or extension command, both configurable, default Ctrl+Shift+F (Cmd+Shift+F on macOS); opens the action menu (section 2.8) |
+| Trigger | Global hotkey or extension command, both configurable, default Ctrl+Shift+F (the Control key on macOS too); opens the action menu (section 2.8) |
 | Capture | Selection, editor identity, thread messages, participants, subject, page URL, capture time, completeness state |
 | Actions | "What am I missing?" (checks the draft against requests in the thread), Soften, Clearer, Shorter, Fix grammar on keys 1 to 5; Ask for a change (free text); custom actions in the right-click list |
 | Preview | Only through Review, which opens the desktop panel: streamed result, diff toggle, follow-up input retaining context |
@@ -411,11 +411,15 @@ Settled on October 8, 2026:
 
 Settled on October 10, 2026:
 
-6. **Default shortcut:** Ctrl+Shift+F (Cmd+Shift+F on macOS), for both the extension command and the global hotkey, after a real key press showed Firefox's Downloads binding wins over Ctrl+Shift+Y on Linux (section 2.3).
+6. **Default shortcut:** Ctrl+Shift+F (Cmd+Shift+F on macOS), for both the extension command and the global hotkey, after a real key press showed Firefox's Downloads binding wins over Ctrl+Shift+Y on Linux (section 2.3). The macOS half is superseded by decision 8.
 
 Settled on October 13, 2026:
 
 7. **Action menu:** the shortcut opens a menu beside the draft with five actions on keys 1 to 5 and nothing runs until the user picks; a picked action applies automatically, undone with Ctrl+Z (Cmd+Z); the desktop app owns the menu and the extension draws it in the page, with an Avalonia renderer added when non-browser drafts arrive (section 2.8).
+
+Settled on October 18, 2026:
+
+8. **macOS default shortcut:** the physical Control+Shift+F, the same keys as on Linux and Windows, for both the extension command (`MacCtrl+Shift+F`) and the global hotkey (stored as `Super+Shift+F`), because Cmd+Shift+F is Firefox's full screen command and a Chrome toolbar command on macOS (section 2.3). Other OSes keep their stored default, and a recorded shortcut keeps its meaning everywhere.
 
 No decisions remain open.
 

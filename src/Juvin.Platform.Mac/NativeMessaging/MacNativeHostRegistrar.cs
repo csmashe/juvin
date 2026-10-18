@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Juvin.Core.Localization;
 using Juvin.Core.Services;
+using Juvin.Platform.Unix;
 
 namespace Juvin.Platform.Mac.NativeMessaging;
 
@@ -11,19 +12,33 @@ namespace Juvin.Platform.Mac.NativeMessaging;
 public sealed class MacNativeHostRegistrar : INativeHostRegistrar
 {
     private readonly Func<string?> _locateHost;
+    private readonly Func<string, bool> _canExecute;
     private readonly Localizer _localizer;
     private readonly string _home;
     private readonly string _systemApplications;
     private readonly IReadOnlyList<MacBrowser> _browsers;
 
     public MacNativeHostRegistrar(Func<string?> locateHost, Localizer localizer)
-        : this(locateHost, localizer, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "/Applications")
+        : this(
+            locateHost,
+            localizer,
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            "/Applications",
+            UnixFileAccess.CanExecute
+        )
     {
     }
 
-    internal MacNativeHostRegistrar(Func<string?> locateHost, Localizer localizer, string home, string systemApplications)
+    internal MacNativeHostRegistrar(
+        Func<string?> locateHost,
+        Localizer localizer,
+        string home,
+        string systemApplications,
+        Func<string, bool> canExecute
+    )
     {
         _locateHost = locateHost;
+        _canExecute = canExecute;
         _localizer = localizer;
         _home = home;
         _systemApplications = systemApplications;
@@ -57,7 +72,9 @@ public sealed class MacNativeHostRegistrar : INativeHostRegistrar
     public HostRegistration CheckRegistration(BrowserTarget browser)
     {
         var definition = Find(browser);
-        return NativeHostManifest.Check(definition.ManifestPath, definition.Target.Family, _locateHost());
+        var hostPath = _locateHost();
+        var state = NativeHostManifest.Check(definition.ManifestPath, definition.Target.Family, hostPath);
+        return state == HostRegistration.Registered && !_canExecute(hostPath!) ? HostRegistration.Stale : state;
     }
 
     public Task RegisterAsync(BrowserTarget browser, CancellationToken ct)
@@ -68,6 +85,11 @@ public sealed class MacNativeHostRegistrar : INativeHostRegistrar
         if (hostPath.Contains("/AppTranslocation/", StringComparison.Ordinal))
         {
             throw new NativeHostRegistrationException(_localizer["BrowserConnector.RegisterTranslocated"]);
+        }
+
+        if (!_canExecute(hostPath))
+        {
+            throw new NativeHostRegistrationException(_localizer["BrowserConnector.HostNotExecutable"]);
         }
 
         try

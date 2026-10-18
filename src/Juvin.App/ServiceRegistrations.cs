@@ -4,8 +4,10 @@ using Juvin.App.Services.CrashReporting;
 using Juvin.App.ViewModels;
 using Juvin.App.ViewModels.Sections;
 using Juvin.App.Views;
+using Juvin.Core;
 using Juvin.Core.Interfaces;
 using Juvin.Core.Localization;
+using Juvin.Core.Models;
 using Juvin.Core.Providers;
 using Juvin.Core.Services;
 using Juvin.Platform;
@@ -27,7 +29,10 @@ public static class ServiceRegistrations
     {
         var services = new ServiceCollection();
 
-        services.AddSingleton<ISettingsService, SettingsService>();
+        services.AddSingleton<ISettingsService>(_ => new SettingsService(
+            JuvinEnvironment.SettingsFilePath,
+            AppSettings.CreateDefault(OperatingSystem.IsMacOS())
+        ));
         services.AddSingleton<IHistoryService, HistoryService>();
         services.AddSingleton<Localizer>();
         services.AddSingleton<CrashReportingService>();
@@ -36,9 +41,13 @@ public static class ServiceRegistrations
 
         // Probes use this client and selector; rewrites have their own with a longer timeout.
         services.AddSingleton(_ => ModelHttpClient.Create(TimeSpan.FromSeconds(30)));
-        services.AddSingleton<IProcessRunner, ProcessRunner>();
+        services.AddSingleton<IProcessRunner>(sp => new ProcessRunner(sp.GetRequiredService<IToolSearchPaths>().Directories));
         services.AddSingleton(sp =>
-            ProviderSelector.CreateDefault(sp.GetRequiredService<HttpClient>(), sp.GetRequiredService<IProcessRunner>())
+            ProviderSelector.CreateDefault(
+                sp.GetRequiredService<HttpClient>(),
+                sp.GetRequiredService<IProcessRunner>(),
+                sp.GetRequiredService<IToolSearchPaths>().Directories
+            )
         );
         services.AddSingleton<ModelProbeService>();
 
@@ -55,7 +64,8 @@ public static class ServiceRegistrations
             (sp, _) =>
                 ProviderSelector.CreateDefault(
                     sp.GetRequiredKeyedService<HttpClient>(RewriteHttpClientKey),
-                    sp.GetRequiredService<IProcessRunner>()
+                    sp.GetRequiredService<IProcessRunner>(),
+                    sp.GetRequiredService<IToolSearchPaths>().Directories
                 )
         );
         services.AddSingleton(sp => new RewritePanelViewModel(
