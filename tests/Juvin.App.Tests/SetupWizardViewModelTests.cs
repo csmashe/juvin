@@ -772,6 +772,42 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task TheModeStep_RechecksCodexUntilItIsReady()
+    {
+        _settings.Update(s => s with { ProcessingMode = ProcessingMode.Codex });
+        using var vm = Create();
+        vm.CodexRecheckInterval = TimeSpan.FromMilliseconds(20);
+        vm.StepIndex = (int)SetupWizardStep.ProcessingMode;
+        await WaitUntilAsync(() => vm.Detections.Single(row => !row.IsServer).IsCodexMissing);
+
+        _providers.Codex = new ProviderStatus(ProviderStatusKind.NotSignedIn, "Provider.Status.NotSignedIn", []);
+        await WaitUntilAsync(() => vm.Detections.Single(row => !row.IsServer).Status?.Kind == ProviderStatusKind.NotSignedIn);
+
+        _providers.Codex = new ProviderStatus(ProviderStatusKind.Ready, "Provider.Status.Ready", []);
+        await WaitUntilAsync(() => vm.Detections.Single(row => !row.IsServer).IsSatisfied);
+    }
+
+    [Fact]
+    public async Task TheModeStep_DoesNotRecheckCodex_InLocalModeOrWhenItNeedsAnUpdate()
+    {
+        using var vm = Create();
+        vm.CodexRecheckInterval = TimeSpan.FromMilliseconds(20);
+        vm.StepIndex = (int)SetupWizardStep.ProcessingMode;
+        await WaitUntilAsync(() => vm.Detections.Single(row => !row.IsServer).IsCodexMissing);
+
+        _providers.Codex = new ProviderStatus(ProviderStatusKind.Ready, "Provider.Status.Ready", []);
+        await Task.Delay(200);
+        Assert.True(vm.Detections.Single(row => !row.IsServer).IsCodexMissing);
+
+        _providers.Codex = new ProviderStatus(ProviderStatusKind.Incompatible, "Provider.Status.CodexNeedsUpdate", []);
+        vm.SelectedMode = vm.ModeOptions.Single(option => option.Mode == ProcessingMode.Codex);
+        await vm.DetectModelsCommand.ExecuteAsync(null);
+        _providers.Codex = new ProviderStatus(ProviderStatusKind.Ready, "Provider.Status.Ready", []);
+        await Task.Delay(200);
+        Assert.Equal(ProviderStatusKind.Incompatible, vm.Detections.Single(row => !row.IsServer).Status?.Kind);
+    }
+
+    [Fact]
     public async Task ReenteringTheConfiguredServer_CountsAsChoosingIt()
     {
         _providers.Servers[ModelProbeService.OllamaUrl] = FakeProviders.Reachable("0.12.3");
