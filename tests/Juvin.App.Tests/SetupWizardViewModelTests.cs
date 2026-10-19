@@ -135,6 +135,25 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task TheChecklistRecheck_KeepsGoing_WhenAnEvaluationIsCanceledOnItsOwn()
+    {
+        var task = new FakeSetupTask("flaky", SetupTaskSeverity.Required, SetupTaskStatusKind.NeedsAction)
+        {
+            Evaluation = n => n switch
+            {
+                1 => Task.FromResult(new SetupTaskState(SetupTaskStatusKind.NeedsAction, "open")),
+                2 => Task.FromCanceled<SetupTaskState>(new CancellationToken(true)),
+                _ => Task.FromResult(new SetupTaskState(SetupTaskStatusKind.Satisfied, "fixed")),
+            },
+        };
+        using var vm = Create(task);
+        vm.SetupRecheckInterval = TimeSpan.FromMilliseconds(20);
+        vm.StepIndex = (int)SetupWizardStep.Checklist;
+
+        await WaitUntilAsync(() => vm.SetupItems[0].IsSatisfied);
+    }
+
+    [Fact]
     public async Task TheChecklistRecheck_SkipsSatisfiedRows_AndStopsOffTheStep()
     {
         var open = NewTask("open", SetupTaskSeverity.Recommended, SetupTaskStatusKind.NeedsAction);

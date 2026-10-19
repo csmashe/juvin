@@ -630,11 +630,13 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
                     {
                         state = await Task.Run(() => row.Source.EvaluateAsync(ct), ct);
                     }
-                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    catch (Exception) when (!ct.IsCancellationRequested)
                     {
+                        // Only the step's own cancellation ends the loop; any other failure waits for the next pass.
                         continue;
                     }
 
+                    ct.ThrowIfCancellationRequested();
                     if (evaluation != _evaluation)
                     {
                         break;
