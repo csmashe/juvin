@@ -56,7 +56,7 @@ Sent in reply to `hello` and again whenever settings change.
  "health":{"mode":"local","modelReachable":null}}
 ```
 
-`actions` is the user's configured catalog: the built-ins, then their custom actions, in the order the panel lists them. `health.mode` is `local` or `codex`; `modelReachable` is `true`, `false`, or `null` when the app has not probed yet. The extension stores nothing from `config` beyond the lifetime of the connection.
+`actions` is the user's configured catalog: the built-ins, then their custom actions, in the order the panel lists them. `health.mode` is `local` or `codex`; `modelReachable` is `true`, `false`, or `null` when the app has not probed yet. `shortcut` is the app's stored chord, in which `Ctrl` is Command and `Super` is the Control key on macOS (the macOS default is `Super+Shift+F`); the popup shows it with the keyboard's names. The extension stores nothing from `config` beyond the lifetime of the connection.
 
 ### `ping` and `pong` (either direction)
 

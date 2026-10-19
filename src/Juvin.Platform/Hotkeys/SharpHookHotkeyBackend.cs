@@ -2,7 +2,7 @@ using System.Diagnostics;
 using Juvin.Core.Hotkeys;
 using Juvin.Core.Localization;
 using SharpHook;
-using SharpHook.Native;
+using SharpHook.Data;
 
 namespace Juvin.Platform.Hotkeys;
 
@@ -74,7 +74,7 @@ public sealed class SharpHookHotkeyBackend : IHotkeyBackend
             var result = run.Exception?.GetBaseException() is HookException failure ? failure.Result : UioHookResult.Failure;
             Trace.WriteLine($"[SharpHookHotkeyBackend] Hook did not start ({result}).");
             throw new HotkeyBackendException(
-                result == UioHookResult.ErrorAxApiDisabled
+                IsAccessibilityFailure(result)
                     ? _localizer["Hotkey.SharpHook.AccessibilityNeeded"]
                     : _localizer.Format("Hotkey.SharpHook.StartFailed", result)
             );
@@ -145,9 +145,18 @@ public sealed class SharpHookHotkeyBackend : IHotkeyBackend
             stopped = Stopped;
         }
 
-        Trace.WriteLine($"[SharpHookHotkeyBackend] Hook stopped on its own ({run.Exception?.GetBaseException().GetType().Name ?? run.Status.ToString()}).");
-        stopped?.Invoke(_localizer["Hotkey.SharpHook.Stopped"]);
+        var failure = run.Exception?.GetBaseException();
+        var reason = failure is HookException hookFailure ? hookFailure.Result.ToString() : failure?.GetType().Name ?? run.Status.ToString();
+        Trace.WriteLine($"[SharpHookHotkeyBackend] Hook stopped on its own ({reason}).");
+        stopped?.Invoke(
+            failure is HookException { Result: var result } && IsAccessibilityFailure(result)
+                ? _localizer["Hotkey.SharpHook.AccessibilityNeeded"]
+                : _localizer["Hotkey.SharpHook.Stopped"]
+        );
     }
+
+    internal static bool IsAccessibilityFailure(UioHookResult result) =>
+        result is UioHookResult.ErrorAxApiDisabled or UioHookResult.ErrorAxApiRevoked;
 
     /// <summary>libuiohook reports layout keys (Windows virtual keys, X11 keysyms); only macOS gives the hardware key code.</summary>
     internal static string KeyToMatch(KeyChord chord, bool isMac) => isMac ? chord.PhysicalKey : chord.Key;
@@ -157,25 +166,25 @@ public sealed class SharpHookHotkeyBackend : IHotkeyBackend
         && string.IsNullOrEmpty(getEnvironment("WAYLAND_DISPLAY"));
 
     /// <summary>The chord's modifiers as SharpHook reports them. On macOS the primary modifier is Command (Meta) and Super is Control.</summary>
-    internal static ChordModifiers ModifiersOf(ModifierMask mask, bool isMac)
+    internal static ChordModifiers ModifiersOf(EventMask mask, bool isMac)
     {
         var modifiers = ChordModifiers.None;
-        if ((mask & ModifierMask.Ctrl) != 0)
+        if ((mask & EventMask.Ctrl) != 0)
         {
             modifiers |= isMac ? ChordModifiers.Super : ChordModifiers.Ctrl;
         }
 
-        if ((mask & ModifierMask.Meta) != 0)
+        if ((mask & EventMask.Meta) != 0)
         {
             modifiers |= isMac ? ChordModifiers.Ctrl : ChordModifiers.Super;
         }
 
-        if ((mask & ModifierMask.Alt) != 0)
+        if ((mask & EventMask.Alt) != 0)
         {
             modifiers |= ChordModifiers.Alt;
         }
 
-        if ((mask & ModifierMask.Shift) != 0)
+        if ((mask & EventMask.Shift) != 0)
         {
             modifiers |= ChordModifiers.Shift;
         }

@@ -100,6 +100,18 @@ public class App : Application
         };
 
         tray.ShowSettingsRequested += (_, _) => ShowMainWindow(main);
+        // A Dock icon click on macOS, sent to this process rather than to a second launch.
+        if (this.TryGetFeature<IActivatableLifetime>() is { } activatable)
+        {
+            activatable.Activated += (_, e) =>
+            {
+                if (e.Kind == ActivationKind.Reopen)
+                {
+                    Dispatcher.UIThread.Post(() => ShowMainWindow(main));
+                }
+            };
+        }
+
         tray.ExitRequested += (_, _) =>
         {
             _exiting = true;

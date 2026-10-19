@@ -32,6 +32,11 @@ public sealed partial class X11PanelWindowSupport : IPanelWindowSupport
     private const int OffFormat = 48;
     private const int OffData = 56;
 
+    // The hints are client messages, which window managers ignore for a window that is not mapped yet.
+    public void PrepareWindow(nint windowHandle, string? handleDescriptor)
+    {
+    }
+
     public void ShowOnAllWorkspaces(nint windowHandle, string? handleDescriptor, string title)
     {
         if (windowHandle == 0 || handleDescriptor != "XID")

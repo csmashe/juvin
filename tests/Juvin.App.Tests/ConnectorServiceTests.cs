@@ -41,7 +41,7 @@ public sealed class ConnectorServiceTests : IAsyncDisposable
     {
         var config = _service.BuildConfig(new AppSettings { RewriteShortcut = saved });
 
-        Assert.Equal(AppSettings.DefaultRewriteShortcut, config.Shortcut);
+        Assert.Equal(HotkeyService.EffectiveShortcut(AppSettings.DefaultRewriteShortcutFor(OperatingSystem.IsMacOS())).ToString(), config.Shortcut);
     }
 
     [Fact]

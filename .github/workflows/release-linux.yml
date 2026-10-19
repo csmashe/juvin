@@ -85,8 +85,8 @@ jobs:
     if: github.ref_type == 'tag'
     needs: package
     runs-on: ubuntu-24.04
-    # Shared with the other release workflow so only one creates the draft; queue: max keeps a rerun
-    # from cancelling the other platform's waiting job.
+    # Shared with the other release workflows so only one creates the draft; queue: max keeps a rerun
+    # from cancelling another platform's waiting job.
     concurrency:
       group: release-${{ github.ref_name }}
       queue: max
@@ -99,7 +99,7 @@ jobs:
           name: juvin-linux-${{ needs.package.outputs.version }}
           path: dist
 
-      # Release Windows attaches to the same draft; whichever release job runs first creates it.
+      # Release Windows and Release macOS attach to the same draft; whichever release job runs first creates it.
       - name: Attach to the draft release
         env:
           GH_TOKEN: ${{ github.token }}

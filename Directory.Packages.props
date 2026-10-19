@@ -13,7 +13,7 @@
         <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12"/>
         <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12"/>
         <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.12"/>
-        <PackageVersion Include="SharpHook" Version="5.3.9"/>
+        <PackageVersion Include="SharpHook" Version="7.1.3"/>
         <PackageVersion Include="Sentry" Version="6.12.1"/>
         <!-- Must match the Tmds.DBus.Protocol version Avalonia.FreeDesktop 12.0.1 depends on.
              A newer version changes types Avalonia loads during X11 startup and the app fails

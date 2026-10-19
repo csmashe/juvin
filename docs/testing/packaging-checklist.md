@@ -46,6 +46,26 @@ Run before publishing a release and after any change to `scripts/build-windows-i
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | October 14, 2026 | Windows 11 Pro 23H2 (VM 500) | 0.1.0-dev.2 then 0.1.0-dev.3 | Pass: no UAC prompt, the wizard proposed `%LOCALAPPDATA%\Programs\Juvin` and the mark showed in its title bar; SmartScreen was not shown (the file came over scp, so it carried no mark of the web) | Pass: one `Juvin.lnk` pointing at the installed exe; Installed apps entry with the mark, the version, and Excel on the Web | Pass: the installed exe is listed in `HKCU\Control Panel\NotifyIconSettings` once the app runs | Pass: all three rows (Firefox, Chrome, Edge) showed Needs update from a dev copy and Update pointed the manifests in `%LOCALAPPDATA%\Juvin\NativeHost` at `%LOCALAPPDATA%\Programs\Juvin\juvin-host.exe`; the installed host connected to the running app and exited 0; the extension connection test was not run | Not run: Home shows "Ctrl+Shift+F, listening"; the real press is covered by the Slice C run of the same hook | Pass: with dev.2 running, the dev.3 setup stopped with the close-Juvin prompt (silent run exit 1); after quitting it installed into the same folder, the uninstall entry read 0.1.0-dev.3, and the three rows still read Registered without registering again | Pass: with Juvin running the uninstaller stopped with the same prompt; after quitting, the folder, shortcut, App Paths key, and uninstall entry were gone and `%LOCALAPPDATA%\Juvin` and the browser keys stayed |
 
+## macOS dmg
+
+Run before publishing a release and after any change to `scripts/build-mac-dmg.sh`, `scripts/mac/entitlements.plist`, or the bundle layout. `scripts/smoke-test-mac-dmg.sh` runs on the GitHub macOS runner in the Release macOS workflow and covers what a machine with no person at it can show: the image verifies and holds `Juvin.app` and an Applications link, the Info.plist carries the bundle identifier `com.juvin.app`, the versions, the Local Network usage description, and a minimum macOS read from the payload, every executable and the bundle pass `codesign --verify --deep --strict` with the hardened runtime and the JIT entitlement, `juvin-host` reports that no app is running and `juvin-cli --help` runs, and the app started through Launch Services opens its control socket, answers `--trigger`, and quits on SIGTERM. It prints the Gatekeeper verdict without failing on it, because an ad-hoc signature is always rejected. This checklist covers what only a person at a real Mac sees.
+
+### Steps
+
+1. Build the dmg with `scripts/build-mac-dmg.sh <version>` or take it from the Release macOS workflow's artifact. Run `scripts/smoke-test-mac-dmg.sh <version>`; it must end with `All smoke tests passed.`
+2. Download the dmg in Safari or Chrome so it carries the quarantine flag (`xattr -p com.apple.quarantine` on the file shows a value), open it, and drag Juvin to Applications. Double-click Juvin. macOS must refuse it as from an unidentified developer; note the exact dialog and whether System Settings, Privacy and Security, Open Anyway lets it start (on macOS 15 and later the Control-click Open bypass is gone). Until the dmg is notarized this is what every user sees.
+3. The first start must show the Juvin mark in the Dock and in the menu bar, and the setup wizard. The menu bar icon's menu must open the window and quit the app. Close the window: with Close to tray on, the Dock icon stays and the menu bar icon reopens the window; note what clicking the Dock icon does.
+4. Run the setup wizard. The Accessibility row must open System Settings at Accessibility; after granting it, the row must read granted and Home must show the shortcut listening. Register the browser connector for each installed browser: the manifests in `~/Library/Application Support/<browser>/NativeMessagingHosts` must point at `/Applications/Juvin.app/Contents/MacOS/juvin-host`, and the extension's Test connection must report a round trip.
+5. Start Juvin straight from the mounted dmg without copying it. Registering a browser must refuse with the message about moving Juvin to Applications (the app runs translocated).
+6. Point the model server at a machine on the LAN (not localhost) and test it. macOS must ask for Local Network access with the Info.plist's description; after allowing it the test must pass, and denying it must show a connection error, not a hang.
+7. Set the shortcut, select the test page draft, and press it. The action menu must open beside the draft.
+8. Run the Launch at login steps below on this Mac with a real log out and log in (not a restart of the app): Juvin must start with its menu bar icon and no window, and the shortcut must work without granting Accessibility again.
+9. Uninstall by quitting Juvin and moving `/Applications/Juvin.app` to the Trash. `~/Library/Application Support/Juvin` and the manifests stay.
+
+### Results
+
+None yet. The first run of the steps is on a rented Apple Silicon Mac (macOS 26).
+
 ## Launch at login
 
 Run on each OS before publishing a release and after any change to the login item implementations or the `--background` start. The entry is checked against the installed build, not a Debug build, because it names the running executable.

@@ -1,0 +1,69 @@
+# Runs the macOS session kit (scripts/mac/prepare.sh and run-automated.sh) on the GitHub macOS runner,
+# so a rented Mac session starts from scripts that already work. A stub model server stands in for the
+# LAN Ollama, and the results folder is uploaded. Fails when any row that was not skipped failed.
+name: macOS session kit
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  kit:
+    # The same Apple Silicon image as Release macOS.
+    runs-on: macos-26
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Start the model stub
+        run: |
+          mkdir -p artifacts/mac-results
+          nohup python3 scripts/mac/openai-stub.py --port 11434 >artifacts/mac-results/stub.log 2>&1 &
+          for _ in $(seq 20); do
+            curl -fsS -m 2 http://127.0.0.1:11434/v1/models && exit 0
+            sleep 0.5
+          done
+          cat artifacts/mac-results/stub.log
+          exit 1
+
+      - name: Prepare
+        env:
+          JUVIN_KIT_CACHE: ${{ runner.temp }}/juvin-kit-cache
+          # The runner has a .NET SDK; a NoMac Mac does not, so the kit's own install is the one tested.
+          JUVIN_KIT_FORCE_DOTNET: "1"
+        run: /bin/bash scripts/mac/prepare.sh --ci
+
+      - name: Run the automated rows
+        env:
+          JUVIN_KIT_CACHE: ${{ runner.temp }}/juvin-kit-cache
+          # M-26 crashes a scratch build with reporting on; a dead local DSN keeps the report off Sentry.
+          JUVIN_SENTRY_DSN: http://00000000000000000000000000000000@127.0.0.1:9/1
+        run: /bin/bash scripts/mac/run-automated.sh --ci --results artifacts/mac-results/ci
+
+      # A session reruns both after a by-hand step; the rerun must skip the finished steps and reuse the running app.
+      - name: Rerun prepare
+        env:
+          JUVIN_KIT_CACHE: ${{ runner.temp }}/juvin-kit-cache
+        run: /bin/bash scripts/mac/prepare.sh --ci
+
+      - name: Rerun two rows
+        env:
+          JUVIN_KIT_CACHE: ${{ runner.temp }}/juvin-kit-cache
+        run: /bin/bash scripts/mac/run-automated.sh --ci --only M-10,M-12-firefox --results artifacts/mac-results/ci-rerun
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-session-kit-results
+          path: artifacts/mac-results
+          if-no-files-found: warn

@@ -56,6 +56,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
     private readonly ModelProbeService _probes;
     private readonly ISettingsService _settings;
     private bool _applyingSettings;
+    private CancellationTokenSource? _codexRecheck;
     private bool _applyingServerUrl;
     private bool _serverChosenByUser;
     private string _shownServerUrl;
@@ -226,6 +227,9 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
 
     private bool IsClosed => _lifetime.IsCancellationRequested;
 
+    /// <summary>How often the mode step checks Codex again in Codex mode, so an install or sign-in shows up.</summary>
+    internal TimeSpan CodexRecheckInterval { get; set; } = TimeSpan.FromSeconds(5);
+
     /// <summary>
     ///     Only a first run in Local mode picks a server or model for the user. A reopened wizard, or
     ///     Codex mode, suggests them with Use instead, so opening the step never changes the settings.
@@ -247,6 +251,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
             _lifetime.Cancel();
         }
 
+        StopCodexRecheck();
         _lifetime.Dispose();
         Connector.Dispose();
         Shortcut.Dispose();
@@ -264,6 +269,13 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         if (Step == SetupWizardStep.TryIt)
         {
             RefreshBrowserConnection();
+        }
+
+        StopCodexRecheck();
+        if (Step == SetupWizardStep.ProcessingMode && !IsClosed)
+        {
+            _codexRecheck = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+            _ = RecheckCodexAsync(_codexRecheck.Token);
         }
 
         _ = Step switch
@@ -544,6 +556,45 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         }
 
         RefreshServerChoice();
+    }
+
+    private async Task RecheckCodexAsync(CancellationToken ct)
+    {
+        try
+        {
+            while (true)
+            {
+                await Task.Delay(CodexRecheckInterval, ct);
+                // Only the states fixed in a terminal; a full probe starts Codex several times.
+                if (
+                    IsDetecting
+                    || !IsCodexMode
+                    || Detections.FirstOrDefault(detection => !detection.IsServer)
+                        is not { Status.Kind: ProviderStatusKind.NotInstalled or ProviderStatusKind.NotSignedIn } row
+                )
+                {
+                    continue;
+                }
+
+                var settings = _settings.Current;
+                var status = await Task.Run(() => _probes.ProbeCodexAsync(settings, ct), ct);
+                // A full detection that started meanwhile replaced the rows and owns the result.
+                if (!IsDetecting && Detections.Contains(row))
+                {
+                    row.Apply(status, DescribeDetection(row, status));
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private void StopCodexRecheck()
+    {
+        _codexRecheck?.Cancel();
+        _codexRecheck?.Dispose();
+        _codexRecheck = null;
     }
 
     private static bool IsDefaultServer(string url) =>
@@ -994,7 +1045,8 @@ public sealed partial class DetectionRow : ObservableObject
         nameof(NeedsAttention),
         nameof(StatusSymbol),
         nameof(CanUse),
-        nameof(IsInUse)
+        nameof(IsInUse),
+        nameof(IsCodexMissing)
     )]
     private ProviderStatus? _status;
 
@@ -1026,6 +1078,7 @@ public sealed partial class DetectionRow : ObservableObject
 
     public bool CanUse => IsServer && IsReachable && !IsSelected;
     public bool IsInUse => IsServer && IsReachable && IsSelected;
+    public bool IsCodexMissing => !IsServer && Status is { } status && ModelProbeService.IsCodexMissing(status);
 
     public Symbol StatusSymbol =>
         Status switch

@@ -26,6 +26,19 @@ public sealed class ModelProbeService
         _localizer = localizer;
     }
 
+    public static Uri CodexInstallGuideUrl { get; } = new("https://developers.openai.com/codex/cli");
+
+    /// <summary>OpenAI's standalone installer for this OS, the first way its install guide lists.</summary>
+    public static string CodexInstallCommand { get; } = CodexInstallCommandFor(OperatingSystem.IsWindows());
+
+    public static string CodexInstallCommandFor(bool isWindows) =>
+        isWindows
+            ? "powershell -ExecutionPolicy ByPass -c \"irm https://chatgpt.com/codex/install.ps1 | iex\""
+            : "curl -fsSL https://chatgpt.com/codex/install.sh | sh";
+
+    /// <summary>Not found at all, so installing it helps; a bad configured path or a failed start does not.</summary>
+    public static bool IsCodexMissing(ProviderStatus status) => status.MessageKey == "Provider.Status.NotInstalled";
+
     public static bool IsReachable(ProviderStatus status) =>
         status.Kind is ProviderStatusKind.Ready or ProviderStatusKind.NoModel;
 

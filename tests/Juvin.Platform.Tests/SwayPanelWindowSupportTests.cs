@@ -96,6 +96,10 @@ public sealed class SwayPanelWindowSupportTests : IDisposable
     {
         public List<(nint Handle, string? Descriptor, string Title)> Calls { get; } = [];
 
+        public void PrepareWindow(nint windowHandle, string? handleDescriptor)
+        {
+        }
+
         public void ShowOnAllWorkspaces(nint windowHandle, string? handleDescriptor, string title) => Calls.Add((windowHandle, handleDescriptor, title));
     }
 }

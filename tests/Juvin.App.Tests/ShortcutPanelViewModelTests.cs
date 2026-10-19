@@ -4,6 +4,7 @@ using Juvin.App.Tests.Fakes;
 using Juvin.App.ViewModels;
 using Juvin.Core.Hotkeys;
 using Juvin.Core.Localization;
+using Juvin.Core.Models;
 using Juvin.Platform.Hotkeys;
 
 namespace Juvin.App.Tests;
@@ -314,7 +315,7 @@ public sealed class ShortcutPanelViewModelTests
         await hotkeys.StartAsync(CancellationToken.None);
 
         Assert.True(vm.IsListening);
-        Assert.Equal("Ctrl+Shift+F", vm.ShortcutText);
+        Assert.Equal(HotkeyService.EffectiveShortcut(AppSettings.DefaultRewriteShortcutFor(OperatingSystem.IsMacOS())).ToString(), vm.ShortcutText);
         Assert.Equal(_localizer.Format("Shortcuts.Status.InvalidShortcut", "Keyboard devices"), vm.StatusText);
     }
 

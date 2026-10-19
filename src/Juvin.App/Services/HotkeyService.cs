@@ -40,7 +40,7 @@ public sealed class HotkeyService : IHotkeyRestart
 {
     private static readonly TimeSpan s_reselectDelay = TimeSpan.FromSeconds(3);
 
-    private static readonly KeyChord s_defaultChord = KeyChord.TryParse(AppSettings.DefaultRewriteShortcut, out var chord)
+    private static readonly KeyChord s_defaultChord = KeyChord.TryParse(AppSettings.DefaultRewriteShortcutFor(OperatingSystem.IsMacOS()), out var chord)
         ? chord
         : throw new InvalidOperationException("The default shortcut is not a valid chord.");
 
