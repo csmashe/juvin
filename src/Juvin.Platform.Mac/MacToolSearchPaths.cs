@@ -6,7 +6,9 @@ namespace Juvin.Platform.Mac;
 /// </summary>
 public sealed class MacToolSearchPaths : IToolSearchPaths
 {
-    public IReadOnlyList<string> Directories { get; } = For(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+    private readonly IReadOnlyList<string> _directories = For(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+
+    public IReadOnlyList<string> GetDirectories() => _directories;
 
     internal static IReadOnlyList<string> For(string home)
     {

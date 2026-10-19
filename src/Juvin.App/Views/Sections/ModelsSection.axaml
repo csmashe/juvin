@@ -3,6 +3,7 @@
              xmlns:vm="using:Juvin.App.ViewModels.Sections"
              xmlns:app="using:Juvin.App.ViewModels"
              xmlns:loc="using:Juvin.App.Localization"
+             xmlns:controls="using:Juvin.App.Views.Controls"
              x:Class="Juvin.App.Views.Sections.ModelsSection"
              x:DataType="vm:ModelsSectionViewModel">
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -192,6 +193,7 @@
                                            Margin="0"
                                            Text="{Binding CodexStatus}"
                                            IsVisible="{Binding HasCodexStatus}" />
+                                <controls:CodexInstallHelp IsVisible="{Binding IsCodexMissing}" />
                             </StackPanel>
                         </Border>
                     </StackPanel>

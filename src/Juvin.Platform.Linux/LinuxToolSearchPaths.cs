@@ -6,7 +6,9 @@ namespace Juvin.Platform.Linux;
 /// </summary>
 public sealed class LinuxToolSearchPaths : IToolSearchPaths
 {
-    public IReadOnlyList<string> Directories { get; } = For(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+    private readonly IReadOnlyList<string> _directories = For(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+
+    public IReadOnlyList<string> GetDirectories() => _directories;
 
     internal static IReadOnlyList<string> For(string home) =>
         string.IsNullOrEmpty(home)
