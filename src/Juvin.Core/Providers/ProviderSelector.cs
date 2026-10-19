@@ -20,10 +20,13 @@ public sealed class ProviderSelector
         _codex = codex;
     }
 
-    public static ProviderSelector CreateDefault(HttpClient http, IProcessRunner runner) =>
+    /// <param name="http">The client for local model servers.</param>
+    /// <param name="runner">Runs the Codex CLI.</param>
+    /// <param name="codexSearchDirectories">Where to look for the Codex CLI after PATH, read on each selection.</param>
+    public static ProviderSelector CreateDefault(HttpClient http, IProcessRunner runner, Func<IReadOnlyList<string>>? codexSearchDirectories = null) =>
         new(
             settings => new OpenAiCompatibleProvider(http, settings),
-            settings => new CodexCliProvider(settings, runner)
+            settings => new CodexCliProvider(settings, runner, codexSearchDirectories?.Invoke() ?? [])
         );
 
     /// <exception cref="ProviderException">The provider for the mode is misconfigured.</exception>

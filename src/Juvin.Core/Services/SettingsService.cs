@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Juvin.Core.Interfaces;
 using Juvin.Core.Models;
@@ -15,26 +16,36 @@ public sealed class SettingsService : ISettingsService
         Converters = { new JsonStringEnumConverter(allowIntegerValues: false) },
     };
 
+    private readonly AppSettings _defaults;
     private readonly AtomicJsonStore<AppSettings> _store;
 
-    public SettingsService()
-        : this(JuvinEnvironment.SettingsFilePath)
-    {
-    }
-
     public SettingsService(string filePath)
-        : this(filePath, AtomicJsonBackupMode.LastKnownGood, AtomicJsonCorruptFilePolicy.PreserveAndReset)
+        : this(filePath, new AppSettings())
     {
     }
 
-    private SettingsService(string filePath, AtomicJsonBackupMode backupMode, AtomicJsonCorruptFilePolicy corruptFilePolicy)
+    /// <param name="filePath">The settings file.</param>
+    /// <param name="defaults">The settings a missing, reset, or unreadable file starts from.</param>
+    public SettingsService(string filePath, AppSettings defaults)
+        : this(filePath, defaults, AtomicJsonBackupMode.LastKnownGood, AtomicJsonCorruptFilePolicy.PreserveAndReset)
     {
+    }
+
+    private SettingsService(
+        string filePath,
+        AppSettings defaults,
+        AtomicJsonBackupMode backupMode,
+        AtomicJsonCorruptFilePolicy corruptFilePolicy
+    )
+    {
+        _defaults = defaults;
         _store = new AtomicJsonStore<AppSettings>(
             filePath,
-            () => new AppSettings(),
+            () => _defaults,
             new AtomicJsonStoreOptions<AppSettings>
             {
                 JsonOptions = s_jsonOptions,
+                Deserialize = OverDefaults,
                 BackupMode = backupMode,
                 CorruptFilePolicy = corruptFilePolicy,
                 Diagnostic = d =>
@@ -49,9 +60,26 @@ public sealed class SettingsService : ISettingsService
     ///     <see cref="JsonException" /> surfacing from <see cref="Current" />.
     /// </summary>
     public static SettingsService OpenForReading(string filePath) =>
-        new(filePath, AtomicJsonBackupMode.None, AtomicJsonCorruptFilePolicy.Throw);
+        new(filePath, new AppSettings(), AtomicJsonBackupMode.None, AtomicJsonCorruptFilePolicy.Throw);
 
     public AppSettings Current => _store.Current;
+
+    // A property the file lacks takes the per-OS default rather than the record's initializer.
+    private AppSettings OverDefaults(string json)
+    {
+        if (JsonSerializer.Deserialize<JsonNode>(json, s_jsonOptions) is not JsonObject saved)
+        {
+            throw new JsonException("The settings file does not hold a JSON object.");
+        }
+
+        var merged = JsonSerializer.SerializeToNode(_defaults, s_jsonOptions)!.AsObject();
+        foreach (var (name, value) in saved)
+        {
+            merged[name] = value?.DeepClone();
+        }
+
+        return merged.Deserialize<AppSettings>(s_jsonOptions)!;
+    }
 
     public event Action<AppSettings>? SettingsChanged;
 
@@ -73,7 +101,7 @@ public sealed class SettingsService : ISettingsService
 
     public void Reset()
     {
-        Update(_ => new AppSettings());
+        Update(_ => _defaults);
         try
         {
             _store.DeleteCopies();

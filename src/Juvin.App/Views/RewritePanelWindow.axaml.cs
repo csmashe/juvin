@@ -30,6 +30,7 @@ public partial class RewritePanelWindow : Window
     private readonly IPanelWindowSupport? _support;
     private readonly RewritePanelViewModel? _viewModel;
     private IReadOnlyList<DiffSegment>? _renderedChanges;
+    private bool _prepared;
 
     public RewritePanelWindow()
     {
@@ -50,6 +51,13 @@ public partial class RewritePanelWindow : Window
     public void ShowPanel()
     {
         Place();
+        if (!_prepared)
+        {
+            _prepared = true;
+            var native = TryGetPlatformHandle();
+            _support?.PrepareWindow(native?.Handle ?? 0, native?.HandleDescriptor);
+        }
+
         if (!IsVisible)
         {
             Show();
@@ -92,7 +100,8 @@ public partial class RewritePanelWindow : Window
             return;
         }
 
-        var scale = RenderScaling;
+        // Position and the working area are in desktop pixels: device pixels on Windows and X11, points on macOS.
+        var scale = DesktopScaling;
         var area = screen.WorkingArea;
         Height = Math.Min(area.Height / scale - 2 * ScreenMargin, MaxPanelHeight);
         var width = (int)Math.Round(Width * scale);

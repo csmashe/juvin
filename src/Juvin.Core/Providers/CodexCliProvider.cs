@@ -34,6 +34,7 @@ public sealed class CodexCliProvider : IModelProvider
     private static readonly TimeSpan s_probeTimeout = TimeSpan.FromSeconds(30);
 
     private readonly string? _binary;
+    private readonly bool _binaryConfigured;
     private readonly string? _model;
     private readonly IProcessRunner _runner;
     private readonly TimeSpan _timeout;
@@ -41,13 +42,16 @@ public sealed class CodexCliProvider : IModelProvider
     private IReadOnlySet<string>? _features;
     private IReadOnlyList<string>? _mcpServers;
 
-    public CodexCliProvider(AppSettings settings, IProcessRunner runner)
+    /// <param name="settings">The configured binary and model.</param>
+    /// <param name="runner">Runs the CLI.</param>
+    /// <param name="searchDirectories">Searched after PATH, which misses tools installed outside it or after the app started.</param>
+    public CodexCliProvider(AppSettings settings, IProcessRunner runner, IReadOnlyList<string> searchDirectories)
         : this(
             settings,
             runner,
             ResolveBinary(
                 settings.CodexBinaryPath,
-                Environment.GetEnvironmentVariable("PATH"),
+                SearchPath.Append(Environment.GetEnvironmentVariable("PATH"), searchDirectories),
                 OperatingSystem.IsWindows()
             ),
             s_defaultTimeout
@@ -64,6 +68,7 @@ public sealed class CodexCliProvider : IModelProvider
     {
         _runner = runner;
         _binary = binary;
+        _binaryConfigured = !string.IsNullOrWhiteSpace(settings.CodexBinaryPath);
         _timeout = timeout;
         _model = string.IsNullOrWhiteSpace(settings.CodexModel) ? null : settings.CodexModel.Trim();
     }
@@ -80,7 +85,11 @@ public sealed class CodexCliProvider : IModelProvider
     {
         if (_binary is null)
         {
-            return new ProviderStatus(ProviderStatusKind.NotInstalled, "Provider.Status.NotInstalled", []);
+            return new ProviderStatus(
+                ProviderStatusKind.NotInstalled,
+                _binaryConfigured ? "Provider.Status.CodexPathMissing" : "Provider.Status.NotInstalled",
+                []
+            );
         }
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -120,7 +129,7 @@ public sealed class CodexCliProvider : IModelProvider
         }
         catch (Exception ex) when (ex is Win32Exception or ArgumentException)
         {
-            return new ProviderStatus(ProviderStatusKind.NotInstalled, "Provider.Status.NotInstalled", []);
+            return new ProviderStatus(ProviderStatusKind.NotInstalled, "Provider.Status.CodexCannotStart", []);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {

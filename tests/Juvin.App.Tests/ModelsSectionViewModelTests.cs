@@ -271,6 +271,35 @@ public sealed class ModelsSectionViewModelTests
         Assert.False(vm.IsCodexProbing);
     }
 
+    [Fact]
+    public async Task CheckCodex_OffersInstallHelpOnlyWhileTheCliIsMissing()
+    {
+        var vm = Create();
+
+        await vm.CheckCodexCommand.ExecuteAsync(null);
+
+        Assert.Equal("The Codex CLI is not installed.", vm.CodexStatus);
+        Assert.True(vm.IsCodexMissing);
+
+        _providers.Codex = new ProviderStatus(ProviderStatusKind.NotSignedIn, "Provider.Status.NotSignedIn", []);
+        await vm.CheckCodexCommand.ExecuteAsync(null);
+
+        Assert.Contains("codex login", vm.CodexStatus);
+        Assert.False(vm.IsCodexMissing);
+
+        _providers.Codex = new ProviderStatus(ProviderStatusKind.NotInstalled, "Provider.Status.CodexCannotStart", []);
+        await vm.CheckCodexCommand.ExecuteAsync(null);
+
+        Assert.Equal("The Codex CLI was found but could not be started.", vm.CodexStatus);
+        Assert.False(vm.IsCodexMissing);
+
+        _providers.Codex = new ProviderStatus(ProviderStatusKind.NotInstalled, "Provider.Status.NotInstalled", []);
+        await vm.CheckCodexCommand.ExecuteAsync(null);
+        _settings.Update(s => s with { CodexBinaryPath = "/opt/codex" });
+
+        Assert.False(vm.IsCodexMissing);
+    }
+
     private ModelsSectionViewModel Create()
     {
         var localizer = new Localizer();

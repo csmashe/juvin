@@ -18,11 +18,11 @@ public sealed class AccessibilityPermissionSetupTask : ISetupTask
     private readonly IAccessibilityTrust _trust;
     private readonly Func<CancellationToken, Task> _hotkeyRestart;
     private readonly Func<bool> _hotkeyListening;
-    private bool? _lastTrusted;
+    private readonly SemaphoreSlim _restartGate = new(1, 1);
 
     /// <param name="localizer">Supplies the row text.</param>
     /// <param name="runner">Opens System Settings at the Accessibility pane.</param>
-    /// <param name="hotkeyRestart">Called once the permission turns up granted, so the hook that failed without it starts.</param>
+    /// <param name="hotkeyRestart">Called while the permission is granted and the shortcut is not listening, so a hook that failed without it starts.</param>
     /// <param name="hotkeyListening">Whether the shortcut is already listening, in which case no restart is needed.</param>
     public AccessibilityPermissionSetupTask(
         Localizer localizer,
@@ -62,33 +62,49 @@ public sealed class AccessibilityPermissionSetupTask : ISetupTask
 
     public async Task<SetupTaskState> EvaluateAsync(CancellationToken ct)
     {
-        // Also on the first look: the hook may have failed at startup before the user granted trust.
-        var trusted = _trust.IsTrusted();
-        if (trusted && _lastTrusted != true && !_hotkeyListening())
+        if (!_trust.IsTrusted())
         {
-            await RestartHotkeyAsync(ct).ConfigureAwait(false);
-        }
-
-        _lastTrusted = trusted;
-        return trusted
-            ? new SetupTaskState(SetupTaskStatusKind.Satisfied, _localizer["Setup.Accessibility.Granted"])
-            : new SetupTaskState(
+            return new SetupTaskState(
                 SetupTaskStatusKind.NeedsAction,
                 _localizer["Setup.Accessibility.Missing"],
                 _localizer["Setup.Accessibility.Detail"],
                 _localizer["Setup.Accessibility.Action"]
             );
+        }
+
+        // On every look, not just when trust turns up: the hook may have failed at startup or on an earlier restart.
+        if (!_hotkeyListening())
+        {
+            await RestartHotkeyAsync(ct).ConfigureAwait(false);
+        }
+
+        return _hotkeyListening()
+            ? new SetupTaskState(SetupTaskStatusKind.Satisfied, _localizer["Setup.Accessibility.Granted"])
+            : new SetupTaskState(
+                SetupTaskStatusKind.Failed,
+                _localizer["Setup.Accessibility.NotListening"],
+                _localizer["Setup.Accessibility.NotListeningDetail"]
+            );
     }
 
     private async Task RestartHotkeyAsync(CancellationToken ct)
     {
+        // Overlapping checks restart once; the one that waited sees the result.
+        await _restartGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            await _hotkeyRestart(ct).ConfigureAwait(false);
+            if (!_hotkeyListening())
+            {
+                await _hotkeyRestart(ct).ConfigureAwait(false);
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Trace.WriteLine($"[AccessibilityPermissionSetupTask] Hotkey restart failed ({ex.GetType().Name}).");
+        }
+        finally
+        {
+            _restartGate.Release();
         }
     }
 

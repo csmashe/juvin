@@ -2,6 +2,7 @@ using Juvin.App.Services;
 using Juvin.App.Tests.Fakes;
 using Juvin.Core.Connector;
 using Juvin.Core.Localization;
+using Juvin.Core.Models;
 using Juvin.Platform.Hotkeys;
 
 namespace Juvin.App.Tests;
@@ -150,7 +151,7 @@ public sealed class HotkeyServiceTests
         await service.StartAsync(CancellationToken.None);
 
         Assert.Equal(new HotkeyStatus(HotkeyStatusKind.Active, "sharphook"), service.Status);
-        Assert.Equal("Ctrl+Shift+F", backend.Chord?.ToString());
+        Assert.Equal(HotkeyService.EffectiveShortcut(AppSettings.DefaultRewriteShortcutFor(OperatingSystem.IsMacOS())).ToString(), backend.Chord?.ToString());
         Assert.Equal("F", backend.Chord?.PhysicalKey);
         Assert.Contains(trace.Lines, line => line.Contains("not a valid chord", StringComparison.Ordinal) && !line.Contains(saved, StringComparison.Ordinal));
     }

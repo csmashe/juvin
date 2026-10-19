@@ -1,7 +1,9 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Security;
+using Juvin.Core.Localization;
 using Juvin.Core.Services;
+using Juvin.Platform.Unix;
 
 namespace Juvin.Platform.Mac.Launcher;
 
@@ -40,16 +42,20 @@ public sealed class LaunchAgentLoginItem : ILoginItem
 
     private readonly string? _processPath;
     private readonly string _plistPath;
+    private readonly Localizer _localizer;
+    private readonly Func<string, bool> _canWrite;
 
-    public LaunchAgentLoginItem()
-        : this(Environment.ProcessPath, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile))
+    public LaunchAgentLoginItem(Localizer localizer)
+        : this(Environment.ProcessPath, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), localizer, UnixFileAccess.CanWrite)
     {
     }
 
-    internal LaunchAgentLoginItem(string? processPath, string home)
+    internal LaunchAgentLoginItem(string? processPath, string home, Localizer localizer, Func<string, bool> canWrite)
     {
         _processPath = processPath;
         _plistPath = Path.Join(home, "Library", "LaunchAgents", Label + ".plist");
+        _localizer = localizer;
+        _canWrite = canWrite;
     }
 
     /// <remarks>Under the <c>dotnet</c> host the agent would start <c>dotnet --background</c>, which is not the app.</remarks>
@@ -65,6 +71,18 @@ public sealed class LaunchAgentLoginItem : ILoginItem
     private void Enable()
     {
         var executable = _processPath ?? throw new LoginItemException("The app's executable path is unknown.");
+        // Both paths are gone at the next login: Gatekeeper's temporary copy, and a disk image once it is ejected.
+        if (
+            executable.Contains("/AppTranslocation/", StringComparison.Ordinal)
+            || (executable.StartsWith("/Volumes/", StringComparison.Ordinal) && !_canWrite(Path.GetDirectoryName(executable)!))
+        )
+        {
+            throw new LoginItemException("The app runs from a translocated or read-only location.")
+            {
+                UserMessage = _localizer["LoginItem.Mac.NotInstalled"],
+            };
+        }
+
         var plist = string.Format(
             CultureInfo.InvariantCulture,
             PlistTemplate,

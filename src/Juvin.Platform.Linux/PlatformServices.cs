@@ -24,6 +24,7 @@ public static class PlatformServices
         services.AddUnixLocalSocket();
         services.AddUnixConnectorSocket();
         services.AddSingleton<ITrayHostProbe, StatusNotifierTrayHostProbe>();
+        services.AddSingleton<IToolSearchPaths, LinuxToolSearchPaths>();
         services.AddSingleton<IPanelWindowSupport>(sp =>
         {
             var runner = sp.GetRequiredService<IProcessRunner>();

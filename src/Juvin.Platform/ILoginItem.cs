@@ -18,4 +18,8 @@ public interface ILoginItem
     Task DisableAsync(CancellationToken ct);
 }
 
-public sealed class LoginItemException(string message, Exception? inner = null) : Exception(message, inner);
+public sealed class LoginItemException(string message, Exception? inner = null) : Exception(message, inner)
+{
+    /// <summary>Localized text that tells the user what to do, shown instead of the generic failure; null when there is none.</summary>
+    public string? UserMessage { get; init; }
+}

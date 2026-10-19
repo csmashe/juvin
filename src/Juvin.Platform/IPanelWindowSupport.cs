@@ -4,6 +4,14 @@ namespace Juvin.Platform;
 public interface IPanelWindowSupport
 {
     /// <summary>
+    ///     Sets hints that must be in place before the window is first shown, such as where the window
+    ///     manager may place it. Best-effort, like <see cref="ShowOnAllWorkspaces" />.
+    /// </summary>
+    /// <param name="windowHandle">The native window handle Avalonia reports for the panel.</param>
+    /// <param name="handleDescriptor">What kind of handle <paramref name="windowHandle" /> is.</param>
+    void PrepareWindow(nint windowHandle, string? handleDescriptor);
+
+    /// <summary>
     ///     Asks the window manager to show the window on every workspace, so the panel appears on
     ///     the one the user is on rather than the one it was first shown on. Best-effort: does
     ///     nothing where the platform has no such hint or the request fails.

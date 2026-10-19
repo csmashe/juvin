@@ -149,19 +149,31 @@ public sealed record KeyChord
         !string.IsNullOrWhiteSpace(name) && TryNormalizeKey(name, out var key) ? this with { PhysicalKey = key } : this;
 
     /// <summary>The canonical form stored in settings, for example <c>Ctrl+Shift+F</c>.</summary>
-    public override string ToString() => Format("Ctrl", "Alt", "Shift", "Super");
+    public override string ToString() => Format("Ctrl", "Alt", "Shift", "Super", superFirst: false);
 
-    /// <summary>The chord as the user's keyboard labels it: <c>Cmd+Shift+F</c> on macOS for the canonical <c>Ctrl+Shift+F</c>.</summary>
+    /// <summary>
+    ///     The chord as the user's keyboard labels it. On macOS the canonical <c>Ctrl+Shift+F</c> is <c>Cmd+Shift+F</c>
+    ///     and <c>Super+Shift+F</c> is <c>Ctrl+Shift+F</c>, with the Control key first.
+    /// </summary>
     public string ToDisplayString(bool isMac) =>
-        isMac ? Format("Cmd", "Option", "Shift", "Ctrl") : ToString();
+        isMac ? Format("Cmd", "Option", "Shift", "Ctrl", superFirst: true) : ToString();
 
-    private string Format(string ctrl, string alt, string shift, string super)
+    private string Format(string ctrl, string alt, string shift, string super, bool superFirst)
     {
         var text = new StringBuilder();
+        if (superFirst)
+        {
+            Append(ChordModifiers.Super, super);
+        }
+
         Append(ChordModifiers.Ctrl, ctrl);
         Append(ChordModifiers.Alt, alt);
         Append(ChordModifiers.Shift, shift);
-        Append(ChordModifiers.Super, super);
+        if (!superFirst)
+        {
+            Append(ChordModifiers.Super, super);
+        }
+
         return text.Append(Key).ToString();
 
         void Append(ChordModifiers modifier, string name)

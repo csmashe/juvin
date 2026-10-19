@@ -1,6 +1,7 @@
 import browser from "webextension-polyfill";
 import { detectBrowser } from "../shared/browser-detect";
 import type { PingResult, PopupRequest, Status } from "../shared/runtime-messages";
+import { formatShortcut } from "../shared/shortcut-format";
 
 const ALL_SITES = { origins: ["<all_urls>"] };
 
@@ -22,6 +23,8 @@ const browserShortcut = element("browser-shortcut");
 const shortcutsHint = element("shortcuts-hint");
 const allSitesButton = element<HTMLButtonElement>("all-sites");
 
+let isMac = false;
+
 function request<T>(message: PopupRequest): Promise<T> {
   return browser.runtime.sendMessage(message) as Promise<T>;
 }
@@ -35,7 +38,7 @@ function render(status: Status): void {
   statusText.textContent = status.connected ? "Connected to Juvin" : status.connecting ? "Connecting to Juvin..." : "Not connected";
   showDetail(status.connected ? undefined : status.lastError);
   connectButton.hidden = status.connected;
-  appShortcut.textContent = status.shortcut ?? "not connected";
+  appShortcut.textContent = status.shortcut === undefined ? "not connected" : formatShortcut(status.shortcut, isMac);
 }
 
 async function refreshStatus(): Promise<void> {
@@ -120,6 +123,9 @@ element("test-page").addEventListener("click", async () => {
   window.close();
 });
 
-void openStatus();
+void (async () => {
+  isMac = (await browser.runtime.getPlatformInfo()).os === "mac";
+  await openStatus();
+})();
 void refreshBrowserShortcut();
 void refreshAllSites();

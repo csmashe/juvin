@@ -1,6 +1,6 @@
 # Builds the per-user Windows installer with Inno Setup and smoke-tests it with a silent install,
 # a start of the app, and a silent uninstall. A pushed v* tag also attaches the installer to the
-# draft GitHub release (shared with Release Linux); "Run workflow" builds and uploads the artifact only.
+# draft GitHub release (shared with Release Linux and Release macOS); "Run workflow" builds and uploads the artifact only.
 name: Release Windows
 
 on:
@@ -84,8 +84,8 @@ jobs:
     if: github.ref_type == 'tag'
     needs: package
     runs-on: ubuntu-24.04
-    # Shared with the other release workflow so only one creates the draft; queue: max keeps a rerun
-    # from cancelling the other platform's waiting job.
+    # Shared with the other release workflows so only one creates the draft; queue: max keeps a rerun
+    # from cancelling another platform's waiting job.
     concurrency:
       group: release-${{ github.ref_name }}
       queue: max
@@ -98,7 +98,7 @@ jobs:
           name: juvin-windows-${{ needs.package.outputs.version }}
           path: dist
 
-      # Release Linux attaches to the same draft; whichever release job runs first creates it.
+      # Release Linux and Release macOS attach to the same draft; whichever release job runs first creates it.
       - name: Attach to the draft release
         env:
           GH_TOKEN: ${{ github.token }}

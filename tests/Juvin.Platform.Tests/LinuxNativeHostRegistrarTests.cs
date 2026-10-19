@@ -20,6 +20,7 @@ public sealed class LinuxNativeHostRegistrarTests : IDisposable
         Directory.CreateDirectory(Bin);
         Directory.CreateDirectory(Path.GetDirectoryName(HostPath)!);
         File.WriteAllText(HostPath, "self-contained host");
+        File.SetUnixFileMode(HostPath, Executable);
     }
 
     public void Dispose()
@@ -447,12 +448,31 @@ public sealed class LinuxNativeHostRegistrarTests : IDisposable
     {
         var chrome = new BrowserTarget("chrome", "Google Chrome", BrowserFamily.Chromium, BrowserPackaging.Native);
         var other = _temp.File("other/juvin-host");
+        CreateExecutable("juvin-host", _temp.File("other"));
         await CreateRegistrar(other).RegisterAsync(chrome, CancellationToken.None);
 
         await CreateRegistrar().UnregisterAsync(chrome, CancellationToken.None);
 
         var manifestPath = Path.Join(Home, ".config/google-chrome/NativeMessagingHosts", NativeHostManifest.FileName);
         Assert.Equal(other, NativeHostManifest.ReadHostPath(manifestPath));
+    }
+
+    [LinuxFact]
+    public async Task Register_RefusesAHostThatCannotBeRun_AndCheckCallsAnUnrunnableHostStale()
+    {
+        var chrome = new BrowserTarget("chrome", "Google Chrome", BrowserFamily.Chromium, BrowserPackaging.Native);
+        var manifestPath = Path.Join(Home, ".config/google-chrome/NativeMessagingHosts", NativeHostManifest.FileName);
+        File.SetUnixFileMode(HostPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+
+        var error = await Assert.ThrowsAsync<NativeHostRegistrationException>(() => CreateRegistrar().RegisterAsync(chrome, CancellationToken.None));
+        Assert.Equal(new Localizer()["BrowserConnector.HostNotExecutable"], error.Message);
+        Assert.False(File.Exists(manifestPath));
+
+        File.SetUnixFileMode(HostPath, Executable);
+        await CreateRegistrar().RegisterAsync(chrome, CancellationToken.None);
+        File.SetUnixFileMode(HostPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+
+        Assert.Equal(HostRegistration.Stale, CreateRegistrar().CheckRegistration(chrome));
     }
 
     [LinuxFact]

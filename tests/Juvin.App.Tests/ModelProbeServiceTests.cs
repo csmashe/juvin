@@ -64,4 +64,14 @@ public sealed class ModelProbeServiceTests
     {
         Assert.Null(ModelProbeService.RecommendModel([]));
     }
+
+    [Fact]
+    public void CodexInstallCommand_IsTheStandaloneInstallerForTheOs()
+    {
+        Assert.Equal("curl -fsSL https://chatgpt.com/codex/install.sh | sh", ModelProbeService.CodexInstallCommandFor(isWindows: false));
+        Assert.Equal(
+            "powershell -ExecutionPolicy ByPass -c \"irm https://chatgpt.com/codex/install.ps1 | iex\"",
+            ModelProbeService.CodexInstallCommandFor(isWindows: true)
+        );
+    }
 }

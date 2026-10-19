@@ -30,6 +30,9 @@ public sealed partial class GeneralSectionViewModel : ObservableObject
     private bool _launchAtLoginFailed;
 
     [ObservableProperty]
+    private string _launchAtLoginFailure = "";
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSaveError))]
     private string? _saveError;
 
@@ -96,6 +99,7 @@ public sealed partial class GeneralSectionViewModel : ObservableObject
             if (!Save(s => s with { LaunchAtLogin = enable }))
             {
                 // The entry must match the saved setting, which startup refreshes it from.
+                LaunchAtLoginFailure = _localizer["General.LaunchAtLoginFailed"];
                 LaunchAtLoginFailed = true;
                 await SetLoginItemAsync(!enable);
             }
@@ -103,6 +107,7 @@ public sealed partial class GeneralSectionViewModel : ObservableObject
         catch (LoginItemException ex)
         {
             Trace.WriteLine($"[GeneralSection] Could not change the login item: {ex.InnerException?.GetType().Name ?? ex.GetType().Name}");
+            LaunchAtLoginFailure = ex.UserMessage ?? _localizer["General.LaunchAtLoginFailed"];
             LaunchAtLoginFailed = true;
             ApplySettings(_settings.Current);
         }

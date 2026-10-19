@@ -65,7 +65,7 @@
                             <TextBlock Classes="row-hint" Margin="0" Text="{loc:Str General.LaunchAtLoginUnsupported}" />
                         </Border>
                         <Border Classes="section-row divided" IsVisible="{Binding LaunchAtLoginFailed}">
-                            <TextBlock Classes="row-hint" Margin="0" Text="{loc:Str General.LaunchAtLoginFailed}" />
+                            <TextBlock Classes="row-hint" Margin="0" TextWrapping="Wrap" Text="{Binding LaunchAtLoginFailure}" />
                         </Border>
                     </StackPanel>
                 </Border>

@@ -109,8 +109,22 @@ public sealed class GeneralSectionViewModelTests
 
         Assert.False(vm.LaunchAtLogin);
         Assert.True(vm.LaunchAtLoginFailed);
+        Assert.Equal(new Localizer()["General.LaunchAtLoginFailed"], vm.LaunchAtLoginFailure);
         Assert.False(_settings.Current.LaunchAtLogin);
         Assert.Equal(0, _settings.SaveCount);
+    }
+
+    [Fact]
+    public void ALoginItemFailureWithAUserMessage_ShowsThatMessage()
+    {
+        var vm = Create();
+        _loginItem.Fail = true;
+        _loginItem.FailureMessage = "Move Juvin to the Applications folder.";
+
+        vm.LaunchAtLogin = true;
+
+        Assert.True(vm.LaunchAtLoginFailed);
+        Assert.Equal("Move Juvin to the Applications folder.", vm.LaunchAtLoginFailure);
     }
 
     [Fact]

@@ -24,7 +24,7 @@
     "rewrite": {
       "suggested_key": {
         "default": "Ctrl+Shift+F",
-        "mac": "Command+Shift+F"
+        "mac": "MacCtrl+Shift+F"
       },
       "description": "Rewrite the selected draft with Juvin"
     }
