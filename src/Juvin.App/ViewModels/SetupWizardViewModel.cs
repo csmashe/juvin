@@ -57,6 +57,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
     private readonly ISettingsService _settings;
     private bool _applyingSettings;
     private CancellationTokenSource? _codexRecheck;
+    private CancellationTokenSource? _setupRecheck;
     private bool _applyingServerUrl;
     private bool _serverChosenByUser;
     private string _shownServerUrl;
@@ -230,6 +231,9 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
     /// <summary>How often the mode step checks Codex again in Codex mode, so an install or sign-in shows up.</summary>
     internal TimeSpan CodexRecheckInterval { get; set; } = TimeSpan.FromSeconds(5);
 
+    /// <summary>How often the checklist step checks its open rows again, so a fix run in a terminal shows up.</summary>
+    internal TimeSpan SetupRecheckInterval { get; set; } = TimeSpan.FromSeconds(5);
+
     /// <summary>
     ///     Only a first run in Local mode picks a server or model for the user. A reopened wizard, or
     ///     Codex mode, suggests them with Use instead, so opening the step never changes the settings.
@@ -252,6 +256,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         }
 
         StopCodexRecheck();
+        StopSetupRecheck();
         _lifetime.Dispose();
         Connector.Dispose();
         Shortcut.Dispose();
@@ -276,6 +281,13 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         {
             _codexRecheck = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
             _ = RecheckCodexAsync(_codexRecheck.Token);
+        }
+
+        StopSetupRecheck();
+        if (Step == SetupWizardStep.Checklist && !IsClosed)
+        {
+            _setupRecheck = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+            _ = RecheckOpenSetupItemsAsync(_setupRecheck.Token);
         }
 
         _ = Step switch
@@ -595,6 +607,58 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         _codexRecheck?.Cancel();
         _codexRecheck?.Dispose();
         _codexRecheck = null;
+    }
+
+    private async Task RecheckOpenSetupItemsAsync(CancellationToken ct)
+    {
+        try
+        {
+            while (true)
+            {
+                await Task.Delay(SetupRecheckInterval, ct);
+                // A full evaluation in flight owns the rows; satisfied rows are left to Check again.
+                if (_completedEvaluation != _evaluation)
+                {
+                    continue;
+                }
+
+                var evaluation = _evaluation;
+                foreach (var row in SetupItems.Where(row => !row.IsSatisfied && !row.IsBusy).ToList())
+                {
+                    SetupTaskState state;
+                    try
+                    {
+                        state = await Task.Run(() => row.Source.EvaluateAsync(ct), ct);
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        continue;
+                    }
+
+                    if (evaluation != _evaluation)
+                    {
+                        break;
+                    }
+
+                    if (!row.IsBusy)
+                    {
+                        row.Apply(state);
+                    }
+                }
+
+                RefreshGating();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private void StopSetupRecheck()
+    {
+        _setupRecheck?.Cancel();
+        _setupRecheck?.Dispose();
+        _setupRecheck = null;
     }
 
     private static bool IsDefaultServer(string url) =>
@@ -943,6 +1007,7 @@ public sealed partial class StepDot : ObservableObject
 public sealed partial class SetupTaskRow : ObservableObject
 {
     private readonly Localizer _localizer;
+    private bool _lastActionFailed;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanRunAction))]
@@ -1009,6 +1074,12 @@ public sealed partial class SetupTaskRow : ObservableObject
         Detail = state.Detail;
         ActionLabel = state.ActionLabel;
         CopyCommand = state.CopyCommand;
+        // A failure message is stale once the task is satisfied, for example by a command run in a terminal.
+        if (_lastActionFailed && state.Kind == SetupTaskStatusKind.Satisfied)
+        {
+            _lastActionFailed = false;
+            ActionMessage = null;
+        }
     }
 
     public void BeginAction()
@@ -1021,6 +1092,7 @@ public sealed partial class SetupTaskRow : ObservableObject
     public void EndAction(SetupActionOutcome outcome)
     {
         IsBusy = false;
+        _lastActionFailed = !outcome.Success;
         ActionMessage = string.IsNullOrWhiteSpace(outcome.Detail)
             ? outcome.Message
             : $"{outcome.Message} {outcome.Detail}";

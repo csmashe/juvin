@@ -15,8 +15,11 @@ public sealed class FakeSetupTask : ISetupTask
         State = new SetupTaskState(initial, id, ActionLabel: "Fix");
     }
 
-    private SetupTaskState State { get; set; }
+    /// <summary>The state evaluation reports; set it to stand in for a fix made outside the wizard.</summary>
+    public SetupTaskState State { get; set; }
+
     public SetupTaskState? StateAfterAction { get; init; }
+    public SetupActionOutcome ActionOutcome { get; init; } = new(true, "Done");
 
     /// <summary>Answers the numbered evaluation, counting from 1, in place of the current state.</summary>
     public Func<int, Task<SetupTaskState>>? Evaluation { get; init; }
@@ -51,6 +54,6 @@ public sealed class FakeSetupTask : ISetupTask
             State = StateAfterAction;
         }
 
-        return new SetupActionOutcome(true, "Done");
+        return ActionOutcome;
     }
 }

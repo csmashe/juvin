@@ -99,6 +99,7 @@ public sealed class KeyboardAccessSetupTaskTests
         Assert.Equal("pkexec", fileName);
         Assert.Equal("/bin/sh", arguments[0]);
         Assert.Contains("udevadm control --reload-rules", arguments[2]);
+        Assert.EndsWith("|| exit 1", arguments[2]);
         Assert.Equal(
             [
                 "# Juvin: lets the signed-in user read keyboards for its global shortcut.",
@@ -111,6 +112,7 @@ public sealed class KeyboardAccessSetupTaskTests
 
     [Theory]
     [InlineData(126, "closed")]
+    [InlineData(127, "no password prompt")]
     [InlineData(1, "exit code 1")]
     public async Task RunAction_ReportsAFailureWithoutRestarting(int exitCode, string expected)
     {

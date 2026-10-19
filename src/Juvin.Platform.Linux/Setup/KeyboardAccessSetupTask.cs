@@ -24,10 +24,16 @@ public sealed class KeyboardAccessSetupTask : ISetupTask
     // pkexec's exit code when the user dismisses the password prompt.
     private const int PkexecDismissed = 126;
 
-    // Arguments arrive as $1 and $2, so the rule text needs no shell quoting.
+    // pkexec's exit code when no approval could be obtained, such as on a desktop with no
+    // authentication agent to show the password prompt (Sway, most tiling window managers).
+    private const int PkexecNotAuthorized = 127;
+
+    // Arguments arrive as $1 and $2, so the rule text needs no shell quoting. Any failed step
+    // exits 1, so 126 and 127 can only come from pkexec itself.
     private const string InstallScript =
         "printf '%s\\n' \"$1\" \"$2\" > \"$3\" && chmod 0644 \"$3\" "
-        + "&& udevadm control --reload-rules && udevadm trigger --subsystem-match=input && udevadm settle --timeout=5";
+        + "&& udevadm control --reload-rules && udevadm trigger --subsystem-match=input && udevadm settle --timeout=5 "
+        + "|| exit 1";
 
     private readonly Func<CancellationToken, Task> _accessGranted;
     private readonly Func<string, string?> _getEnvironment;
@@ -128,9 +134,12 @@ public sealed class KeyboardAccessSetupTask : ISetupTask
             Trace.WriteLine($"[KeyboardAccessSetupTask] Installing the rule exited with {exitCode}.");
             return new SetupActionOutcome(
                 false,
-                exitCode == PkexecDismissed
-                    ? _localizer["Setup.KeyboardAccess.Cancelled"]
-                    : _localizer.Format("Setup.KeyboardAccess.Failed", exitCode)
+                exitCode switch
+                {
+                    PkexecDismissed => _localizer["Setup.KeyboardAccess.Cancelled"],
+                    PkexecNotAuthorized => _localizer["Setup.KeyboardAccess.NotAuthorized"],
+                    _ => _localizer.Format("Setup.KeyboardAccess.Failed", exitCode),
+                }
             );
         }
 

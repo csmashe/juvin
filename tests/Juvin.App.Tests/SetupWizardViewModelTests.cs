@@ -114,6 +114,44 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task TheChecklistStep_RechecksOpenRows_AndClearsAFailureOnceFixed()
+    {
+        var task = new FakeSetupTask("keyboard", SetupTaskSeverity.Required, SetupTaskStatusKind.NeedsAction)
+        {
+            ActionOutcome = new SetupActionOutcome(false, "Run the command below."),
+        };
+        using var vm = Create(task);
+        vm.SetupRecheckInterval = TimeSpan.FromMilliseconds(20);
+        vm.StepIndex = (int)SetupWizardStep.Checklist;
+        await WaitUntilAsync(() => vm.SetupItems[0].Kind == SetupTaskStatusKind.NeedsAction);
+        await vm.RunSetupActionCommand.ExecuteAsync(vm.SetupItems[0]);
+        Assert.Equal("Run the command below.", vm.SetupItems[0].ActionMessage);
+
+        task.State = new SetupTaskState(SetupTaskStatusKind.Satisfied, "fixed in a terminal");
+        await WaitUntilAsync(() => vm.SetupItems[0].IsSatisfied);
+
+        Assert.Null(vm.SetupItems[0].ActionMessage);
+        Assert.True(vm.CanAdvance);
+    }
+
+    [Fact]
+    public async Task TheChecklistRecheck_SkipsSatisfiedRows_AndStopsOffTheStep()
+    {
+        var open = NewTask("open", SetupTaskSeverity.Recommended, SetupTaskStatusKind.NeedsAction);
+        var done = NewTask("done", SetupTaskSeverity.Required, SetupTaskStatusKind.Satisfied);
+        using var vm = Create(open, done);
+        vm.SetupRecheckInterval = TimeSpan.FromMilliseconds(20);
+        vm.StepIndex = (int)SetupWizardStep.Checklist;
+        await WaitUntilAsync(() => open.EvaluateCount > 2);
+        Assert.Equal(1, done.EvaluateCount);
+
+        vm.StepIndex = (int)SetupWizardStep.TryIt;
+        var evaluations = open.EvaluateCount;
+        await Task.Delay(200);
+        Assert.Equal(evaluations, open.EvaluateCount);
+    }
+
+    [Fact]
     public async Task RunningAnAction_ReevaluatesEveryRow()
     {
         var fixable = new FakeSetupTask("fixable", SetupTaskSeverity.Required, SetupTaskStatusKind.NeedsAction)
