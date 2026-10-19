@@ -30,6 +30,8 @@ public sealed class WindowsToolSearchPaths : IToolSearchPaths
 
     /// <param name="machineRoot">Stands in for <c>HKEY_LOCAL_MACHINE</c>.</param>
     /// <param name="userRoot">Stands in for <c>HKEY_CURRENT_USER</c>.</param>
+    /// <param name="localAppData">Stands in for the local application data folder.</param>
+    /// <param name="appData">Stands in for the roaming application data folder.</param>
     internal WindowsToolSearchPaths(RegistryKey machineRoot, RegistryKey userRoot, string localAppData, string appData)
     {
         _machineRoot = machineRoot;

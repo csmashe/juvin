@@ -306,6 +306,7 @@
   "Provider.Status.NotSignedIn": "The Codex CLI is not signed in. Run codex login in a terminal, sign in with ChatGPT, and check again.",
   "Provider.Status.CodexNotResponding": "The Codex CLI did not respond.",
   "Common.Check": "Check",
+  "Common.Copy": "Copy",
   "Common.Refresh": "Refresh",
   "Models.Mode.Local": "Local",
   "Models.Mode.Codex": "Codex",

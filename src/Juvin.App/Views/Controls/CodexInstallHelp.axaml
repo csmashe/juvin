@@ -5,7 +5,13 @@
              x:Class="Juvin.App.Views.Controls.CodexInstallHelp">
     <StackPanel Spacing="6">
         <TextBlock Classes="row-hint" Text="{loc:Str Models.CodexInstallHint}" />
-        <TextBox Classes="command" Text="{x:Static services:ModelProbeService.CodexInstallCommand}" />
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+            <TextBox Classes="command" Text="{x:Static services:ModelProbeService.CodexInstallCommand}" />
+            <Button Grid.Column="1"
+                    VerticalAlignment="Center"
+                    Content="{loc:Str Common.Copy}"
+                    Click="OnCopyClick" />
+        </Grid>
         <TextBlock Classes="row-hint" Margin="0" Text="{loc:Str Models.CodexSignInHint}" />
         <HyperlinkButton Padding="0"
                          Content="{loc:Str Models.CodexInstallGuide}"
