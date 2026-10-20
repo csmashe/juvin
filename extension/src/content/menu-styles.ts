@@ -242,7 +242,7 @@ ${CHIP_CSS}
 .facts { display: flex; flex-wrap: wrap; gap: 6px; }
 .fact { font-size: 13px; line-height: 18px; font-weight: 500; color: #3B4858; background: #F1F4F8; border-radius: 999px; padding: 4px 10px; }
 .divider { height: 1px; background: rgba(15, 45, 91, 0.08); margin: 12px 0; }
-.list { max-height: 240px; overflow-y: auto; scrollbar-width: thin; display: flex; flex-direction: column; gap: 2px; padding: 2px; }
+.list { overflow-y: auto; scrollbar-width: thin; display: flex; flex-direction: column; gap: 2px; padding: 2px; }
 .row {
   display: flex;
   align-items: center;

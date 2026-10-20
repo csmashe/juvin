@@ -205,8 +205,23 @@ ensure_app() {
 
 DMG=$REPO_ROOT/dist/Juvin-$KIT_VERSION-arm64.dmg
 
+# Over SSH the login Keychain is locked, and the Keychain tests fail with -25308 (errSecInteractionNotAllowed).
+# NoMac sets NOMAC_MAC_PASSWORD on the Mac; the GitHub runner's login Keychain is already unlocked.
+unlock_login_keychain() {
+    if [[ -z ${NOMAC_MAC_PASSWORD:-} ]]; then
+        $CI_MODE || note "NOMAC_MAC_PASSWORD is not set, so the login Keychain was not unlocked; over SSH the Keychain tests fail with -25308"
+        return 0
+    fi
+    if security unlock-keychain -p "$NOMAC_MAC_PASSWORD" "$HOME/Library/Keychains/login.keychain-db"; then
+        note "unlocked the login Keychain with NOMAC_MAC_PASSWORD"
+    else
+        note "security unlock-keychain failed; the Keychain tests may fail with -25308"
+    fi
+}
+
 row_M_04() {
     cd "$REPO_ROOT" || fail "no repository"
+    unlock_login_keychain
     local test_status=0
     dotnet test Juvin.slnx -c Release --logger "trx;LogFilePrefix=full" --results-directory "$OUT/M-04-trx" || test_status=$?
     note "dotnet test exited with status $test_status"
@@ -220,6 +235,7 @@ row_M_04() {
 
 row_M_04_mac() {
     cd "$REPO_ROOT" || fail "no repository"
+    unlock_login_keychain
     local filter="FullyQualifiedName~Mac|FullyQualifiedName~Keychain|FullyQualifiedName~LaunchAgent|FullyQualifiedName~UnixSocket|FullyQualifiedName~UnixConnectorSocket|FullyQualifiedName~SharpHook"
     local test_status=0
     dotnet test tests/Juvin.Platform.Tests -c Release --filter "$filter" --logger "trx;LogFilePrefix=mac" \
@@ -427,12 +443,12 @@ row_M_23() {
 import plistlib, sys
 plist = plistlib.load(open(sys.argv[1], "rb"))
 wanted = {"Label": "com.juvin.app", "ProgramArguments": [sys.argv[2], "--background"], "RunAtLoad": True,
-          "LimitLoadToSessionType": "Aqua", "JuvinManaged": True}
+          "LimitLoadToSessionType": "Aqua", "AbandonProcessGroup": True, "JuvinManaged": True}
 print("; ".join("%s is %r, expected %r" % (k, plist.get(k), v) for k, v in wanted.items() if plist.get(k) != v))
 EOF
     )
     [[ -z $out ]] || fail "$out"
-    note "plist lints and has Label, ProgramArguments (executable, --background), RunAtLoad, Aqua, JuvinManaged"
+    note "plist lints and has Label, ProgramArguments (executable, --background), RunAtLoad, Aqua, AbandonProcessGroup, JuvinManaged"
     if $CI_MODE; then
         note "the kit turned Launch at login on in settings.json before starting Juvin, which wrote the plist at startup"
     fi

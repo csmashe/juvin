@@ -33,7 +33,9 @@ public static class PlatformServices
             sp.GetRequiredService<Localizer>(),
             sp.GetRequiredService<IProcessRunner>(),
             ct => sp.GetService<IHotkeyRestart>()?.RestartAsync(ct) ?? Task.CompletedTask,
-            () => sp.GetService<IHotkeyRestart>()?.IsListening ?? false
+            () => sp.GetService<IHotkeyRestart>()?.IsListening ?? false,
+            () => sp.GetService<IHotkeyRestart>()?.NeedsPermission ?? false,
+            () => sp.GetService<IAppExit>()?.RequestExit()
         ));
         return services;
     }

@@ -115,6 +115,19 @@ public sealed class HotkeyServiceTests
         Assert.Equal(new HotkeyStatus(HotkeyStatusKind.Failed, "evdev", "No keyboard access."), service.Status);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task NeedsPermission_FollowsTheCauseTheBackendReported(bool needsPermission)
+    {
+        var service = Create(new FakeHotkeyBackend("sharphook") { StartFailure = "No access.", StartFailureNeedsPermission = needsPermission });
+
+        await service.StartAsync(CancellationToken.None);
+
+        Assert.Equal(HotkeyStatusKind.Failed, service.Status.Kind);
+        Assert.Equal(needsPermission, service.NeedsPermission);
+    }
+
     [Fact]
     public async Task Start_ReportsAChosenBackendThatFailsWithoutTryingOthers()
     {
@@ -226,6 +239,57 @@ public sealed class HotkeyServiceTests
         await WaitUntilAsync(() => backend.StartCount == 2);
         Assert.Equal("Ctrl+Shift+F", backend.Chord?.ToString());
         Assert.Equal("R", backend.Chord?.PhysicalKey);
+    }
+
+    [Fact]
+    public async Task ShortcutChange_SwitchesTheChordOfAListeningBackendWithoutRestartingIt()
+    {
+        var backend = new FakeChordChangeBackend("sharphook");
+        var service = Create(backend);
+        await service.StartAsync(CancellationToken.None);
+        var pressed = 0;
+        service.Pressed += () => pressed++;
+
+        _settings.Update(settings => settings with { RewriteShortcut = "Ctrl+Alt+J", RewriteShortcutPhysicalKey = "K" });
+
+        await WaitUntilAsync(() => backend.ChangeCount == 1);
+        Assert.Equal("Ctrl+Alt+J", backend.Chord?.ToString());
+        Assert.Equal("K", backend.Chord?.PhysicalKey);
+        Assert.Equal(1, backend.StartCount);
+        Assert.Equal(0, backend.StopCount);
+        Assert.Equal(new HotkeyStatus(HotkeyStatusKind.Active, "sharphook"), service.Status);
+
+        backend.Press();
+        Assert.Equal(1, pressed);
+    }
+
+    [Fact]
+    public async Task ShortcutChange_RestartsWhenTheBackendCannotSwitchToTheChord()
+    {
+        var backend = new FakeChordChangeBackend("sharphook") { ChangeFailure = "unsupported" };
+        var service = Create(backend);
+        await service.StartAsync(CancellationToken.None);
+
+        _settings.Update(settings => settings with { RewriteShortcut = "Ctrl+Alt+J" });
+
+        await WaitUntilAsync(() => backend.StartCount == 2);
+        Assert.Equal(1, backend.ChangeCount);
+        Assert.Equal("Ctrl+Alt+J", backend.Chord?.ToString());
+        Assert.True(backend.IsRunning);
+    }
+
+    [Fact]
+    public async Task BackendChoiceChange_RestartsEvenWhenTheBackendCanSwitchChords()
+    {
+        var backend = new FakeChordChangeBackend("sharphook");
+        var service = Create(backend);
+        await service.StartAsync(CancellationToken.None);
+
+        _settings.Update(settings => settings with { HotkeyBackend = "sharphook", RewriteShortcut = "Ctrl+Alt+J" });
+
+        await WaitUntilAsync(() => backend.StartCount == 2);
+        Assert.Equal(0, backend.ChangeCount);
+        Assert.Equal("Ctrl+Alt+J", backend.Chord?.ToString());
     }
 
     [Fact]

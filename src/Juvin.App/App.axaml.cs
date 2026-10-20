@@ -117,6 +117,12 @@ public class App : Application
             _exiting = true;
             desktop.Shutdown();
         };
+        services.GetRequiredService<AppExitService>().ExitRequested += () =>
+            Dispatcher.UIThread.Post(() =>
+            {
+                _exiting = true;
+                desktop.Shutdown();
+            });
 
         var loginItem = services.GetRequiredService<ILoginItem>();
         if (settings.Current.LaunchAtLogin && loginItem.IsSupported)
@@ -176,7 +182,8 @@ public class App : Application
         void OpenWizardOnFirstLaunch(object? sender, EventArgs e)
         {
             main.Opened -= OpenWizardOnFirstLaunch;
-            (main.DataContext as MainWindowViewModel)?.OpenWizardCommand.Execute(null);
+            // After the main window's own show and activation, so the wizard ends up in front of it.
+            Dispatcher.UIThread.Post(() => (main.DataContext as MainWindowViewModel)?.OpenWizardCommand.Execute(null));
         }
     }
 
@@ -355,8 +362,15 @@ public class App : Application
             window.WindowState = WindowState.Normal;
         }
 
-        window.Activate();
+        Activate(window);
         // GNOME Wayland can ignore an Activate issued in the same turn as Show.
-        Dispatcher.UIThread.Post(window.Activate);
+        Dispatcher.UIThread.Post(() => Activate(window));
+    }
+
+    // Activating the main window on macOS orders it above its modal setup wizard, so the wizard goes in front again.
+    private static void Activate(MainWindow window)
+    {
+        window.Activate();
+        (window.DataContext as MainWindowViewModel)?.ActivateOpenWizard();
     }
 }

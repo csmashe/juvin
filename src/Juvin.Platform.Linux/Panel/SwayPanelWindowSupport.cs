@@ -40,6 +40,10 @@ public sealed class SwayPanelWindowSupport : IPanelWindowSupport
 
     public void PrepareWindow(nint windowHandle, string? handleDescriptor) => _inner.PrepareWindow(windowHandle, handleDescriptor);
 
+    public void BeforeShow() => _inner.BeforeShow();
+
+    public void Hide(Action hideWindow) => _inner.Hide(hideWindow);
+
     public void ShowOnAllWorkspaces(nint windowHandle, string? handleDescriptor, string title)
     {
         _inner.ShowOnAllWorkspaces(windowHandle, handleDescriptor, title);
