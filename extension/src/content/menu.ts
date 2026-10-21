@@ -41,6 +41,9 @@ const MAX_SLOTS = 5;
 const MARK = -1;
 const GAP = 12;
 const MARGIN = 8;
+const LIST_MAX_HEIGHT = 240;
+/** About two rows, so a list squeezed by a short viewport still shows that it scrolls. */
+const LIST_MIN_HEIGHT = 92;
 const EDITOR_POLL_MS = 500;
 const COPIED_MS = 1500;
 const NOTE_FADE_MS = 3600;
@@ -91,6 +94,12 @@ export function placeBeside(target: Box, size: Size, viewport: Size): { left: nu
   }
 
   return { left: clamp(left, MARGIN, viewport.width - size.width - MARGIN), top: clamp(top, MARGIN, viewport.height - size.height - MARGIN) };
+}
+
+/** The list height that lets the menu (natural height `content`) fit the viewport; below the floor the menu scrolls instead. */
+export function fitListHeight(content: number, list: number, viewportHeight: number): number {
+  const overflow = Math.max(0, content - (viewportHeight - 2 * MARGIN));
+  return Math.max(Math.min(list, LIST_MIN_HEIGHT), list - overflow);
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -829,6 +838,7 @@ export class MenuRenderer {
     }
 
     if (this.menu === menu && menu.anchor) {
+      fitList(menu.card);
       placeHost(menu.host, menu.anchor, MENU_FALLBACK_SIZE);
     }
   }
@@ -989,6 +999,20 @@ function isRendered(box: Box): boolean {
 // Everything outside a modal dialog is inert, so a menu for an editor inside one must live inside it too.
 function mountPoint(editor: Editor): Element {
   return editor.closest("dialog:modal") ?? editor.ownerDocument.body;
+}
+
+// Measured from the list's content rather than its current height, so a list already cut keeps its scroll position.
+function fitList(card: HTMLElement): void {
+  const list = card.querySelector<HTMLElement>(".list");
+  const panel = card.parentElement;
+  if (card.hidden || !list || !panel) {
+    return;
+  }
+
+  const natural = Math.min(list.scrollHeight, LIST_MAX_HEIGHT);
+  const content = panel.scrollHeight - list.clientHeight + natural;
+  const win = card.ownerDocument.defaultView ?? window;
+  list.style.maxHeight = `${Math.floor(fitListHeight(content, natural, win.innerHeight))}px`;
 }
 
 function placeHost(host: HTMLElement, anchor: Box, fallback: Size): void {

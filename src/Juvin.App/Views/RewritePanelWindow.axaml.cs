@@ -58,6 +58,7 @@ public partial class RewritePanelWindow : Window
             _support?.PrepareWindow(native?.Handle ?? 0, native?.HandleDescriptor);
         }
 
+        _support?.BeforeShow();
         if (!IsVisible)
         {
             Show();
@@ -77,7 +78,16 @@ public partial class RewritePanelWindow : Window
         });
     }
 
-    public void HidePanel() => Hide();
+    public void HidePanel()
+    {
+        if (_support is null)
+        {
+            Hide();
+            return;
+        }
+
+        _support.Hide(Hide);
+    }
 
     protected override void OnClosing(WindowClosingEventArgs e)
     {

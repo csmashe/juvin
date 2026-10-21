@@ -33,6 +33,8 @@ public sealed class LaunchAgentLoginItem : ILoginItem
             <true/>
             <key>LimitLoadToSessionType</key>
             <string>Aqua</string>
+            <key>AbandonProcessGroup</key>
+            <true/>
             {3}
             <true/>
         </dict>
@@ -58,9 +60,13 @@ public sealed class LaunchAgentLoginItem : ILoginItem
         _canWrite = canWrite;
     }
 
-    /// <remarks>Under the <c>dotnet</c> host the agent would start <c>dotnet --background</c>, which is not the app.</remarks>
-    public bool IsSupported =>
-        _processPath is not null && !string.Equals(Path.GetFileNameWithoutExtension(_processPath), "dotnet", StringComparison.Ordinal);
+    /// <remarks>
+    ///     Only an executable in <c>X.app/Contents/MacOS</c> is the installed app; a Debug apphost or the
+    ///     <c>dotnet</c> host would start a build output that is not.
+    /// </remarks>
+    public bool IsSupported => _processPath is not null && IsInAppBundle(_processPath);
+
+    private static bool IsInAppBundle(string executable) => MacAppRelauncher.BundlePath(executable) is not null;
 
     public Task EnableAsync(CancellationToken ct) => Task.Run(Enable, ct);
 
@@ -70,11 +76,15 @@ public sealed class LaunchAgentLoginItem : ILoginItem
 
     private void Enable()
     {
-        var executable = _processPath ?? throw new LoginItemException("The app's executable path is unknown.");
+        if (_processPath is null || !IsInAppBundle(_processPath))
+        {
+            throw new LoginItemException("The app is not running from an app bundle.");
+        }
+
         // Both paths are gone at the next login: Gatekeeper's temporary copy, and a disk image once it is ejected.
         if (
-            executable.Contains("/AppTranslocation/", StringComparison.Ordinal)
-            || (executable.StartsWith("/Volumes/", StringComparison.Ordinal) && !_canWrite(Path.GetDirectoryName(executable)!))
+            _processPath.Contains("/AppTranslocation/", StringComparison.Ordinal)
+            || (_processPath.StartsWith("/Volumes/", StringComparison.Ordinal) && !_canWrite(Path.GetDirectoryName(_processPath)!))
         )
         {
             throw new LoginItemException("The app runs from a translocated or read-only location.")
@@ -87,7 +97,7 @@ public sealed class LaunchAgentLoginItem : ILoginItem
             CultureInfo.InvariantCulture,
             PlistTemplate,
             Label,
-            SecurityElement.Escape(executable),
+            SecurityElement.Escape(_processPath),
             ILoginItem.BackgroundArgument,
             ManagedKey
         );

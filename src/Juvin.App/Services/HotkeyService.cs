@@ -19,7 +19,7 @@ public enum HotkeyStatusKind
 
 /// <param name="BackendId">The backend listening, or the one that failed or was lost; null otherwise.</param>
 /// <param name="Message">The backend's own reason for a failure or loss; null when it gave none.</param>
-public sealed record HotkeyStatus(HotkeyStatusKind Kind, string? BackendId = null, string? Message = null)
+public sealed record HotkeyStatus(HotkeyStatusKind Kind, string? BackendId = null, string? Message = null, bool NeedsPermission = false)
 {
     public static HotkeyStatus Stopped { get; } = new(HotkeyStatusKind.Stopped);
 }
@@ -27,9 +27,10 @@ public sealed record HotkeyStatus(HotkeyStatusKind Kind, string? BackendId = nul
 /// <summary>
 ///     Listens for the rewrite shortcut through the user's chosen hotkey backend, or the first one
 ///     that starts in registration order, and turns each press into a capture. Restarts when the
-///     shortcut or the backend choice changes, and selects again shortly after a backend stops on its
-///     own. A saved shortcut that is not a valid chord falls back to the default. Traces carry backend
-///     ids and status only.
+///     shortcut or the backend choice changes, unless only the shortcut changed and the backend can
+///     switch chords while listening, and selects again shortly after a backend stops on its own. A
+///     saved shortcut that is not a valid chord falls back to the default. Traces carry backend ids
+///     and status only.
 /// </summary>
 /// <remarks>
 ///     Members are safe to call from any thread. Events are raised on backend or thread-pool
@@ -82,6 +83,8 @@ public sealed class HotkeyService : IHotkeyRestart
     public HotkeyStatus Status => _status;
 
     public bool IsListening => _status.Kind == HotkeyStatusKind.Active;
+
+    public bool NeedsPermission => _status is { Kind: HotkeyStatusKind.Failed, NeedsPermission: true };
 
     /// <summary>The backends that can run in this session, most preferred first.</summary>
     public IReadOnlyList<IHotkeyBackend> AvailableBackends => [.. _backends.Where(backend => backend.IsAvailable)];
@@ -207,7 +210,7 @@ public sealed class HotkeyService : IHotkeyRestart
         await _gate.WaitAsync().ConfigureAwait(false);
         try
         {
-            if (_started && _applied != (settings.RewriteShortcut, settings.RewriteShortcutPhysicalKey, settings.HotkeyBackend))
+            if (_started && _applied != (settings.RewriteShortcut, settings.RewriteShortcutPhysicalKey, settings.HotkeyBackend) && !TryChangeChord(settings))
             {
                 await ApplyAsync(settings, CancellationToken.None).ConfigureAwait(false);
             }
@@ -218,22 +221,46 @@ public sealed class HotkeyService : IHotkeyRestart
         }
     }
 
+    /// <summary>A shortcut-only change for a listening backend that can switch chords, without restarting its hook.</summary>
+    private bool TryChangeChord(AppSettings settings)
+    {
+        if (_applied?.Backend != settings.HotkeyBackend || _active is not { } active || active is not IHotkeyChordChange changer)
+        {
+            return false;
+        }
+
+        try
+        {
+            changer.ChangeChord(ChordFor(settings));
+        }
+        catch (HotkeyBackendException)
+        {
+            Trace.WriteLine($"[HotkeyService] {active.Id} cannot listen for the new shortcut; selecting again.");
+            return false;
+        }
+
+        _applied = (settings.RewriteShortcut, settings.RewriteShortcutPhysicalKey, settings.HotkeyBackend);
+        Trace.WriteLine($"[HotkeyService] {active.Id} listens for the new shortcut.");
+        return true;
+    }
+
+    private static KeyChord ChordFor(AppSettings settings)
+    {
+        if (KeyChord.TryParse(settings.RewriteShortcut, out var parsed))
+        {
+            return parsed.WithPhysicalKey(settings.RewriteShortcutPhysicalKey);
+        }
+
+        Trace.WriteLine($"[HotkeyService] The shortcut setting is not a valid chord ({settings.RewriteShortcut.Length} chars); using the default.");
+        return s_defaultChord;
+    }
+
     private async Task ApplyAsync(AppSettings settings, CancellationToken ct)
     {
         await StopActiveAsync().ConfigureAwait(false);
         _generation++;
         _applied = (settings.RewriteShortcut, settings.RewriteShortcutPhysicalKey, settings.HotkeyBackend);
-        KeyChord chord;
-        if (KeyChord.TryParse(settings.RewriteShortcut, out var parsed))
-        {
-            chord = parsed.WithPhysicalKey(settings.RewriteShortcutPhysicalKey);
-        }
-        else
-        {
-            Trace.WriteLine($"[HotkeyService] The shortcut setting is not a valid chord ({settings.RewriteShortcut.Length} chars); using the default.");
-            chord = s_defaultChord;
-        }
-
+        var chord = ChordFor(settings);
         var available = AvailableBackends;
         var preferred = available.FirstOrDefault(backend => backend.Id == settings.HotkeyBackend);
         if (preferred is null && settings.HotkeyBackend is { } chosen)
@@ -270,7 +297,8 @@ public sealed class HotkeyService : IHotkeyRestart
                 }
 
                 Trace.WriteLine($"[HotkeyService] {backend.Id} did not start ({ex.GetType().Name}).");
-                failure ??= new HotkeyStatus(HotkeyStatusKind.Failed, backend.Id, (ex as HotkeyBackendException)?.Message);
+                var backendFailure = ex as HotkeyBackendException;
+                failure ??= new HotkeyStatus(HotkeyStatusKind.Failed, backend.Id, backendFailure?.Message, backendFailure?.NeedsPermission ?? false);
                 continue;
             }
 

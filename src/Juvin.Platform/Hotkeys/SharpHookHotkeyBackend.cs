@@ -3,6 +3,7 @@ using Juvin.Core.Hotkeys;
 using Juvin.Core.Localization;
 using SharpHook;
 using SharpHook.Data;
+using SharpHook.Providers;
 
 namespace Juvin.Platform.Hotkeys;
 
@@ -10,7 +11,7 @@ namespace Juvin.Platform.Hotkeys;
 ///     A libuiohook global hook through SharpHook: the backend on Windows and macOS, and on Linux
 ///     only under X11, because it sees nothing from Wayland clients. Press-only.
 /// </summary>
-public sealed class SharpHookHotkeyBackend : IHotkeyBackend
+public sealed class SharpHookHotkeyBackend : IHotkeyBackend, IHotkeyChordChange
 {
     private const string BackendId = "sharphook";
 
@@ -19,14 +20,26 @@ public sealed class SharpHookHotkeyBackend : IHotkeyBackend
 
     private readonly Lock _gate = new();
     private readonly Localizer _localizer;
+    private readonly IGlobalHookProvider? _provider;
     private TaskPoolGlobalHook? _hook;
+    private Task? _run;
+    // A stopped hook whose thread had not ended yet; the next start waits for it.
+    private Task? _ending;
     private KeyCode _key;
     private bool _keyDown;
     private ChordModifiers _modifiers;
 
     public SharpHookHotkeyBackend(Localizer localizer)
+        : this(localizer, null)
+    {
+    }
+
+    /// <param name="localizer">Supplies the failure messages.</param>
+    /// <param name="provider">Stands in for libuiohook in tests; null uses the native library.</param>
+    internal SharpHookHotkeyBackend(Localizer localizer, IGlobalHookProvider? provider)
     {
         _localizer = localizer;
+        _provider = provider;
     }
 
     public string Id => BackendId;
@@ -47,13 +60,22 @@ public sealed class SharpHookHotkeyBackend : IHotkeyBackend
     {
         ArgumentNullException.ThrowIfNull(chord);
         await StopAsync().ConfigureAwait(false);
-        if (!KeyCodes.TryGetValue(KeyToMatch(chord, OperatingSystem.IsMacOS()), out var key))
+        var key = KeyCodeOf(chord);
+        Task? ending;
+        lock (_gate)
         {
-            throw new HotkeyBackendException(_localizer["Hotkey.SharpHook.UnsupportedKey"]);
+            ending = _ending;
         }
 
-        // A background thread: a hung libuiohook must not keep the process alive after the bounded stop.
-        var hook = new TaskPoolGlobalHook(runAsyncOnBackgroundThread: true);
+        // An old hook thread that ends after this one starts would clear SharpHook's dispatch callback under it.
+        if (ending is { IsCompleted: false } && await Task.WhenAny(ending, Task.Delay(s_startTimeout, ct)).ConfigureAwait(false) != ending)
+        {
+            ct.ThrowIfCancellationRequested();
+            Trace.WriteLine("[SharpHookHotkeyBackend] The previous hook thread is still ending.");
+            throw new HotkeyBackendException(_localizer["Hotkey.SharpHook.NoResponse"]);
+        }
+
+        var hook = new TaskPoolGlobalHook(globalHookProvider: _provider);
         var enabled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         hook.HookEnabled += (_, _) => enabled.TrySetResult();
         hook.KeyPressed += OnKeyPressed;
@@ -66,18 +88,24 @@ public sealed class SharpHookHotkeyBackend : IHotkeyBackend
             _hook = hook;
         }
 
-        var run = hook.RunAsync();
+        // Not RunAsync: its task completes before the hook thread clears SharpHook's process-wide dispatch
+        // callback, and a hook started in between would never hear from libuiohook. A long-running task
+        // gets its own background thread, so a hung libuiohook does not keep the process alive either.
+        var run = Task.Factory.StartNew(hook.Run, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        lock (_gate)
+        {
+            _run = run;
+        }
+
         var first = await Task.WhenAny(enabled.Task, run, Task.Delay(s_startTimeout, ct)).ConfigureAwait(false);
         if (first == run)
         {
             await StopAsync().ConfigureAwait(false);
             var result = run.Exception?.GetBaseException() is HookException failure ? failure.Result : UioHookResult.Failure;
             Trace.WriteLine($"[SharpHookHotkeyBackend] Hook did not start ({result}).");
-            throw new HotkeyBackendException(
-                IsAccessibilityFailure(result)
-                    ? _localizer["Hotkey.SharpHook.AccessibilityNeeded"]
-                    : _localizer.Format("Hotkey.SharpHook.StartFailed", result)
-            );
+            throw IsAccessibilityFailure(result)
+                ? new HotkeyBackendException(_localizer["Hotkey.SharpHook.AccessibilityNeeded"], needsPermission: true)
+                : new HotkeyBackendException(_localizer.Format("Hotkey.SharpHook.StartFailed", result));
         }
 
         if (ct.IsCancellationRequested)
@@ -101,13 +129,28 @@ public sealed class SharpHookHotkeyBackend : IHotkeyBackend
         );
     }
 
+    public void ChangeChord(KeyChord chord)
+    {
+        ArgumentNullException.ThrowIfNull(chord);
+        var key = KeyCodeOf(chord);
+        lock (_gate)
+        {
+            _key = key;
+            _modifiers = chord.Modifiers;
+            _keyDown = false;
+        }
+    }
+
     public async Task StopAsync()
     {
         TaskPoolGlobalHook? hook;
+        Task? run;
         lock (_gate)
         {
             hook = _hook;
+            run = _run;
             _hook = null;
+            _run = null;
             _keyDown = false;
         }
 
@@ -118,7 +161,7 @@ public sealed class SharpHookHotkeyBackend : IHotkeyBackend
 
         hook.KeyPressed -= OnKeyPressed;
         hook.KeyReleased -= OnKeyReleased;
-        // libuiohook's Dispose blocks until its thread stops; never let it hang the caller.
+        // Bounded: a stuck libuiohook stop must not hang the caller.
         try
         {
             await Task.Run(hook.Dispose).WaitAsync(s_stopTimeout).ConfigureAwait(false);
@@ -126,6 +169,16 @@ public sealed class SharpHookHotkeyBackend : IHotkeyBackend
         catch (Exception ex) when (ex is TimeoutException or HookException)
         {
             Trace.WriteLine($"[SharpHookHotkeyBackend] Stopping the hook failed ({ex.GetType().Name}).");
+        }
+
+        // Dispose only asks libuiohook to stop; the next hook must not start until this one has fully ended.
+        if (run is not null && await Task.WhenAny(run, Task.Delay(s_stopTimeout)).ConfigureAwait(false) != run)
+        {
+            Trace.WriteLine("[SharpHookHotkeyBackend] The hook thread did not end in time.");
+            lock (_gate)
+            {
+                _ending = run;
+            }
         }
     }
 
@@ -154,6 +207,11 @@ public sealed class SharpHookHotkeyBackend : IHotkeyBackend
                 : _localizer["Hotkey.SharpHook.Stopped"]
         );
     }
+
+    private KeyCode KeyCodeOf(KeyChord chord) =>
+        KeyCodes.TryGetValue(KeyToMatch(chord, OperatingSystem.IsMacOS()), out var key)
+            ? key
+            : throw new HotkeyBackendException(_localizer["Hotkey.SharpHook.UnsupportedKey"]);
 
     internal static bool IsAccessibilityFailure(UioHookResult result) =>
         result is UioHookResult.ErrorAxApiDisabled or UioHookResult.ErrorAxApiRevoked;

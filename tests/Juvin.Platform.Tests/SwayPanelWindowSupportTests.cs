@@ -101,5 +101,11 @@ public sealed class SwayPanelWindowSupportTests : IDisposable
         }
 
         public void ShowOnAllWorkspaces(nint windowHandle, string? handleDescriptor, string title) => Calls.Add((windowHandle, handleDescriptor, title));
+
+        public void BeforeShow()
+        {
+        }
+
+        public void Hide(Action hideWindow) => hideWindow();
     }
 }

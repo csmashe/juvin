@@ -42,6 +42,7 @@ public sealed class LaunchAgentLoginItemTests : IDisposable
             dict.Elements("key").Single(k => k.Value == "ProgramArguments").ElementsAfterSelf().First().Elements("string").Select(e => e.Value)
         );
         Assert.Equal("<true />", Value(dict, "RunAtLoad"));
+        Assert.Equal("<true />", Value(dict, "AbandonProcessGroup"));
         Assert.Equal("<true />", Value(dict, "JuvinManaged"));
     }
 
@@ -99,9 +100,26 @@ public sealed class LaunchAgentLoginItemTests : IDisposable
         Assert.True(File.Exists(PlistPath));
     }
 
-    [Fact]
-    public void TheDotnetHost_IsUnsupported()
+    [Theory]
+    [InlineData("/usr/local/share/dotnet/dotnet")]
+    [InlineData("/Users/agent/drive/src/Juvin/src/Juvin.App/bin/Debug/net10.0/juvin")]
+    [InlineData("/Users/agent/Juvin/Contents/MacOS/juvin")]
+    [InlineData("/Users/agent/.app/Contents/MacOS/juvin")]
+    [InlineData("/Applications/Juvin.app/Contents/juvin")]
+    public async Task AnExecutableOutsideAnAppBundle_IsUnsupportedAndEnableThrows(string processPath)
     {
-        Assert.False(Create("/usr/local/share/dotnet/dotnet").IsSupported);
+        var item = Create(processPath);
+
+        Assert.False(item.IsSupported);
+        await Assert.ThrowsAsync<LoginItemException>(() => item.EnableAsync(CancellationToken.None));
+        Assert.False(File.Exists(PlistPath));
+    }
+
+    [Theory]
+    [InlineData("/Applications/Juvin.app/Contents/MacOS/juvin")]
+    [InlineData("/Users/agent/Applications/Juvin Beta.app/Contents/MacOS/juvin")]
+    public void AnExecutableInAnAppBundle_IsSupported(string processPath)
+    {
+        Assert.True(Create(processPath).IsSupported);
     }
 }
