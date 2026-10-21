@@ -52,6 +52,8 @@ public static class ServiceRegistrations
         services.AddSingleton<ModelProbeService>();
 
         services.AddSingleton<TrayIconService>();
+        services.AddSingleton<AppExitService>();
+        services.AddSingleton<IAppExit>(sp => sp.GetRequiredService<AppExitService>());
         services.AddSingleton<ControlCommandHandler>();
         services.AddSingleton<ConnectorService>();
         services.AddSingleton<HotkeyService>();

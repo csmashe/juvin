@@ -468,6 +468,127 @@ describe("applyReplacement", () => {
     expect(!result.ok && result.error.code).toBe("editor-gone");
   });
 
+  describe("a whole line that a block follows", () => {
+    // Gmail's draft on Chrome: the first line is bare text and each later line a div.
+    const GMAIL_DRAFT = `<div dir="ltr">line one<div>line two</div></div>`;
+
+    async function capturedLine(start: number, end: number, text: string, markdown: boolean): Promise<{ editor: HTMLElement; registry: EditorRegistry; request: Parameters<typeof applyReplacement>[2] }> {
+      document.body.innerHTML = `<div id="ed" contenteditable="true">${GMAIL_DRAFT}</div>`;
+      const editor = document.getElementById("ed")!;
+      select(editor, start, end);
+      const registry = new EditorRegistry(() => "e-1");
+      const capture = await captureContext(document, OTHER_SITE, registry);
+      if (!capture.ok) {
+        throw new Error("capture failed");
+      }
+
+      const formatHash = capture.capture.selection.formatHash!;
+      return { editor, registry, request: { editorId: "e-1", expectedHash: capture.capture.editor.hash, start, end, text, ...(markdown ? { format: "markdown" as const, expectedFormatHash: formatHash } : {}) } };
+    }
+
+    /** Chrome emptying the line leaves a <br> after the inserted text, unless the insertion is a block of its own. */
+    function chromeExec(editor: HTMLElement, commands: string[]): ExecCommand {
+      const history: string[] = [];
+      return (doc, command, value) => {
+        commands.push(command);
+        if (command === "undo") {
+          editor.innerHTML = history.pop() ?? editor.innerHTML;
+          return true;
+        }
+
+        history.push(editor.innerHTML);
+        const range = doc.getSelection()!.getRangeAt(0);
+        const line = range.startContainer.parentNode!;
+        const emptied = range.startOffset === 0 && range.endOffset === (range.endContainer as Text).data.length;
+        fakeExec(doc, command, value);
+        if (emptied && !value?.startsWith("<div>")) {
+          line.insertBefore(doc.createElement("br"), line.querySelector("div"));
+        }
+
+        return true;
+      };
+    }
+
+    for (const markdown of [false, true]) {
+      it(`replaces the line without an extra empty line after it${markdown ? " from Markdown" : ""}`, async () => {
+        const { editor, registry, request } = await capturedLine(0, 8, "the rewritten first line", markdown);
+        const commands: string[] = [];
+        const exec = chromeExec(editor, commands);
+        const result = await applyReplacement(document, registry, request, exec);
+        expect(result).toEqual({ ok: true });
+        expect(commands).toEqual([markdown ? "insertHTML" : "insertText", "undo", "insertHTML"]);
+        expect(editor.querySelector("br")).toBeNull();
+        expect(editor.innerHTML).toBe(`<div dir="ltr"><div>the rewritten first line</div><div>line two</div></div>`);
+
+        exec(document, "undo");
+        expect(editor.innerHTML).toBe(GMAIL_DRAFT);
+      });
+    }
+
+    it("keeps line breaks and runs of spaces in a multi-line plain replacement", async () => {
+      const { editor, registry, request } = await capturedLine(0, 8, "two  spaced\nlines", false);
+      const result = await applyReplacement(document, registry, request, chromeExec(editor, []));
+      expect(result).toEqual({ ok: true });
+      expect(editor.innerHTML).toBe(`<div dir="ltr"><div>two&nbsp; spaced<br>lines</div><div>line two</div></div>`);
+    });
+
+    it("edits once when no <br> is left behind", async () => {
+      const { editor, registry, request } = await capturedLine(0, 4, "LINE", false);
+      const commands: string[] = [];
+      const result = await applyReplacement(document, registry, request, chromeExec(editor, commands));
+      expect(result).toEqual({ ok: true });
+      expect(commands).toEqual(["insertText"]);
+      expect(editor.innerHTML).toBe(`<div dir="ltr">LINE one<div>line two</div></div>`);
+    });
+
+    it("leaves the edit alone when Undo did not restore the draft", async () => {
+      const { editor, registry, request } = await capturedLine(0, 8, "the rewritten first line", false);
+      const commands: string[] = [];
+      const chrome = chromeExec(editor, commands);
+      const exec: ExecCommand = (doc, command, value) => (command === "undo" ? (commands.push(command), true) : chrome(doc, command, value));
+      const result = await applyReplacement(document, registry, request, exec);
+      expect(result).toEqual({ ok: true });
+      expect(commands).toEqual(["insertText", "undo"]);
+      expect(readPlainText(editor).text).toBe("the rewritten first line\nline two");
+    });
+
+    it("never retries an edit of part of a line, even when the replacement brings its own breaks", async () => {
+      const { editor, registry, request } = await capturedLine(5, 8, "ONE\n\n\n- item", true);
+      const commands: string[] = [];
+      const result = await applyReplacement(document, registry, request, chromeExec(editor, commands));
+      expect(result).toEqual({ ok: true });
+      expect(commands).toEqual(["insertHTML"]);
+      expect(readPlainText(editor).text.startsWith("line ONE")).toBe(true);
+    });
+
+    it("redoes the edit when Undo left the draft in between", async () => {
+      const { editor, registry, request } = await capturedLine(0, 8, "the rewritten first line", false);
+      const commands: string[] = [];
+      const chrome = chromeExec(editor, commands);
+      let edited = "";
+      const exec: ExecCommand = (doc, command, value) => {
+        if (command === "undo") {
+          commands.push(command);
+          edited = editor.innerHTML;
+          editor.innerHTML = `<div dir="ltr">neither<div>line two</div></div>`;
+          return true;
+        }
+
+        if (command === "redo") {
+          commands.push(command);
+          editor.innerHTML = edited;
+          return true;
+        }
+
+        return chrome(doc, command, value);
+      };
+      const result = await applyReplacement(document, registry, request, exec);
+      expect(result).toEqual({ ok: true });
+      expect(commands).toEqual(["insertText", "undo", "redo"]);
+      expect(readPlainText(editor).text).toBe("the rewritten first line\nline two");
+    });
+  });
+
   describe("around content other than text", () => {
     async function capturedWith(html: string, start: number, end: number): Promise<{ editor: HTMLElement; registry: EditorRegistry; request: Parameters<typeof applyReplacement>[2] }> {
       document.body.innerHTML = `<div id="ed" contenteditable="true">${html}</div>`;

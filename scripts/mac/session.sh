@@ -18,7 +18,7 @@
 #                    desktop link and the session password
 #   stop-block1      stops the Mac, only when this kit started it as block 1
 # Environment:
-#   NOMAC              the nomac command (default nomac on PATH, else npx -y @nomac/cli@0.13.1)
+#   NOMAC              the nomac command (default nomac on PATH, else npx -y @nomac/cli@0.13.2)
 #   JUVIN_KIT_OLLAMA   the LAN model server the tunnel reaches (default 10.0.3.20:11434)
 set -euo pipefail
 
@@ -45,7 +45,7 @@ if [[ -n ${NOMAC:-} ]]; then
 elif command -v nomac >/dev/null 2>&1; then
     NOMAC_CMD=("$(command -v nomac)")
 else
-    NOMAC_CMD=(npx -y @nomac/cli@0.13.1)
+    NOMAC_CMD=(npx -y @nomac/cli@0.13.2)
 fi
 nomac() { (cd "$REPO_ROOT" && "${NOMAC_CMD[@]}" "$@"); }
 
@@ -199,20 +199,27 @@ cmd_status() {
 cmd_handoff() {
     local deadline minutes
     cmd_pull
-    nomac status
-    deadline=$(status_field session.activity.hard_deadline_at)
-    if [[ -n $deadline ]]; then
-        minutes=$(python3 -c '
+    nomac status || true
+    deadline=$(status_field session.activity.hard_deadline_at || true)
+    # @nomac/cli 0.13.2 gives epoch milliseconds; an ISO time is accepted too.
+    minutes=$(python3 -c '
 import datetime, sys
-end = datetime.datetime.fromisoformat(sys.argv[1].replace("Z", "+00:00"))
-print(int((end - datetime.datetime.now(datetime.timezone.utc)).total_seconds() // 60))' "$deadline")
+raw = sys.argv[1].strip()
+try:
+    end = datetime.datetime.fromtimestamp(float(raw) / 1000, datetime.timezone.utc)
+except ValueError:
+    end = datetime.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+print(int((end - datetime.datetime.now(datetime.timezone.utc)).total_seconds() // 60))' "$deadline" 2>/dev/null || true)
+    if [[ $minutes =~ ^-?[0-9]+$ ]]; then
         echo "About $minutes minutes left on the Mac."
         if ((minutes < 60)); then
-            nomac extend 60
+            nomac extend 60 || echo "warning: nomac extend 60 failed; extend the Mac yourself"
         fi
+    else
+        echo "warning: could not read the stop time (${deadline:-none}); see the Stops by itself line above"
     fi
     echo
-    nomac desktop --no-open
+    nomac desktop --no-open || echo "warning: nomac desktop failed"
     echo
     echo "Session password:"
     nomac password

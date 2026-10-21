@@ -7,6 +7,8 @@ namespace Juvin.App.Tests.Fakes;
 public sealed class FakeHotkeyBackend(string id, bool isAvailable = true) : IHotkeyBackend
 {
     public string? StartFailure { get; set; }
+
+    public bool StartFailureNeedsPermission { get; init; }
     public KeyChord? Chord { get; private set; }
     public bool IsRunning { get; private set; }
     public int StartCount { get; private set; }
@@ -23,7 +25,7 @@ public sealed class FakeHotkeyBackend(string id, bool isAvailable = true) : IHot
         StartCount++;
         if (StartFailure is not null)
         {
-            throw new HotkeyBackendException(StartFailure);
+            throw new HotkeyBackendException(StartFailure, StartFailureNeedsPermission);
         }
 
         Chord = chord;

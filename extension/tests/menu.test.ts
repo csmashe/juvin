@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MAX_INSTRUCTION_LENGTH, type MenuUpdateMessage } from "../src/shared/protocol";
 import type { MenuNotice, MenuShowRequest } from "../src/shared/runtime-messages";
 import { EditorRegistry } from "../src/content/editor-registry";
-import { MENU_STRINGS, MenuRenderer, placeBeside } from "../src/content/menu";
+import { fitListHeight, MENU_STRINGS, MenuRenderer, placeBeside } from "../src/content/menu";
 
 const SLOTS = [
   { id: "missing", title: "What am I missing?" },
@@ -747,6 +747,41 @@ describe("MenuRenderer", () => {
       expect(key("Enter").defaultPrevented).toBe(true);
       expect(h.notices).toEqual([{ kind: "juvin.menu.choose", menuId: "menu-1", action: "clearer" }]);
     });
+
+    it("reaches Review past the last action with the arrow keys", () => {
+      openList(SLOTS);
+      for (let i = 0; i < 1 + SLOTS.length + 1; i++) {
+        key("ArrowDown");
+      }
+
+      expect(rows().at(-1)!.classList.contains("focused")).toBe(true);
+      expect(rows().at(-1)!.textContent).toBe(MENU_STRINGS.review);
+    });
+
+    it("cuts the list to what the viewport leaves, measured from its content", () => {
+      // The menu as on a 650 px tall viewport: 768 px of content with a 232 px list.
+      const heights = new Map([["list", { scrollHeight: 232, clientHeight: 232 }], ["root", { scrollHeight: 768, clientHeight: 768 }]]);
+      const measure = (property: "scrollHeight" | "clientHeight") =>
+        vi.spyOn(HTMLElement.prototype, property, "get").mockImplementation(function (this: HTMLElement) {
+          return heights.get(this.className)?.[property] ?? 0;
+        });
+      measure("scrollHeight");
+      measure("clientHeight");
+      vi.spyOn(window, "innerHeight", "get").mockReturnValue(650);
+      try {
+        openList(SLOTS);
+        const list = h.root().querySelector<HTMLElement>(".list")!;
+        expect(list.style.maxHeight).toBe("98px");
+
+        // Already cut and scrolled, the next reposition keeps the same height.
+        heights.set("list", { scrollHeight: 232, clientHeight: 98 });
+        heights.set("root", { scrollHeight: 634, clientHeight: 634 });
+        vi.advanceTimersByTime(600);
+        expect(list.style.maxHeight).toBe("98px");
+      } finally {
+        vi.restoreAllMocks();
+      }
+    });
   });
 
   it("reaches and activates every card control from the keyboard", () => {
@@ -949,6 +984,25 @@ describe("MenuRenderer", () => {
     expect(host.parentElement).toBe(document.body);
     expect(h.root().querySelector(".card .result")!.textContent).toBe("the rewrite");
     expect(h.notices).toEqual([]);
+  });
+});
+
+describe("fitListHeight", () => {
+  it("leaves a list that fits alone", () => {
+    expect(fitListHeight(600, 232, 800)).toBe(232);
+  });
+
+  it("gives up exactly what overflows, keeping an 8 px margin top and bottom", () => {
+    expect(fitListHeight(768, 232, 650)).toBe(98);
+    expect(fitListHeight(768, 232, 700)).toBe(148);
+  });
+
+  it("stops at about two rows, where the whole menu scrolls instead", () => {
+    expect(fitListHeight(768, 232, 500)).toBe(92);
+  });
+
+  it("never grows a short list to the floor", () => {
+    expect(fitListHeight(900, 46, 500)).toBe(46);
   });
 });
 

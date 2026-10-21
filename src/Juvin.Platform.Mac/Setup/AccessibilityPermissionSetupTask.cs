@@ -2,12 +2,15 @@ using System.ComponentModel;
 using System.Diagnostics;
 using Juvin.Core.Localization;
 using Juvin.Core.Providers;
+using Juvin.Platform.Mac.Launcher;
 using Juvin.Platform.Setup;
 
 namespace Juvin.Platform.Mac.Setup;
 
 /// <summary>
-///     Asks for the Accessibility permission the global shortcut hook needs on macOS. Unverified on hardware.
+///     Asks for the Accessibility permission the global shortcut hook needs on macOS. The hook checks
+///     the permission through a CoreGraphics preflight that can keep its first answer for the life of
+///     the process, so a permission granted while Juvin runs needs a restart, which the row offers.
 /// </summary>
 public sealed class AccessibilityPermissionSetupTask : ISetupTask
 {
@@ -18,19 +21,25 @@ public sealed class AccessibilityPermissionSetupTask : ISetupTask
     private readonly IAccessibilityTrust _trust;
     private readonly Func<CancellationToken, Task> _hotkeyRestart;
     private readonly Func<bool> _hotkeyListening;
+    private readonly Func<bool> _hotkeyNeedsPermission;
+    private readonly IAppRelauncher _relauncher;
     private readonly SemaphoreSlim _restartGate = new(1, 1);
 
     /// <param name="localizer">Supplies the row text.</param>
     /// <param name="runner">Opens System Settings at the Accessibility pane.</param>
     /// <param name="hotkeyRestart">Called while the permission is granted and the shortcut is not listening, so a hook that failed without it starts.</param>
     /// <param name="hotkeyListening">Whether the shortcut is already listening, in which case no restart is needed.</param>
+    /// <param name="hotkeyNeedsPermission">Whether the shortcut last failed because macOS refused the permission; only then can a restart help.</param>
+    /// <param name="requestExit">Ends the app after a relaunch is set up.</param>
     public AccessibilityPermissionSetupTask(
         Localizer localizer,
         IProcessRunner runner,
         Func<CancellationToken, Task> hotkeyRestart,
-        Func<bool> hotkeyListening
+        Func<bool> hotkeyListening,
+        Func<bool> hotkeyNeedsPermission,
+        Action requestExit
     )
-        : this(localizer, runner, new AccessibilityTrust(), hotkeyRestart, hotkeyListening)
+        : this(localizer, runner, new AccessibilityTrust(), hotkeyRestart, hotkeyListening, new MacAppRelauncher(requestExit), hotkeyNeedsPermission)
     {
     }
 
@@ -39,7 +48,9 @@ public sealed class AccessibilityPermissionSetupTask : ISetupTask
         IProcessRunner runner,
         IAccessibilityTrust trust,
         Func<CancellationToken, Task> hotkeyRestart,
-        Func<bool> hotkeyListening
+        Func<bool> hotkeyListening,
+        IAppRelauncher relauncher,
+        Func<bool>? hotkeyNeedsPermission = null
     )
     {
         _localizer = localizer;
@@ -47,6 +58,8 @@ public sealed class AccessibilityPermissionSetupTask : ISetupTask
         _trust = trust;
         _hotkeyRestart = hotkeyRestart;
         _hotkeyListening = hotkeyListening;
+        _hotkeyNeedsPermission = hotkeyNeedsPermission ?? (() => true);
+        _relauncher = relauncher;
     }
 
     public string Id => "accessibility";
@@ -78,8 +91,27 @@ public sealed class AccessibilityPermissionSetupTask : ISetupTask
             await RestartHotkeyAsync(ct).ConfigureAwait(false);
         }
 
-        return _hotkeyListening()
-            ? new SetupTaskState(SetupTaskStatusKind.Satisfied, _localizer["Setup.Accessibility.Granted"])
+        if (_hotkeyListening())
+        {
+            return new SetupTaskState(SetupTaskStatusKind.Satisfied, _localizer["Setup.Accessibility.Granted"]);
+        }
+
+        if (!_hotkeyNeedsPermission())
+        {
+            return new SetupTaskState(
+                SetupTaskStatusKind.Failed,
+                _localizer["Setup.Accessibility.NotListening"],
+                _localizer["Setup.Accessibility.OtherFailureDetail"]
+            );
+        }
+
+        return _relauncher.CanRelaunch
+            ? new SetupTaskState(
+                SetupTaskStatusKind.NeedsAction,
+                _localizer["Setup.Accessibility.NotListening"],
+                _localizer["Setup.Accessibility.RestartDetail"],
+                _localizer["Setup.Accessibility.RestartAction"]
+            )
             : new SetupTaskState(
                 SetupTaskStatusKind.Failed,
                 _localizer["Setup.Accessibility.NotListening"],
@@ -110,6 +142,14 @@ public sealed class AccessibilityPermissionSetupTask : ISetupTask
 
     public async Task<SetupActionOutcome> RunActionAsync(CancellationToken ct)
     {
+        // A restart helps only once trusted; without trust the action still opens the settings.
+        if (_trust.IsTrusted() && !_hotkeyListening() && _hotkeyNeedsPermission() && _relauncher.CanRelaunch)
+        {
+            return _relauncher.Relaunch()
+                ? new SetupActionOutcome(true, _localizer["Setup.Accessibility.Restarting"])
+                : new SetupActionOutcome(false, _localizer["Setup.Accessibility.RestartFailed"]);
+        }
+
         _trust.Prompt();
         try
         {

@@ -5,10 +5,10 @@ import { isEditable, isPlainEditor, isTextArea, type Editor, type EditorRegistry
 import { hashText } from "./hash";
 import { embeddedContent, expectFormatting, formatRuns, formatSignature, formattingSnapshot, type FormatRun } from "./formatting";
 import { markdownToElement, stripMarkdown } from "./markdown";
-import { offsetsToRange, readPlainText } from "./plain-text";
+import { isBlock, offsetsToRange, readPlainText } from "./plain-text";
 
 /** Runs an editing command; injectable because jsdom has no execCommand. */
-export type ExecCommand = (doc: Document, command: "insertText" | "insertHTML" | "delete" | "undo", value?: string) => boolean;
+export type ExecCommand = (doc: Document, command: "insertText" | "insertHTML" | "delete" | "undo" | "redo", value?: string) => boolean;
 
 export const browserExecCommand: ExecCommand = (doc, command, value) =>
   typeof doc.execCommand === "function" && doc.execCommand(command, false, value);
@@ -41,6 +41,8 @@ interface Insertion {
   rendered: string;
   /** For HTML, the formatting the editor should show in place of the selection. */
   runs?: FormatRun[];
+  /** For a rich editor, the same content as HTML wrapped in a block of its own. */
+  block?: string;
 }
 
 /** Markdown becomes HTML built from the subset in a rich editor and stripped text in a textarea. */
@@ -49,12 +51,34 @@ function insertionFor(doc: Document, editor: Editor, text: string, markdown: boo
     const container = markdownToElement(doc, text);
     const rendered = readPlainText(container).text;
     if (rendered.length > 0) {
-      return { command: "insertHTML", value: container.innerHTML, rendered, runs: formatRuns(container, 0, rendered.length) };
+      return { command: "insertHTML", value: container.innerHTML, rendered, runs: formatRuns(container, 0, rendered.length), block: container.outerHTML };
     }
   }
 
   const plain = markdown ? stripMarkdown(text) : text;
-  return { command: plain.length > 0 ? "insertText" : "delete", value: plain, rendered: plain };
+  const block = doc.createElement("div");
+  // As HTML, a run of spaces would collapse to one, so each space that would be lost becomes a no-break space, as insertText does.
+  plain.split("\n").forEach((line, index) => block.append(...(index > 0 ? [doc.createElement("br")] : []), line.replace(/^ | (?= )| $/g, "\u00a0")));
+  return { command: plain.length > 0 ? "insertText" : "delete", value: plain, rendered: plain, block: isPlainEditor(editor) ? undefined : block.outerHTML };
+}
+
+/**
+ * Chrome keeps a line it empties open with a `<br>`, which stays after the inserted text when a block follows the line.
+ * It draws nothing there, but reads as an extra empty line, as in the mail's plain-text part.
+ */
+function hasNewBreakBeforeBlock(editor: Editor, known: ReadonlySet<Element>): boolean {
+  return Array.from(editor.querySelectorAll("br")).some((br) => {
+    if (known.has(br)) {
+      return false;
+    }
+
+    let next = br.nextSibling;
+    while (next?.nodeType === Node.TEXT_NODE && (next as Text).data === "") {
+      next = next.nextSibling;
+    }
+
+    return next instanceof Element && isBlock(next);
+  });
 }
 
 /**
@@ -127,9 +151,34 @@ export async function applyReplacement(
       return failure("internal", "The page has no selection object.");
     }
 
-    selection.removeAllRanges();
-    selection.addRange(offsetsToRange(editor, readPlainText(editor), offsets.start, offsets.end));
+    const select = (): void => {
+      selection.removeAllRanges();
+      selection.addRange(offsetsToRange(editor, readPlainText(editor), offsets.start, offsets.end));
+    };
+    const breaks = new Set(editor.querySelectorAll("br"));
+    select();
     accepted = exec(doc, insertion.command, insertion.value);
+
+    // A whole line inserted as its own block needs no <br>; the retry is one edit, so one Undo still reverts it.
+    const wholeLine =
+      (offsets.start === 0 || before[offsets.start - 1] === "\n") &&
+      (offsets.end === before.length || before[offsets.end] === "\n") &&
+      !before.slice(offsets.start, offsets.end).includes("\n") &&
+      !insertion.rendered.endsWith("\n");
+    if (accepted && wholeLine && insertion.block !== undefined && insertion.command !== "delete" && hasNewBreakBeforeBlock(editor, breaks)) {
+      const edited = editorText(editor);
+      exec(doc, "undo");
+      if (editorText(editor) === before && (!html || formattingSnapshot(editor) === formattingBefore)) {
+        select();
+        accepted = exec(doc, "insertHTML", insertion.block);
+      } else if (editorText(editor) !== edited) {
+        // The Undo did not exactly reverse the edit; put the edit back rather than leave the draft in between.
+        exec(doc, "redo");
+        if (editorText(editor) !== edited) {
+          return failure("internal", "The editor did not change as expected after the edit command.");
+        }
+      }
+    }
   }
 
   if (!accepted) {

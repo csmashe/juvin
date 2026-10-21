@@ -54,6 +54,13 @@ public sealed partial class X11PanelWindowSupport : IPanelWindowSupport
         }
     }
 
+    public void BeforeShow()
+    {
+    }
+
+    // The window manager gives focus back to the window below the hidden panel.
+    public void Hide(Action hideWindow) => hideWindow();
+
     private static void SendHints(nint window)
     {
         var display = XOpenDisplay(null);

@@ -60,6 +60,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
+    /// <summary>Brings the open setup wizard, which is modal over the main window, back in front of it.</summary>
+    public void ActivateOpenWizard() => _openWizard?.Activate();
+
     [RelayCommand]
     private void NavigateTo(NavItem? item)
     {

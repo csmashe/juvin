@@ -74,7 +74,7 @@ The browser rows read the log of a Juvin the kit started. If Juvin was started a
 
 1. Leave Juvin installed and running, with Chrome and Firefox open and the extension connected.
 2. `nomac pull` the results folder (`artifacts/mac-results`).
-3. `nomac status` for the time left; with under an hour left it runs `nomac extend 60`, which adds an hour, up to 8 hours in all.
+3. `nomac status` for the time left; with under an hour left it runs `nomac extend 60`, which adds an hour, up to 8 hours in all. When the stop time cannot be read it warns and goes on.
 4. Print the desktop link (`nomac desktop --no-open`) and the session password (`nomac password`), and say that the user owns stopping it with `nomac stop`. It never stops the Mac, and it says when the tunnel is still up.
 
 ## Rows
@@ -95,7 +95,7 @@ A is automated, H is by hand. Block is 1 or 2.
   3. Open Settings, Shortcuts, press Test, and then press Control+Shift+F.
 - Pass:
   - Before trust: Home reads "Control+Shift+F, not listening", and the checklist has one row, "Accessibility permission", Recommended, reading "Juvin needs Accessibility permission to listen for the rewrite shortcut." The button shows macOS's own Accessibility dialog for Juvin (`AXIsProcessTrustedWithOptions`) and opens Privacy and Security, Accessibility. The row then says "Turn on Juvin in the list, then check again."
-  - After trust: the row reads "Juvin can listen for the rewrite shortcut.", Shortcuts reads "Listening through System keyboard hook.", and Home reads "Control+Shift+F, listening", all without restarting Juvin. Test shows Detected.
+  - After trust: the row reads "Juvin can listen for the rewrite shortcut.", Shortcuts reads "Listening through System keyboard hook.", and Home reads "Control+Shift+F, listening". Test shows Detected. If the row offers Restart Juvin instead, press it; the reopened Juvin must reach the same state (see M-15).
 - Record: whether Juvin appeared in the list before the button was pressed. Then `scripts/mac/session.sh stop-block1`.
 
 **M-03** (packaging-checklist macOS section; A; block 2). Build the dmg and run its smoke test as that section says. Then install the dmg into `/Applications`.
@@ -104,7 +104,7 @@ A is automated, H is by hand. Block is 1 or 2.
 - Record: the output of `spctl -a -vv /Applications/Juvin.app`.
 
 **M-04** (mvp-scope Phase 1; A; block 2). `dotnet test Juvin.slnx` on macOS 26 arm64.
-- Kit: row `M-04` runs `dotnet test Juvin.slnx -c Release` with TRX output and fails on a failed test or a skip reason other than "Windows only." and "Linux only.". Row `M-04-mac` reruns `tests/Juvin.Platform.Tests` filtered to the Mac, Keychain, LaunchAgent, Unix socket, and SharpHook tests and requires the Mac classes to run and pass.
+- Kit: row `M-04` runs `dotnet test Juvin.slnx -c Release` with TRX output and fails on a failed test or a skip reason other than "Windows only." and "Linux only.". Row `M-04-mac` reruns `tests/Juvin.Platform.Tests` filtered to the Mac, Keychain, LaunchAgent, Unix socket, and SharpHook tests and requires the Mac classes to run and pass. Both rows first unlock the login Keychain with `security unlock-keychain -p "$NOMAC_MAC_PASSWORD"`, since over SSH it is locked and the Keychain tests fail with -25308; without the variable they note it, and in CI mode the runner's Keychain is already unlocked.
 - Pass: every test passes, with only the Windows-only and Linux-only tests skipped. `KeychainTests.SetGetOverwriteAndDelete_RoundTrip` and `MacAccessibilityPermissionSetupTaskTests` run and are not skipped.
 
 **M-05** (PRIVACY.md, connector-protocol; A; block 2). The data folder and the runtime files, with the app running.
@@ -161,7 +161,7 @@ A is automated, H is by hand. Block is 1 or 2.
 - Steps:
   1. Check the command's key on `chrome://extensions/shortcuts` and on Firefox's Manage Extension Shortcuts page.
   2. Record a different desktop shortcut (Control+Option+J) so that only the browser answers Control+Shift+F. Press Control+Shift+F on the test page in each browser, then restore Control+Shift+F.
-- Pass: both pages show Control+Shift+F (the manifest's `MacCtrl+Shift+F`) for "Rewrite the selected draft with Juvin". Each press logs one `Captured ...` line and no `Coalesced duplicate press.` line.
+- Pass: both pages show Control+Shift+F (the manifest's `MacCtrl+Shift+F`) for "Rewrite the selected draft with Juvin". Each press in Chrome logs one `Captured ...` line and no `Coalesced duplicate press.` line. Firefox does not fire the command inside the draft (macOS binds Control+Shift+F to extending the selection); a press with focus outside a text field must fire it.
 - Record: whether a browser menu item also binds Control+Shift+F and which one wins.
 
 ### Hotkey and Accessibility
@@ -171,14 +171,15 @@ A is automated, H is by hand. Block is 1 or 2.
   - Shortcuts reads "Listening through System keyboard hook." and Test shows Detected.
   - A press on the selected draft opens the action menu and logs one `Captured ...` and one `Coalesced duplicate press.`.
   - A press with Finder focused gives `browser-not-focused`. A press with the browsers closed gives `no-browser`.
-  - Pressing the old chord while recording opens nothing.
+  - Pressing the old chord while recording opens nothing. After recording Control+Option+J, the log shows `sharphook listens for the new shortcut.` with no `Hook did not report enabled in time.`, Test shows Detected for Control+Option+J, and Control+Shift+F no longer fires. Restore Control+Shift+F afterwards.
   - `--trigger` logs `Trigger ignored while <backend> listens.`
   - Three draft words grepped in the log find nothing.
 
 **M-15** (moved from block 1; H; block 2). Hotkey before trust.
 - Steps: quit Juvin, run `tccutil reset Accessibility <bundle id from M-03>`, and start it with `open`. If the row reads Missing, turn Juvin on again in Privacy and Security, Accessibility, and press Check again.
-- Pass, before trust: the Setup checklist row reads "Juvin needs Accessibility permission to listen for the rewrite shortcut.", and Shortcuts reads "System keyboard hook could not start: Allow Juvin under Accessibility in System Settings, then try again.". A press does nothing and the app does not crash.
-- Pass, after trust: the row turns Satisfied and the hook listens without a restart.
+- Pass, before trust: the Setup checklist row reads "Juvin needs Accessibility permission to listen for the rewrite shortcut.", and Shortcuts reads "System keyboard hook could not start: Allow Juvin under Accessibility in System Settings. If it is already on, restart Juvin.". A press does nothing and the app does not crash.
+- Pass, after trust: either the row turns Satisfied and the hook listens without a restart, or (as on macOS 26.6.2 on October 20, 2026, when libuiohook's CoreGraphics check kept its first answer) the row reads "Juvin has the permission, but the rewrite shortcut did not start." with a Restart Juvin button. That button quits Juvin and opens it again within a few seconds, and the reopened app reads Satisfied, listens, and logs no `Hook did not start (ErrorAxApiDisabled)`.
+- Record: which of the two happened.
 - If NoMac grants trust again at launch (the row reads Granted straight away), record that. This row then rests on M-02.
 
 **M-16** (SharpHookHotkeyBackend.ModifiersOf; H; block 2). Modifier mapping.
@@ -209,6 +210,8 @@ A is automated, H is by hand. Block is 1 or 2.
 **M-20** (MacPanelWindowSupport; H; block 2). Spaces and full screen.
 - Steps: put Chrome in full screen (its own Space) and open Review there. Switch Spaces with Control+Right.
 - Pass: the panel shows over the full-screen browser without switching Spaces, and after Control+Right it is on the new Space when shown again. Console shows no `NSInternalInconsistencyException` about collection behavior. Record what Stage Manager does if it is on.
+- Record: the Juvin Dock icon leaves while the panel shows (the app is an accessory app then) and returns once it hides, also with the main window open.
+- If it fails again, `scripts/mac/panel-harness.swift` reproduces the show strategies outside Juvin; judge each variant by a screenshot. On October 20, 2026 it showed that the panel joins a full-screen Space only if its collection behavior is set after the switch to the accessory policy.
 
 ### Tray and window
 
@@ -222,14 +225,14 @@ A is automated, H is by hand. Block is 1 or 2.
 ### Launch at login
 
 **M-22** (LaunchAgentLoginItem.IsSupported; H; block 2). Start a Debug build with `dotnet run --project src/Juvin.App` and open General.
-- Pass: the Launch at login switch is disabled with "Juvin cannot start itself at login on this computer.", because under the `dotnet` host the agent would start `dotnet`.
+- Pass: the Launch at login switch is disabled with "Juvin cannot start itself at login on this computer.", because the Debug executable is not inside an `.app` bundle, so the agent would not start the installed app.
 
 **M-23** (packaging-checklist launch at login steps 1 and 2; H then A; block 2). With the installed app, turn on Launch at login, then run `scripts/mac/session.sh auto --only M-23`.
 - Kit: row `M-23` runs the checks below and skips while there is no plist. In CI mode the kit turns Launch at login on in `settings.json` before it starts Juvin, so the app writes the plist at startup.
 - Pass: the switch stays on with no error line. `plutil -lint ~/Library/LaunchAgents/com.juvin.app.plist` prints OK, and `plutil -p` shows:
   - `Label` `com.juvin.app`
   - `ProgramArguments` set to the bundle's executable and `--background`
-  - `RunAtLoad` 1, `LimitLoadToSessionType` `Aqua`, and `JuvinManaged` 1
+  - `RunAtLoad` 1, `LimitLoadToSessionType` `Aqua`, `AbandonProcessGroup` 1 (so a Restart Juvin helper outlives the agent's Juvin), and `JuvinManaged` 1
 - Record: whether macOS posts a background-items notification, and whether Juvin appears under General, Login Items and Extensions.
 
 **M-24** (packaging-checklist launch at login steps 3 and 5; H; block 2; last before the hand-off).
@@ -239,10 +242,12 @@ A is automated, H is by hand. Block is 1 or 2.
   - Turning the switch off removes the plist, and the next logout and login start nothing.
 - Leave the switch off afterwards. Start Juvin again for the hand-off.
 - If the desktop view does not survive the logout, record that and skip the second cycle.
+- After a logout `nomac screenshot` can fail with "could not create image from display". Use `nomac ssh -- screencapture -x /tmp/s.png`, then `scp nomac:/tmp/s.png .` (the SSH alias `start` wrote).
 
 ### Setup wizard
 
 **M-25** (mvp-scope section 4 setup checklist, connector-checklist step 7; H; block 2). The full wizard on the freshly installed app.
+- Pass: the wizard opens in front of the Juvin window, also after `open -g`, and stays in front after a Dock icon click.
 - Steps and pass, step by step:
   1. Welcome shows Send crash reports, on.
   2. Choose where rewrites run detects the server at `localhost:11434` through the tunnel and lists its models. Choose qwen3.5:27b.

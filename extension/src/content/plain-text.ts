@@ -107,6 +107,11 @@ function visibility(element: Element): Rendering {
   return { rendered: display !== "none", visible: style?.visibility !== "hidden" && style?.visibility !== "collapse", block, cell };
 }
 
+/** True when the element starts and ends a line of its own. */
+export function isBlock(element: Element): boolean {
+  return visibility(element).block;
+}
+
 /** True when another rendered table cell follows the cell in its row. */
 function hasNextCell(cell: Element): boolean {
   for (let next = cell.nextElementSibling; next; next = next.nextElementSibling) {
