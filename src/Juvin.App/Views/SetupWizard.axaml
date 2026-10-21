@@ -197,9 +197,8 @@
                                         <TextBlock Classes="row-hint"
                                                    Text="{loc:Str Wizard.Mode.PullHint}"
                                                    IsVisible="{Binding HasPullCommand}" />
-                                        <TextBox Classes="command"
-                                                 Text="{Binding PullCommand}"
-                                                 IsVisible="{Binding HasPullCommand}" />
+                                        <controls:CommandBox Command="{Binding PullCommand}"
+                                                             IsVisible="{Binding HasPullCommand}" />
                                     </StackPanel>
                                 </Border>
                                 <Border Classes="section-row" IsVisible="{Binding NoServerFound}">
@@ -290,12 +289,11 @@
                                                                     CommandParameter="{Binding}" />
                                                         </StackPanel>
                                                     </Grid>
-                                                    <TextBox Classes="command"
-                                                             Text="{Binding CopyCommand}"
-                                                             IsVisible="{Binding HasCopyCommand}" />
                                                     <TextBlock Classes="row-hint"
                                                                Text="{Binding ActionMessage}"
                                                                IsVisible="{Binding HasActionMessage}" />
+                                                    <controls:CommandBox Command="{Binding CopyCommand}"
+                                                                         IsVisible="{Binding HasCopyCommand}" />
                                                 </StackPanel>
                                             </Border>
                                         </DataTemplate>

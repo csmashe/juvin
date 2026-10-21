@@ -48,6 +48,7 @@
   "Setup.KeyboardAccess.Action": "Allow keyboard access",
   "Setup.KeyboardAccess.Granted": "Keyboard access allowed.",
   "Setup.KeyboardAccess.Cancelled": "The password prompt was closed, so nothing changed.",
+  "Setup.KeyboardAccess.NotAuthorized": "Juvin could not get administrator approval. Some desktops, such as Sway, have no password prompt for this. Run the command below in a terminal instead.",
   "Setup.KeyboardAccess.Failed": "Adding the keyboard rule failed (exit code {0}). Run the command below in a terminal instead.",
   "Setup.KeyboardAccess.NoPkexec": "This system has no password prompt for administrator tasks (pkexec). Run the command below in a terminal instead.",
   "Hotkey.Linux.NoKeyboardAccess": "Juvin cannot read the keyboard. Allow keyboard access in the setup wizard, or choose the desktop shortcut.",
