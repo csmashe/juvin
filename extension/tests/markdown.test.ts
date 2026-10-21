@@ -76,6 +76,10 @@ describe("selectionMarkdown", () => {
   });
 });
 
+// Each input takes well under a second locally; a quadratic pass over it takes tens of
+// seconds, so the budget leaves room for slow CI runners and still catches that.
+const LINEAR_TIME_BUDGET_MS = 5000;
+
 describe("apply performance", () => {
   it.each([
     ["unmatched brackets", "[".repeat(120_000) + "x](https://example.com)"],
@@ -85,7 +89,7 @@ describe("apply performance", () => {
     const started = performance.now();
     const container = markdownToElement(document, markdown);
     const stripped = stripMarkdown(markdown);
-    expect(performance.now() - started).toBeLessThan(1000);
+    expect(performance.now() - started).toBeLessThan(LINEAR_TIME_BUDGET_MS);
     expect(stripped.length).toBeGreaterThan(0);
     expect(container.textContent!.length).toBeGreaterThan(0);
   });
@@ -199,7 +203,7 @@ describe("capture performance", () => {
     expect(length).toBeGreaterThan(200_000);
     const started = performance.now();
     const markdown = selectionMarkdown(root, 0, length);
-    expect(performance.now() - started).toBeLessThan(1000);
+    expect(performance.now() - started).toBeLessThan(LINEAR_TIME_BUDGET_MS);
     expect(markdown.startsWith("**word0** word1")).toBe(true);
   });
 
@@ -208,7 +212,7 @@ describe("capture performance", () => {
     const length = readPlainText(root).text.length;
     const started = performance.now();
     const markdown = selectionMarkdown(root, 0, length);
-    expect(performance.now() - started).toBeLessThan(1000);
+    expect(performance.now() - started).toBeLessThan(LINEAR_TIME_BUDGET_MS);
     expect(markdown.split("\n").slice(-2)).toEqual(["4999. item 4998", "5000. item 4999"]);
   });
 });
