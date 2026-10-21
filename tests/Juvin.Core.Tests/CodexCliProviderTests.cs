@@ -403,24 +403,26 @@ public sealed class CodexCliProviderTests : IDisposable
     public void ResolveBinary_IgnoresRelativePathEntries()
     {
         var absolute = Directory.CreateDirectory(_temp.File("abs")).FullName;
-        var relative = Directory.CreateDirectory(_temp.File("rel")).FullName;
         File.WriteAllText(Path.Join(absolute, "codex"), "");
-        File.WriteAllText(Path.Join(relative, "codex"), "");
+        // Under the current directory, so the entry stays relative even when the temp folder is on another drive.
         var current = Environment.CurrentDirectory;
-        var fromCurrent = Path.GetRelativePath(current, relative);
+        var relative = $"juvin-rel-{Guid.NewGuid():N}";
+        Directory.CreateDirectory(Path.Join(current, relative));
+        File.WriteAllText(Path.Join(current, relative, "codex"), "");
         File.WriteAllText(Path.Join(current, "codex"), "");
         try
         {
             Assert.Null(CodexCliProvider.ResolveBinary(null, ".", isWindows: false));
-            Assert.Null(CodexCliProvider.ResolveBinary(null, fromCurrent, isWindows: false));
+            Assert.Null(CodexCliProvider.ResolveBinary(null, relative, isWindows: false));
             Assert.Equal(
                 Path.Join(absolute, "codex"),
-                CodexCliProvider.ResolveBinary(null, string.Join(Path.PathSeparator, ".", fromCurrent, absolute), isWindows: false)
+                CodexCliProvider.ResolveBinary(null, string.Join(Path.PathSeparator, ".", relative, absolute), isWindows: false)
             );
         }
         finally
         {
             File.Delete(Path.Join(current, "codex"));
+            Directory.Delete(Path.Join(current, relative), recursive: true);
         }
     }
 
