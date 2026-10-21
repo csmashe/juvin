@@ -1,0 +1,14 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="using:Juvin.App.Views.Controls"
+             xmlns:loc="using:Juvin.App.Localization"
+             x:Class="Juvin.App.Views.Controls.CommandBox"
+             x:DataType="controls:CommandBox">
+    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+        <TextBox Classes="command" Text="{Binding $parent[controls:CommandBox].Command}" />
+        <Button Grid.Column="1"
+                VerticalAlignment="Center"
+                Content="{loc:Str Common.Copy}"
+                Click="OnCopyClick" />
+    </Grid>
+</UserControl>
