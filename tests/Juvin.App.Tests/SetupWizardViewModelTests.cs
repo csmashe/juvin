@@ -227,10 +227,11 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
     public void AnUnfinishedSetup_ReopensAtTheSavedStep_AndSavesTheStepItClosesAt()
     {
         _settings.Update(s => s with { SetupWizardStep = nameof(SetupWizardStep.Checklist) });
-        var vm = Create();
+        using var vm = Create();
         Assert.Equal(SetupWizardStep.Checklist, vm.Step);
 
         vm.StepIndex = (int)SetupWizardStep.TryIt;
+        // ReSharper disable once DisposeOnUsingVariable -- disposing is what the test checks; the using covers a failure before it
         vm.Dispose();
 
         Assert.Equal(nameof(SetupWizardStep.TryIt), _settings.Current.SetupWizardStep);
@@ -239,13 +240,16 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
     [Fact]
     public void AnEarlierWizardDisposedAgain_KeepsTheLaterWizardsStep()
     {
-        var first = Create();
+        using var first = Create();
         first.StepIndex = (int)SetupWizardStep.Shortcut;
+        // ReSharper disable once DisposeOnUsingVariable -- disposing is what the test checks; the using covers a failure before it
         first.Dispose();
-        var second = Create();
+        using var second = Create();
         second.StepIndex = (int)SetupWizardStep.Checklist;
+        // ReSharper disable once DisposeOnUsingVariable -- disposing is what the test checks; the using covers a failure before it
         second.Dispose();
 
+        // ReSharper disable once DisposeOnUsingVariable -- disposing is what the test checks; the using covers a failure before it
         first.Dispose();
 
         Assert.Equal(nameof(SetupWizardStep.Checklist), _settings.Current.SetupWizardStep);
@@ -255,10 +259,11 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
     public void AFinishedSetup_OpensAtTheFirstStep_AndSavesNoStep()
     {
         _settings.Update(s => s with { HasCompletedOnboarding = true, SetupWizardStep = nameof(SetupWizardStep.Checklist) });
-        var vm = Create();
+        using var vm = Create();
         Assert.Equal(0, vm.StepIndex);
 
         vm.StepIndex = (int)SetupWizardStep.TryIt;
+        // ReSharper disable once DisposeOnUsingVariable -- disposing is what the test checks; the using covers a failure before it
         vm.Dispose();
 
         Assert.Equal(nameof(SetupWizardStep.Checklist), _settings.Current.SetupWizardStep);
