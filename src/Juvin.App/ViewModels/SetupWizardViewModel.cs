@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FluentIcons.Common;
@@ -63,6 +64,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
     private string _shownServerUrl;
 
     // UI thread only. A checklist result is applied only by the newest evaluation, and Finish waits for it.
+    private bool _disposed;
     private int _evaluation;
     private int _completedEvaluation;
 
@@ -183,6 +185,14 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         _panel.CaptureLoaded += MarkCaptured;
         _panel.PropertyChanged += OnPanelPropertyChanged;
         RefreshBrowserConnection();
+        if (
+            !settings.Current.HasCompletedOnboarding
+            && Enum.TryParse<SetupWizardStep>(settings.Current.SetupWizardStep, out var saved)
+            && Enum.IsDefined(saved)
+        )
+        {
+            StepIndex = (int)saved;
+        }
     }
 
     public event EventHandler? RequestClose;
@@ -242,6 +252,14 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        // The window disposes this on close and the service provider again at exit, when a newer wizard may have saved its step.
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        RememberStep();
         _settings.SettingsChanged -= OnSettingsChanged;
         _connector.ClientsChanged -= OnClientsChanged;
         _connector.CaptureCompleted -= OnCaptureCompleted;
@@ -944,6 +962,25 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         RefreshGating();
     }
 
+    /// <summary>Saves the step while setup is unfinished, so the next start, such as a restart for a new permission, reopens it.</summary>
+    private void RememberStep()
+    {
+        var step = Step.ToString();
+        if (_settings.Current.HasCompletedOnboarding || _settings.Current.SetupWizardStep == step)
+        {
+            return;
+        }
+
+        try
+        {
+            _settings.Update(s => s with { SetupWizardStep = step });
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Trace.WriteLine($"[SetupWizard] The wizard step was not saved ({ex.GetType().Name}).");
+        }
+    }
+
     private void Complete()
     {
         if (IsClosed)
@@ -1010,6 +1047,7 @@ public sealed partial class SetupTaskRow : ObservableObject
 {
     private readonly Localizer _localizer;
     private bool _lastActionFailed;
+    private bool _awaitingActionResult;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanRunAction))]
@@ -1071,13 +1109,19 @@ public sealed partial class SetupTaskRow : ObservableObject
 
     public void Apply(SetupTaskState state)
     {
+        // The check right after an action shows its result and keeps the action's message unless it offers another action.
+        // A later change, such as Restart Juvin or the row satisfied after Open Accessibility settings, makes it stale.
+        var stale = _awaitingActionResult
+            ? state.ActionLabel is not null && state.ActionLabel != ActionLabel
+            : state.ActionLabel != ActionLabel || state.Kind != Kind;
+        _awaitingActionResult = false;
         Kind = state.Kind;
         Summary = state.Summary;
         Detail = state.Detail;
         ActionLabel = state.ActionLabel;
         CopyCommand = state.CopyCommand;
         // A failure message is stale once the task is satisfied, for example by a command run in a terminal.
-        if (!_lastActionFailed || state.Kind != SetupTaskStatusKind.Satisfied)
+        if (!stale && (!_lastActionFailed || state.Kind != SetupTaskStatusKind.Satisfied))
         {
             return;
         }
@@ -1097,6 +1141,7 @@ public sealed partial class SetupTaskRow : ObservableObject
     {
         IsBusy = false;
         _lastActionFailed = !outcome.Success;
+        _awaitingActionResult = true;
         ActionMessage = string.IsNullOrWhiteSpace(outcome.Detail)
             ? outcome.Message
             : $"{outcome.Message} {outcome.Detail}";
