@@ -303,7 +303,7 @@ Whether each Phase 6 scenario from `acceptance-checklist.md` is rerun on the Mac
 - Discard the drafts afterwards.
 
 **M-29** (Gmail on Gecko under macOS; H; block 2). Firefox, signed in by hand.
-- Pass: steps 1 and 4 of M-28 pass, including Cmd+Z.
+- Pass: steps 1 and 4 of M-28 pass, including Cmd+Z. With a whole first line selected, step 1 captures exactly its characters, not the line break after it (Control+Shift+F must not extend the selection), and step 4 keeps the second line on its own line.
 
 ## Results
 

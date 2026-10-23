@@ -45,6 +45,16 @@ public sealed class ConnectorServiceTests : IAsyncDisposable
     }
 
     [Fact]
+    public void BuildConfig_SendsThePhysicalKeyOnlyForAValidSavedShortcut()
+    {
+        var moved = _service.BuildConfig(new AppSettings { RewriteShortcut = "Super+Shift+Z", RewriteShortcutPhysicalKey = "Y" });
+        var invalid = _service.BuildConfig(new AppSettings { RewriteShortcut = "F", RewriteShortcutPhysicalKey = "Y" });
+
+        Assert.Equal("Y", moved.ShortcutKey);
+        Assert.Null(invalid.ShortcutKey);
+    }
+
+    [Fact]
     public void BuildConfig_ListsLocalizedActionsAdaptersShortcutAndMode()
     {
         var config = _service.BuildConfig(new AppSettings { ProcessingMode = ProcessingMode.Codex, RewriteShortcut = "Ctrl+Alt+J" });
@@ -53,6 +63,7 @@ public sealed class ConnectorServiceTests : IAsyncDisposable
         Assert.Equal("Make clearer", config.Actions.Single(action => action.Id == "clearer").Title);
         Assert.Equal(["gmail", "generic", "test-page"], config.Adapters);
         Assert.Equal("Ctrl+Alt+J", config.Shortcut);
+        Assert.Null(config.ShortcutKey);
         Assert.Equal(new ConnectorHealth("codex", null), config.Health);
 
         var custom = _service.BuildConfig(

@@ -39,7 +39,7 @@ import { buildTrimmedContextResponse } from "./trim";
 
 const CONTENT_SCRIPT = "content.js";
 
-const connection = new Connection(onAppRequest, onDisconnected);
+const connection = new Connection(onAppRequest, onDisconnected, () => void sendShortcut());
 
 const editorTabs = new EditorTabs((tabId) => browser.tabs.get(tabId));
 
@@ -350,6 +350,29 @@ function onDisconnected(): void {
     void sendToTab(openMenu.tabId, { kind: "juvin.menu.disconnected", menuId: openMenu.menuId });
     openMenu = undefined;
   }
+
+  void sendShortcut();
+}
+
+/** On macOS the content scripts keep the app's shortcut from editing the draft, so each page needs it as it changes. */
+async function sendShortcut(): Promise<void> {
+  if (!(await isMac())) {
+    return;
+  }
+
+  const tabs = await browser.tabs.query({}).catch(() => []);
+  // Read after the lookup, so a send that was overtaken by a newer config or a drop carries the current shortcut.
+  const { shortcut, shortcutKey } = connection.status();
+  const request: ContentRequest = { kind: "juvin.shortcut", shortcut, shortcutKey };
+  for (const tab of tabs) {
+    if (typeof tab.id === "number") {
+      // Most tabs have no content script.
+      browser.tabs.sendMessage(tab.id, request).catch(() => undefined);
+    }
+  }
+
+  // The bundled test page only receives runtime messages.
+  browser.runtime.sendMessage(request).catch(() => undefined);
 }
 
 async function handleTestPageRequest({ id }: TestPageRequestMessage, reply: Reply): Promise<void> {
@@ -424,6 +447,36 @@ async function onPopupRequest(request: PopupRequest): Promise<Status | PingResul
       }
   }
 }
+
+const ALL_SITES_SCRIPT = "juvin-all-sites";
+
+/**
+ * Firefox on macOS hands the shortcut to the page, so a page needs the content script's guard before the first press.
+ * With the all-sites permission the script loads with every page there, not only once a capture injects it.
+ */
+async function syncAllSitesScript(): Promise<void> {
+  if (!(browser.runtime as Partial<Runtime.Static>).getBrowserInfo || !(await isMac())) {
+    return;
+  }
+
+  try {
+    const granted = await browser.permissions.contains({ origins: ["<all_urls>"] });
+    const registered = (await browser.scripting.getRegisteredContentScripts({ ids: [ALL_SITES_SCRIPT] })).length > 0;
+    if (granted && !registered) {
+      await browser.scripting.registerContentScripts([
+        { id: ALL_SITES_SCRIPT, matches: ["<all_urls>"], excludeMatches: ["https://mail.google.com/*"], js: [CONTENT_SCRIPT], runAt: "document_idle" },
+      ]);
+    } else if (!granted && registered) {
+      await browser.scripting.unregisterContentScripts({ ids: [ALL_SITES_SCRIPT] });
+    }
+  } catch (e) {
+    log("all-sites-script.failed", { error: errorName(e) });
+  }
+}
+
+void syncAllSitesScript();
+browser.permissions.onAdded.addListener(() => void syncAllSitesScript());
+browser.permissions.onRemoved.addListener(() => void syncAllSitesScript());
 
 browser.runtime.onStartup.addListener(() => connectQuietly("startup"));
 browser.runtime.onInstalled.addListener(() => connectQuietly("installed"));
