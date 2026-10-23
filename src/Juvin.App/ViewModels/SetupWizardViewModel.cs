@@ -623,7 +623,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
                 }
 
                 var evaluation = _evaluation;
-                foreach (var row in SetupItems.Where(row => !row.IsSatisfied && !row.IsBusy).ToList())
+                foreach (var row in SetupItems.Where(row => row is { IsSatisfied: false, IsBusy: false }).ToList())
                 {
                     SetupTaskState state;
                     try
@@ -1077,11 +1077,13 @@ public sealed partial class SetupTaskRow : ObservableObject
         ActionLabel = state.ActionLabel;
         CopyCommand = state.CopyCommand;
         // A failure message is stale once the task is satisfied, for example by a command run in a terminal.
-        if (_lastActionFailed && state.Kind == SetupTaskStatusKind.Satisfied)
+        if (!_lastActionFailed || state.Kind != SetupTaskStatusKind.Satisfied)
         {
-            _lastActionFailed = false;
-            ActionMessage = null;
+            return;
         }
+
+        _lastActionFailed = false;
+        ActionMessage = null;
     }
 
     public void BeginAction()

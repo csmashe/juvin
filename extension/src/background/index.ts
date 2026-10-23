@@ -39,7 +39,7 @@ import { buildTrimmedContextResponse } from "./trim";
 
 const CONTENT_SCRIPT = "content.js";
 
-const connection = new Connection(onAppRequest, onDisconnected);
+const connection = new Connection(onAppRequest, onDisconnected, () => void sendShortcut());
 
 const editorTabs = new EditorTabs((tabId) => browser.tabs.get(tabId));
 
@@ -350,6 +350,29 @@ function onDisconnected(): void {
     void sendToTab(openMenu.tabId, { kind: "juvin.menu.disconnected", menuId: openMenu.menuId });
     openMenu = undefined;
   }
+
+  void sendShortcut();
+}
+
+/** On macOS the content scripts keep the app's shortcut from editing the draft, so each page needs it as it changes. */
+async function sendShortcut(): Promise<void> {
+  if (!(await isMac())) {
+    return;
+  }
+
+  const tabs = await browser.tabs.query({}).catch(() => []);
+  // Read after the lookup, so a send that was overtaken by a newer config or a drop carries the current shortcut.
+  const { shortcut, shortcutKey } = connection.status();
+  const request: ContentRequest = { kind: "juvin.shortcut", shortcut, shortcutKey };
+  for (const tab of tabs) {
+    if (typeof tab.id === "number") {
+      // Most tabs have no content script.
+      browser.tabs.sendMessage(tab.id, request).catch(() => undefined);
+    }
+  }
+
+  // The bundled test page only receives runtime messages.
+  browser.runtime.sendMessage(request).catch(() => undefined);
 }
 
 async function handleTestPageRequest({ id }: TestPageRequestMessage, reply: Reply): Promise<void> {

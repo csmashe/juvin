@@ -79,6 +79,7 @@ function defaultAnswer(request: ContentRequest): unknown {
     case "juvin.menu.close":
     case "juvin.menu.disconnected":
     case "juvin.menu.check":
+    case "juvin.shortcut":
       return { ok: true };
   }
 }
@@ -305,6 +306,24 @@ describe("background", () => {
     expect(sentToApp(h).at(-1)).toMatchObject({ type: "apply.response", id: "a1", ok: true });
     expect(h.activated).toEqual([TAB]);
     expect(h.focused).toEqual([WINDOW]);
+  });
+
+  it("sends the app's shortcut to the tabs on macOS as the connection gets and loses config", async () => {
+    h.os = "mac";
+    await connect(h);
+    await settle();
+    expect(h.content.filter((r) => r.kind === "juvin.shortcut")).toEqual([{ kind: "juvin.shortcut", shortcut: "Ctrl+Shift+F", shortcutKey: undefined }]);
+
+    h.port().onDisconnect.fire(h.port());
+    await settle();
+    expect(h.content.filter((r) => r.kind === "juvin.shortcut").at(-1)).toEqual({ kind: "juvin.shortcut", shortcut: undefined, shortcutKey: undefined });
+  });
+
+  it("sends no shortcut to the tabs off macOS", async () => {
+    await connect(h);
+    await settle();
+
+    expect(h.content.some((r) => r.kind === "juvin.shortcut")).toBe(false);
   });
 
   it("leaves tab and window focus alone off macOS", async () => {

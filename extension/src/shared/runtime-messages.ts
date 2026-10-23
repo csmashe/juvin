@@ -58,7 +58,23 @@ export interface MenuCheckRequest {
   menuId: string;
 }
 
-export type ContentRequest = CaptureRequest | ApplyRequest | MenuShowRequest | MenuUpdateRequest | MenuCloseRequest | MenuDisconnectedRequest | MenuCheckRequest;
+/** The app's shortcut, sent when the connection gets or loses config; undefined while there is none. */
+export interface ShortcutRequest {
+  kind: "juvin.shortcut";
+  tabId?: number;
+  shortcut?: string;
+  shortcutKey?: string;
+}
+
+export type ContentRequest =
+  | CaptureRequest
+  | ApplyRequest
+  | MenuShowRequest
+  | MenuUpdateRequest
+  | MenuCloseRequest
+  | MenuDisconnectedRequest
+  | MenuCheckRequest
+  | ShortcutRequest;
 
 /** From the content script's menu to the background: the user picked an entry. */
 export interface MenuChosenNotice {
@@ -92,6 +108,7 @@ export interface Status {
   connecting: boolean;
   lastError?: string;
   shortcut?: string;
+  shortcutKey?: string;
 }
 
 export type PopupRequest = { kind: "juvin.status" } | { kind: "juvin.connect" } | { kind: "juvin.ping" };
@@ -107,7 +124,8 @@ export function isContentRequest(value: unknown): value is ContentRequest {
     kind === "juvin.menu.update" ||
     kind === "juvin.menu.close" ||
     kind === "juvin.menu.disconnected" ||
-    kind === "juvin.menu.check"
+    kind === "juvin.menu.check" ||
+    kind === "juvin.shortcut"
   );
 }
 

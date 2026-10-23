@@ -44,10 +44,11 @@ export class Connection {
   constructor(
     private readonly onRequest: RequestHandler,
     private readonly onDropped: () => void = () => undefined,
+    private readonly onConfig: () => void = () => undefined,
   ) {}
 
   status(): Status {
-    return { connected: this.config !== undefined, connecting: this.port !== undefined && this.config === undefined, lastError: this.lastError, shortcut: this.config?.shortcut };
+    return { connected: this.config !== undefined, connecting: this.port !== undefined && this.config === undefined, lastError: this.lastError, shortcut: this.config?.shortcut, shortcutKey: this.config?.shortcutKey };
   }
 
   /** Counts connections; replies and queued work from an earlier generation are stale. */
@@ -156,6 +157,7 @@ export class Connection {
         log("config", { actions: message.actions.length, adapters: message.adapters.length, mode: message.health.mode });
         this.config = message;
         this.connected();
+        this.onConfig();
         return;
       case "ping":
         this.send(pong(message.id));

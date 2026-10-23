@@ -221,6 +221,13 @@ describe("parseIncoming", () => {
     expect(parseIncoming({ v: 1, type: "apply.request", id: "a1", editorId: "e-1", expectedHash: "sha256:00", start: 0, end: 1, text: "t", format: "html" }).ok).toBe(false);
     expect(parseIncoming({ v: 1, type: "apply.request", id: "a1", editorId: "e-1", expectedHash: "sha256:00", start: 0, end: 1, text: "t", format: "markdown" }).ok).toBe(false);
     expect(parseIncoming({ v: 1, type: "config", actions: [], adapters: [], shortcut: "x", health: { mode: "cloud", modelReachable: null } }).ok).toBe(false);
+    expect(parseIncoming({ v: 1, type: "config", actions: [], adapters: [], shortcut: "x", shortcutKey: 7, health: { mode: "local", modelReachable: null } }).ok).toBe(false);
+  });
+
+  it("keeps a config's shortcutKey when the layout moved the key", () => {
+    const parsed = parseIncoming({ v: 1, type: "config", actions: [], adapters: [], shortcut: "Super+Shift+Z", shortcutKey: "Y", health: { mode: "local", modelReachable: null } });
+
+    expect(parsed.ok && parsed.message).toMatchObject({ type: "config", shortcut: "Super+Shift+Z", shortcutKey: "Y" });
   });
 });
 

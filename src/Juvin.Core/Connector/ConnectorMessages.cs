@@ -63,6 +63,9 @@ public sealed record ConnectorConfig() : ConnectorMessage(ConnectorMessageTypes.
 
     public required string Shortcut { get; init; }
 
+    /// <summary>The US key position the shortcut's key is pressed at, when a layout moved it; otherwise null.</summary>
+    public string? ShortcutKey { get; init; }
+
     public required ConnectorHealth Health { get; init; }
 
     // ReSharper disable ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract -- System.Text.Json does not enforce element nullability

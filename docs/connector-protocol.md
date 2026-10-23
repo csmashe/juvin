@@ -56,7 +56,7 @@ Sent in reply to `hello` and again whenever settings change.
  "health":{"mode":"local","modelReachable":null}}
 ```
 
-`actions` is the user's configured catalog: the built-ins, then their custom actions, in the order the panel lists them. `health.mode` is `local` or `codex`; `modelReachable` is `true`, `false`, or `null` when the app has not probed yet. `shortcut` is the app's stored chord, in which `Ctrl` is Command and `Super` is the Control key on macOS (the macOS default is `Super+Shift+F`); the popup shows it with the keyboard's names. The extension stores nothing from `config` beyond the lifetime of the connection.
+`actions` is the user's configured catalog: the built-ins, then their custom actions, in the order the panel lists them. `health.mode` is `local` or `codex`; `modelReachable` is `true`, `false`, or `null` when the app has not probed yet. `shortcut` is the app's stored chord, in which `Ctrl` is Command and `Super` is the Control key on macOS (the macOS default is `Super+Shift+F`); the popup shows it with the keyboard's names. `shortcutKey`, present only when the user's layout moved the chord's key, names the US key position the app's hook listens at (a chord recorded as `Z` on a German layout has `shortcutKey` `Y`). On macOS the content script cancels the page's default action for that key press, because macOS binds Control chords to text editing (Control+Shift+F extends the selection) and Firefox hands them to the page before the capture. The extension stores nothing from `config` beyond the lifetime of the connection.
 
 ### `ping` and `pong` (either direction)
 

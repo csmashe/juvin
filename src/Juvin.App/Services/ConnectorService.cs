@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net.Sockets;
 using Juvin.Core.Connector;
+using Juvin.Core.Hotkeys;
 using Juvin.Core.Interfaces;
 using Juvin.Core.Localization;
 using Juvin.Core.Models;
@@ -148,14 +149,20 @@ public sealed class ConnectorService
         await _server.StopAsync().ConfigureAwait(false);
     }
 
-    public ConnectorConfig BuildConfig(AppSettings settings) =>
-        new()
+    public ConnectorConfig BuildConfig(AppSettings settings)
+    {
+        var shortcut = KeyChord.TryParse(settings.RewriteShortcut, out var saved)
+            ? saved.WithPhysicalKey(settings.RewriteShortcutPhysicalKey)
+            : HotkeyService.EffectiveShortcut(settings.RewriteShortcut);
+        return new ConnectorConfig
         {
             Actions = [.. RewriteActionCatalog.Resolve(settings).Select(action => new ConnectorAction(action.Id, action.DisplayName(_localizer)))],
             Adapters = s_adapters,
-            Shortcut = HotkeyService.EffectiveShortcut(settings.RewriteShortcut).ToString(),
+            Shortcut = shortcut.ToString(),
+            ShortcutKey = shortcut.PhysicalKey == shortcut.Key ? null : shortcut.PhysicalKey,
             Health = new ConnectorHealth(settings.ProcessingMode == ProcessingMode.Codex ? "codex" : "local", null),
         };
+    }
 
     /// <summary>Round-trip time to the most recently connected extension, or null when none answers.</summary>
     public async Task<TimeSpan?> PingAsync(TimeSpan timeout, CancellationToken ct)
