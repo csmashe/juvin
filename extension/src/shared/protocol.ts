@@ -80,6 +80,8 @@ export interface ConfigMessage {
   actions: Action[];
   adapters: string[];
   shortcut: string;
+  /** The US key position the shortcut is pressed at, when the user's layout moved its key. */
+  shortcutKey?: string;
   health: Health;
 }
 
@@ -375,7 +377,7 @@ export function parseIncoming(raw: unknown): ParseResult {
 
   switch (raw.type) {
     case "config":
-      if (!Array.isArray(raw.actions) || !raw.actions.every(isAction) || !Array.isArray(raw.adapters) || !raw.adapters.every(isString) || !isString(raw.shortcut) || !isHealth(raw.health)) {
+      if (!Array.isArray(raw.actions) || !raw.actions.every(isAction) || !Array.isArray(raw.adapters) || !raw.adapters.every(isString) || !isString(raw.shortcut) || (raw.shortcutKey !== undefined && !isString(raw.shortcutKey)) || !isHealth(raw.health)) {
         return bad("config");
       }
 
@@ -387,6 +389,7 @@ export function parseIncoming(raw: unknown): ParseResult {
           actions: raw.actions.map((a) => ({ id: a.id, title: a.title })),
           adapters: [...raw.adapters],
           shortcut: raw.shortcut,
+          ...(raw.shortcutKey === undefined ? {} : { shortcutKey: raw.shortcutKey }),
           health: { mode: raw.health.mode, modelReachable: raw.health.modelReachable },
         },
       };
