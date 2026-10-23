@@ -91,6 +91,9 @@ public sealed record AppSettings
 
     public bool HasCompletedOnboarding { get; init; }
 
+    /// <summary>The name of the setup wizard step to reopen at while setup is unfinished, so Restart Juvin lands back on the checklist.</summary>
+    public string? SetupWizardStep { get; init; }
+
     /// <summary>Settings this build does not know, such as those a newer Juvin wrote, kept so a save does not drop them.</summary>
     [JsonExtensionData]
     public IDictionary<string, JsonElement>? Extra { get; init; }

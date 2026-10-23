@@ -170,6 +170,105 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
         Assert.Equal(evaluations, open.EvaluateCount);
     }
 
+    [Theory]
+    [InlineData(SetupTaskStatusKind.NeedsAction, "Restart")]
+    [InlineData(SetupTaskStatusKind.Satisfied, null)]
+    public async Task ALaterChangeAfterASuccessfulAction_ClearsItsMessage(SetupTaskStatusKind later, string? laterAction)
+    {
+        var task = new FakeSetupTask("keyboard", SetupTaskSeverity.Recommended, SetupTaskStatusKind.NeedsAction)
+        {
+            ActionOutcome = new SetupActionOutcome(true, "Turn it on, then check again."),
+        };
+        using var vm = Create(task);
+        vm.SetupRecheckInterval = TimeSpan.FromMilliseconds(20);
+        vm.StepIndex = (int)SetupWizardStep.Checklist;
+        await WaitUntilAsync(() => vm.SetupItems[0].Kind == SetupTaskStatusKind.NeedsAction);
+        await vm.RunSetupActionCommand.ExecuteAsync(vm.SetupItems[0]);
+        Assert.Equal("Turn it on, then check again.", vm.SetupItems[0].ActionMessage);
+
+        task.State = new SetupTaskState(later, "changed", ActionLabel: laterAction);
+        await WaitUntilAsync(() => vm.SetupItems[0].Summary == "changed");
+
+        Assert.Null(vm.SetupItems[0].ActionMessage);
+    }
+
+    [Fact]
+    public async Task AnActionWhoseResultOffersAnotherAction_DropsItsMessage()
+    {
+        var task = new FakeSetupTask("keyboard", SetupTaskSeverity.Recommended, SetupTaskStatusKind.NeedsAction)
+        {
+            ActionOutcome = new SetupActionOutcome(true, "Turn it on, then check again."),
+            StateAfterAction = new SetupTaskState(SetupTaskStatusKind.NeedsAction, "restart", ActionLabel: "Restart"),
+        };
+        var vm = await CreateOnLastStepAsync(task);
+
+        await vm.RunSetupActionCommand.ExecuteAsync(vm.SetupItems[0]);
+
+        Assert.Equal("Restart", vm.SetupItems[0].ActionLabel);
+        Assert.Null(vm.SetupItems[0].ActionMessage);
+    }
+
+    [Fact]
+    public async Task ARecheckThatChangesNothing_KeepsTheActionsMessage()
+    {
+        var task = new FakeSetupTask("keyboard", SetupTaskSeverity.Recommended, SetupTaskStatusKind.NeedsAction)
+        {
+            ActionOutcome = new SetupActionOutcome(true, "Turn it on, then check again."),
+        };
+        var vm = await CreateOnLastStepAsync(task);
+        await vm.RunSetupActionCommand.ExecuteAsync(vm.SetupItems[0]);
+
+        await vm.RecheckSetupCommand.ExecuteAsync(null);
+
+        Assert.Equal("Turn it on, then check again.", vm.SetupItems[0].ActionMessage);
+    }
+
+    [Fact]
+    public void AnUnfinishedSetup_ReopensAtTheSavedStep_AndSavesTheStepItClosesAt()
+    {
+        _settings.Update(s => s with { SetupWizardStep = nameof(SetupWizardStep.Checklist) });
+        using var vm = Create();
+        Assert.Equal(SetupWizardStep.Checklist, vm.Step);
+
+        vm.StepIndex = (int)SetupWizardStep.TryIt;
+        // ReSharper disable once DisposeOnUsingVariable -- disposing is what the test checks; the using covers a failure before it
+        vm.Dispose();
+
+        Assert.Equal(nameof(SetupWizardStep.TryIt), _settings.Current.SetupWizardStep);
+    }
+
+    [Fact]
+    public void AnEarlierWizardDisposedAgain_KeepsTheLaterWizardsStep()
+    {
+        using var first = Create();
+        first.StepIndex = (int)SetupWizardStep.Shortcut;
+        // ReSharper disable once DisposeOnUsingVariable -- disposing is what the test checks; the using covers a failure before it
+        first.Dispose();
+        using var second = Create();
+        second.StepIndex = (int)SetupWizardStep.Checklist;
+        // ReSharper disable once DisposeOnUsingVariable -- disposing is what the test checks; the using covers a failure before it
+        second.Dispose();
+
+        // ReSharper disable once DisposeOnUsingVariable -- disposing is what the test checks; the using covers a failure before it
+        first.Dispose();
+
+        Assert.Equal(nameof(SetupWizardStep.Checklist), _settings.Current.SetupWizardStep);
+    }
+
+    [Fact]
+    public void AFinishedSetup_OpensAtTheFirstStep_AndSavesNoStep()
+    {
+        _settings.Update(s => s with { HasCompletedOnboarding = true, SetupWizardStep = nameof(SetupWizardStep.Checklist) });
+        using var vm = Create();
+        Assert.Equal(0, vm.StepIndex);
+
+        vm.StepIndex = (int)SetupWizardStep.TryIt;
+        // ReSharper disable once DisposeOnUsingVariable -- disposing is what the test checks; the using covers a failure before it
+        vm.Dispose();
+
+        Assert.Equal(nameof(SetupWizardStep.Checklist), _settings.Current.SetupWizardStep);
+    }
+
     [Fact]
     public async Task RunningAnAction_ReevaluatesEveryRow()
     {
