@@ -448,6 +448,36 @@ async function onPopupRequest(request: PopupRequest): Promise<Status | PingResul
   }
 }
 
+const ALL_SITES_SCRIPT = "juvin-all-sites";
+
+/**
+ * Firefox on macOS hands the shortcut to the page, so a page needs the content script's guard before the first press.
+ * With the all-sites permission the script loads with every page there, not only once a capture injects it.
+ */
+async function syncAllSitesScript(): Promise<void> {
+  if (!(browser.runtime as Partial<Runtime.Static>).getBrowserInfo || !(await isMac())) {
+    return;
+  }
+
+  try {
+    const granted = await browser.permissions.contains({ origins: ["<all_urls>"] });
+    const registered = (await browser.scripting.getRegisteredContentScripts({ ids: [ALL_SITES_SCRIPT] })).length > 0;
+    if (granted && !registered) {
+      await browser.scripting.registerContentScripts([
+        { id: ALL_SITES_SCRIPT, matches: ["<all_urls>"], excludeMatches: ["https://mail.google.com/*"], js: [CONTENT_SCRIPT], runAt: "document_idle" },
+      ]);
+    } else if (!granted && registered) {
+      await browser.scripting.unregisterContentScripts({ ids: [ALL_SITES_SCRIPT] });
+    }
+  } catch (e) {
+    log("all-sites-script.failed", { error: errorName(e) });
+  }
+}
+
+void syncAllSitesScript();
+browser.permissions.onAdded.addListener(() => void syncAllSitesScript());
+browser.permissions.onRemoved.addListener(() => void syncAllSitesScript());
+
 browser.runtime.onStartup.addListener(() => connectQuietly("startup"));
 browser.runtime.onInstalled.addListener(() => connectQuietly("installed"));
 

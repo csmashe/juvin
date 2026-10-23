@@ -42,6 +42,6 @@ The rewrite shortcut is `Ctrl+Shift+F`, the Control key on macOS too (`MacCtrl+S
 
 - `src/background/`: native messaging connection, routing of `context.request` and `apply.request` to tabs, opening the test page for `testpage.request`, thread trimming to the frame cap.
 - `src/content/`: site adapters, editor registry, capture, and apply. Only adapters read a site's DOM. The generic adapter covers other sites; the content script runs in the top frame only, so an editor inside an iframe is not found. The hand-written SHA-256 in `hash.ts` is not dead code: content scripts on plain `http:` pages have no `crypto.subtle`, so the hash falls back to it there.
-- `src/popup/`: connection status, connection test, shortcut, and the all-sites permission for the generic adapter.
+- `src/popup/`: connection status, connection test, shortcut, and the all-sites permission for the generic adapter. Elsewhere the content script is injected at the first capture; in Firefox on macOS, once all sites are allowed, it loads with every page so its shortcut guard is in place before the first press.
 - `src/test-page/`: a bundled sample thread with a reply editor, handled by the `test-page` adapter.
 - `src/shared/`: protocol types and parsing, browser detection, internal message types.

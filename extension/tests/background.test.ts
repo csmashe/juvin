@@ -40,6 +40,13 @@ interface Harness {
   focused: number[];
   /** Tabs the extension asked to make active, in order. */
   activated: number[];
+  /** Gecko answers runtime.getBrowserInfo; Chromium has none. */
+  gecko: boolean;
+  allSites: boolean;
+  /** Ids of the dynamically registered content scripts. */
+  registered: string[];
+  permissionsAdded: FakeEvent<() => void>;
+  permissionsRemoved: FakeEvent<() => void>;
 }
 
 const TAB = 5;
@@ -99,6 +106,7 @@ function fakeBrowser(h: Harness): unknown {
       getManifest: () => ({ version: "0.1.0" }),
       getURL: (path: string) => `moz-extension://abc/${path}`,
       getPlatformInfo: () => Promise.resolve({ os: h.os }),
+      ...(h.gecko ? { getBrowserInfo: () => Promise.resolve({ name: "Firefox", version: "158.0" }) } : {}),
       sendMessage: () => Promise.reject(new Error("No receiver.")),
       onMessage,
       onStartup: noop,
@@ -134,7 +142,19 @@ function fakeBrowser(h: Harness): unknown {
         return Promise.resolve({ id: windowId });
       },
     },
-    scripting: { executeScript: () => Promise.reject(new Error("Not allowed.")) },
+    permissions: { contains: () => Promise.resolve(h.allSites), onAdded: h.permissionsAdded, onRemoved: h.permissionsRemoved },
+    scripting: {
+      executeScript: () => Promise.reject(new Error("Not allowed.")),
+      getRegisteredContentScripts: ({ ids }: { ids: string[] }) => Promise.resolve(h.registered.filter((id) => ids.includes(id)).map((id) => ({ id }))),
+      registerContentScripts: (scripts: { id: string }[]) => {
+        h.registered.push(...scripts.map((s) => s.id));
+        return Promise.resolve();
+      },
+      unregisterContentScripts: ({ ids }: { ids: string[] }) => {
+        h.registered = h.registered.filter((id) => !ids.includes(id));
+        return Promise.resolve();
+      },
+    },
   };
 }
 
@@ -154,6 +174,11 @@ function newHarness(): Harness {
     os: "linux",
     focused: [],
     activated: [],
+    gecko: false,
+    allSites: false,
+    registered: [],
+    permissionsAdded: new FakeEvent(),
+    permissionsRemoved: new FakeEvent(),
   };
   vi.doMock("webextension-polyfill", () => ({ default: fakeBrowser(h) }));
   return h;
@@ -428,5 +453,50 @@ describe("Connection", () => {
 
     h.port().onDisconnect.fire(h.port());
     expect(dropped).toHaveBeenCalledOnce();
+  });
+});
+
+describe("all-sites content script", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.spyOn(console, "info").mockImplementation(() => undefined);
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    vi.doUnmock("webextension-polyfill");
+    vi.restoreAllMocks();
+  });
+
+  async function start(h: Harness): Promise<void> {
+    await import("../src/background/index");
+    await settle();
+  }
+
+  it("loads with every page in Firefox on macOS once all sites are allowed, and stops when they are not", async () => {
+    const h = newHarness();
+    Object.assign(h, { os: "mac", gecko: true, allSites: true });
+    await start(h);
+    expect(h.registered).toEqual(["juvin-all-sites"]);
+
+    h.allSites = false;
+    h.permissionsRemoved.fire();
+    await settle();
+    expect(h.registered).toEqual([]);
+
+    h.allSites = true;
+    h.permissionsAdded.fire();
+    await settle();
+    expect(h.registered).toEqual(["juvin-all-sites"]);
+  });
+
+  it("is not registered without the all-sites permission, in Chrome, or off macOS", async () => {
+    for (const setup of [{ os: "mac", gecko: true, allSites: false }, { os: "mac", gecko: false, allSites: true }, { os: "linux", gecko: true, allSites: true }]) {
+      vi.resetModules();
+      const h = newHarness();
+      Object.assign(h, setup);
+      await start(h);
+      expect(h.registered).toEqual([]);
+    }
   });
 });
