@@ -95,7 +95,7 @@ A is automated, H is by hand. Block is 1 or 2.
   3. Open Settings, Shortcuts, press Test, and then press Control+Shift+F.
 - Pass:
   - Before trust: Home reads "Control+Shift+F, not listening", and the checklist has one row, "Accessibility permission", Recommended, reading "Juvin needs Accessibility permission to listen for the rewrite shortcut." The button shows macOS's own Accessibility dialog for Juvin (`AXIsProcessTrustedWithOptions`) and opens Privacy and Security, Accessibility. The row then says "Turn on Juvin in the list, then check again."
-  - After trust: the row reads "Juvin can listen for the rewrite shortcut.", Shortcuts reads "Listening through System keyboard hook.", and Home reads "Control+Shift+F, listening". Test shows Detected. If the row offers Restart Juvin instead, press it; the reopened Juvin must reach the same state (see M-15).
+  - After trust: the row reads "Juvin can listen for the rewrite shortcut.", Shortcuts reads "Listening through System keyboard hook.", and Home reads "Control+Shift+F, listening". Test shows Detected. If the row offers Restart Juvin instead, it no longer shows the earlier "Turn on Juvin in the list, then check again."; press it, and the reopened Juvin must reach the same state with the wizard back on the Setup checklist (see M-15).
 - Record: whether Juvin appeared in the list before the button was pressed. Then `scripts/mac/session.sh stop-block1`.
 
 **M-03** (packaging-checklist macOS section; A; block 2). Build the dmg and run its smoke test as that section says. Then install the dmg into `/Applications`.
@@ -217,7 +217,7 @@ A is automated, H is by hand. Block is 1 or 2.
 
 **M-21** (MenuBarTrayHostProbe; H; block 2). The menu bar and the window.
 - Pass:
-  - The menu bar shows the Juvin mark, and its menu has Open Juvin and Exit.
+  - The menu bar shows the Juvin mark, and its menu has Open Juvin and Exit. With Juvin in front, the application menu beside the Apple menu is named Juvin.
   - General has no "No system tray was found" hint.
   - With Close to tray on, closing the window leaves Juvin running in the menu bar, and Open Juvin brings the window back. Exit quits the app.
 - Record: whether Juvin shows in the Dock while its window is hidden, and what Cmd+Q does.
