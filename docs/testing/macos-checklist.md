@@ -309,6 +309,35 @@ Whether each Phase 6 scenario from `acceptance-checklist.md` is rerun on the Mac
 
 | Row | Date | Block | Build | Result | Notes |
 | --- | --- | --- | --- | --- | --- |
+| M-01, M-02 | | 1 | | not run | Waits for a published dmg |
+| M-03 | Oct 20 | 2 | 52929fb | pass | Smoke test passed; installed app ad-hoc signed, `com.juvin.app`; `spctl` rejects it, as expected without notarization |
+| M-04, M-04-mac | Oct 20 | 2 | #38 | pass | 1378 tests: 1219 passed, 159 skipped; macOS set 115: 111 passed, 4 skipped. The first run failed the Keychain test over SSH (locked keychain, -25308); the kit now unlocks it first |
+| M-05 | Oct 20 | 2 | 52929fb | pass | Data folder and its Secrets, Logs, Runtime are drwx------; sockets and locks present; no `secret.key` |
+| M-06 | Oct 20 | 2 | 52929fb | pass | One instance after `open -n`; `--trigger` and `--background` exit 0 |
+| M-07 | Oct 20 | 2 | 52929fb | pass | Quarantined copy translocated after Open Anyway; Update shows the temporary-copy message; manifest unchanged |
+| M-08 | Oct 20 | 2 | #38 | pass | Keychain round trip passed; no Juvin item left in the login Keychain |
+| M-09 | Oct 20 | 2 | 52929fb | pass | Plist removed, settings back to defaults, wizard at the next start |
+| M-10 | Oct 20 | 2 | 52929fb | pass | Both manifests written by the app with the right name, path, and allowlist |
+| M-11 | Oct 20 | 2 | 52929fb | pass | Framed hello through `juvin-host` came back as `config` |
+| M-12 | Oct 20 | 2 | 52929fb | pass | Chrome 155 and Firefox 158 connected and captured 161 chars from the test page; popup Test connection answered in 2 ms |
+| M-13 | Oct 20 | 2 | 52929fb | pass | Chrome shows and fires Ctrl+Shift+F. Firefox does not fire the command inside a text field (macOS binds the key to extending the selection); documented, the key stays |
+| M-14 | Oct 20 | 2 | 52929fb | pass | Hook listening; Chrome press captured once with one coalesced duplicate; Finder `browser-not-focused`; no draft words in the log |
+| M-15 | Oct 20 | 2 | #38 | pass | Before trust: Failed with the Accessibility hint. After the grant the row offers Restart Juvin, and the relaunched app listens (fixed in #38; the first run needed a manual restart) |
+| M-16 | Oct 20 | 2 | 52929fb | pass | Control+Shift+F fires, Cmd+Shift+F does not |
+| M-17 | Oct 20 | 2 | 52929fb | pass | German layout: recorded Shift+Super+Z at physical key Y; only that key fires |
+| M-18 | Oct 20 | 2 | #38 | pass | Keys run actions, Cmd+Z restores, Escape and click outside close. The right-click list was cut off in a short window; fixed in #38 |
+| M-19 | Oct 20 | 2 | #38 | pass | Panel top right; Draft changed with Copy and Recapture; Apply replaced the selection. Focus now returns to the browser after Apply (#38) |
+| M-20 | Oct 20 | 2 | #38 | pass | Failed on 52929fb (panel opened on the desktop Space). After #38 the panel shows over full-screen Firefox, again on a second show, and Apply and Cmd+Z work |
+| M-21 | Oct 20 | 2 | 52929fb | pass | Menu bar mark with Open Juvin and Exit; close keeps Juvin running; Cmd+Q quits |
+| M-22 | Oct 20 | 2 | #38 | pass | Failed on 52929fb (Launch at login offered for a Debug build). After #38 the switch is unavailable there |
+| M-23 | Oct 20 | 2 | 52929fb | pass | Plist lints with Label, ProgramArguments, RunAtLoad, Aqua, JuvinManaged. Login Items shows "juvin, Item from unidentified developer" until there is a Developer ID |
+| M-24 | Oct 20 | 2 | 52929fb | pass | After login Juvin runs in the background and the shortcut works; with the switch off nothing starts |
+| M-25 | Oct 20 | 2 | #38 | pass | Wizard steps 1 to 7 pass. On 52929fb the wizard opened behind the main window; fixed in #38 |
+| M-26 | | 2 | | not run | Needs `JUVIN_SENTRY_DSN` as a NoMac secret |
+| M-27 | Oct 20 | 2 | 52929fb | pass | Unreachable server card with Try again, draft unchanged; `juvin` sent only SYNs to 127.0.0.1:11435 |
+| M-28 | Oct 23 | 2 | #38 | pass | Oct 20: steps 1, 4, 5, 6 passed, but a whole-line Apply in Chrome left an empty line. Oct 23 after #38: first and last line leave no empty line, one Cmd+Z restores |
+| M-29 | Oct 23 | 2 | #39 | pass | Oct 23 on #38: Control+Shift+F grew the Firefox selection by a character before the capture, so Apply joined two lines. After #39 the selection keeps its length on the test page and, with all sites allowed, on another site from the first press |
+| M-30 | Oct 20 | 2 | 52929fb | pass | `juvin-cli` rewrite with gemma3:4b returned 167 chars |
 
 ## Not covered in this session
 
