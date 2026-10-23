@@ -309,7 +309,8 @@ Whether each Phase 6 scenario from `acceptance-checklist.md` is rerun on the Mac
 
 | Row | Date | Block | Build | Result | Notes |
 | --- | --- | --- | --- | --- | --- |
-| M-01, M-02 | | 1 | | not run | Waits for a published dmg |
+| M-01 | Oct 23 | 1 | v0.1.0-alpha.1 | pass | Safari download carries `com.apple.quarantine` (`0083;...;Safari`). Opening from Finder: "\"Juvin\" Not Opened. Apple could not verify \"Juvin\" is free of malware that may harm your Mac or compromise your privacy." (Move to Trash, Done). Privacy and Security: "\"Juvin\" was blocked to protect your Mac." with Open Anyway, then "Open \"Juvin\"?" (Move to Trash, Open Anyway, Done) and an administrator password. The wizard opened in front; no Accessibility prompt before any wizard button. A second open from Finder showed no dialog |
+| M-02 | Oct 23 | 1 | v0.1.0-alpha.1 | pass | Before trust: Home "Ctrl+Shift+F, not listening"; step 4 names the hook failure; one Recommended row with the expected text. Open Accessibility settings showed macOS's "\"Juvin\" would like to control this computer using accessibility features." (Open System Settings, Deny) and the Accessibility pane, where Juvin was already listed, off. After turning it on (password asked), Check again offered Restart Juvin; the relaunched app reads "Juvin can listen for the rewrite shortcut.", Shortcuts "Listening through System keyboard hook.", Home "Ctrl+Shift+F, listening", and a real Control+Shift+F shows Detected |
 | M-03 | Oct 20 | 2 | 52929fb | pass | Smoke test passed; installed app ad-hoc signed, `com.juvin.app`; `spctl` rejects it, as expected without notarization |
 | M-04, M-04-mac | Oct 20 | 2 | #38 | pass | 1378 tests: 1219 passed, 159 skipped; macOS set 115: 111 passed, 4 skipped. The first run failed the Keychain test over SSH (locked keychain, -25308); the kit now unlocks it first |
 | M-05 | Oct 20 | 2 | 52929fb | pass | Data folder and its Secrets, Logs, Runtime are drwx------; sockets and locks present; no `secret.key` |
@@ -333,7 +334,7 @@ Whether each Phase 6 scenario from `acceptance-checklist.md` is rerun on the Mac
 | M-23 | Oct 20 | 2 | 52929fb | pass | Plist lints with Label, ProgramArguments, RunAtLoad, Aqua, JuvinManaged. Login Items shows "juvin, Item from unidentified developer" until there is a Developer ID |
 | M-24 | Oct 20 | 2 | 52929fb | pass | After login Juvin runs in the background and the shortcut works; with the switch off nothing starts |
 | M-25 | Oct 20 | 2 | #38 | pass | Wizard steps 1 to 7 pass. On 52929fb the wizard opened behind the main window; fixed in #38 |
-| M-26 | | 2 | | not run | Needs `JUVIN_SENTRY_DSN` as a NoMac secret |
+| M-26 | Oct 23 | 2 | 3866aa8 | pass | One event in Sentry (JUVIN-1, release `juvin@0.1.0`, macOS 26.6.2) from the run with reporting on: value `<redacted>`, frames without paths, `handled: no`, mechanism `ui-dispatcher`, user empty but for the country Sentry derives at ingest; no canary or `/Users/agent`. The run with reporting off sent nothing |
 | M-27 | Oct 20 | 2 | 52929fb | pass | Unreachable server card with Try again, draft unchanged; `juvin` sent only SYNs to 127.0.0.1:11435 |
 | M-28 | Oct 23 | 2 | #38 | pass | Oct 20: steps 1, 4, 5, 6 passed, but a whole-line Apply in Chrome left an empty line. Oct 23 after #38: first and last line leave no empty line, one Cmd+Z restores |
 | M-29 | Oct 23 | 2 | #39 | pass | Oct 23 on #38: Control+Shift+F grew the Firefox selection by a character before the capture, so Apply joined two lines. After #39 the selection keeps its length on the test page and, with all sites allowed, on another site from the first press |
