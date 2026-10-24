@@ -25,6 +25,19 @@ fi
 # A '~' sorts before the release in both dpkg and rpm, as a SemVer prerelease does; '-' is not allowed in an rpm version
 # and in a deb version it would start the Debian revision.
 PKG_VERSION=${VERSION/-/\~}
+# Matches LauncherName in Juvin.Core: "Juvin (Alpha)" for 0.1.0-alpha.2, "Juvin" for a release.
+LAUNCHER_NAME=Juvin
+if [[ $VERSION == *-* ]]; then
+    word=${VERSION#*-}
+    word=${word%%.*}
+    if ((${#word} <= 2)); then
+        word=${word^^}
+    else
+        word=${word,,}
+        word=${word^}
+    fi
+    LAUNCHER_NAME="Juvin ($word)"
+fi
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 mkdir -p "${2:-$REPO_ROOT/dist}"
@@ -157,10 +170,10 @@ glibc_floor() {
 }
 
 write_desktop_file() {
-    cat >"$1" <<'EOF'
+    cat >"$1" <<EOF
 [Desktop Entry]
 Type=Application
-Name=Juvin
+Name=$LAUNCHER_NAME
 GenericName=Email writing assistant
 Comment=Works beside you
 Exec=juvin

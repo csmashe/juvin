@@ -1,5 +1,5 @@
 ; Inno Setup 6.3+ script for the per-user Juvin installer; scripts\build-windows-installer.ps1 builds it
-; and passes AppVersion, NumericVersion, PayloadDir, OutputDir, and IconFile with /D.
+; and passes AppVersion, NumericVersion, LauncherName, PayloadDir, OutputDir, and IconFile with /D.
 ;
 ; The installer only lays files down under %LOCALAPPDATA%\Programs\Juvin. The app writes the
 ; native messaging manifests and the browsers' HKCU NativeMessagingHosts keys itself when the
@@ -10,6 +10,9 @@
 
 #ifndef AppVersion
   #error Pass /DAppVersion=<version>
+#endif
+#ifndef LauncherName
+  #error Pass /DLauncherName=<name>
 #endif
 #ifndef NumericVersion
   #error Pass /DNumericVersion=<a.b.c.d>
@@ -44,7 +47,7 @@ MinVersion=10.0
 OutputDir={#OutputDir}
 OutputBaseFilename=Juvin-{#AppVersion}-x64-setup
 SetupIconFile={#IconFile}
-UninstallDisplayName=Juvin
+UninstallDisplayName={#LauncherName}
 UninstallDisplayIcon={app}\juvin.exe
 Compression=lzma2
 SolidCompression=yes
@@ -63,9 +66,22 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 Source: "{#PayloadDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+[InstallDelete]
+; The shortcut name carries the prerelease word, so remove any name an earlier version wrote before writing this one.
+Type: files; Name: "{autoprograms}\Juvin.lnk"
+Type: files; Name: "{autoprograms}\Juvin (Alpha).lnk"
+Type: files; Name: "{autoprograms}\Juvin (Beta).lnk"
+Type: files; Name: "{autoprograms}\Juvin (RC).lnk"
+Type: files; Name: "{autoprograms}\Juvin (Dev).lnk"
+Type: files; Name: "{autodesktop}\Juvin.lnk"
+Type: files; Name: "{autodesktop}\Juvin (Alpha).lnk"
+Type: files; Name: "{autodesktop}\Juvin (Beta).lnk"
+Type: files; Name: "{autodesktop}\Juvin (RC).lnk"
+Type: files; Name: "{autodesktop}\Juvin (Dev).lnk"
+
 [Icons]
-Name: "{autoprograms}\Juvin"; Filename: "{app}\juvin.exe"
-Name: "{autodesktop}\Juvin"; Filename: "{app}\juvin.exe"; Tasks: desktopicon
+Name: "{autoprograms}\{#LauncherName}"; Filename: "{app}\juvin.exe"
+Name: "{autodesktop}\{#LauncherName}"; Filename: "{app}\juvin.exe"; Tasks: desktopicon
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\juvin.exe"; ValueType: string; ValueName: ""; ValueData: "{app}\juvin.exe"; Flags: uninsdeletekey
