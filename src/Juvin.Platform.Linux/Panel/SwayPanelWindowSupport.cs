@@ -20,6 +20,8 @@ public sealed class SwayPanelWindowSupport : IPanelWindowSupport
     // The panel's own margin from the screen edges, in logical pixels like Sway's layout.
     private const int ScreenMargin = 16;
 
+    private static readonly string[] s_childKeys = ["nodes", "floating_nodes"];
+
     private readonly TimeSpan _retryDelay;
     private readonly IPanelWindowSupport _inner;
     private readonly IProcessRunner _runner;
@@ -153,7 +155,7 @@ public sealed class SwayPanelWindowSupport : IPanelWindowSupport
             return node;
         }
 
-        foreach (var key in (ReadOnlySpan<string>)["nodes", "floating_nodes"])
+        foreach (var key in s_childKeys)
         {
             if (!node.TryGetProperty(key, out var children) || children.ValueKind != JsonValueKind.Array)
             {

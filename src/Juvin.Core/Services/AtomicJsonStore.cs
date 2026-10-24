@@ -221,12 +221,11 @@ public sealed class AtomicJsonStore<T>
                 }
 
                 var fileName = Path.GetFileName(path);
-                foreach (var staging in Directory.EnumerateFiles(directory, AtomicFile.TempFilePattern(fileName)))
+                var stale = Directory.EnumerateFiles(directory, AtomicFile.TempFilePattern(fileName))
+                    .Where(staging => AtomicFile.IsTempFileOf(fileName, staging) && File.GetLastWriteTimeUtc(staging) < cutoff);
+                foreach (var staging in stale)
                 {
-                    if (AtomicFile.IsTempFileOf(fileName, staging) && File.GetLastWriteTimeUtc(staging) < cutoff)
-                    {
-                        File.Delete(staging);
-                    }
+                    File.Delete(staging);
                 }
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

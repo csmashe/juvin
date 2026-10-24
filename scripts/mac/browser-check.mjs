@@ -12,7 +12,7 @@
 // the extension command by dispatching a command event on its key element, which needs no focus.
 //
 // Usage: node browser-check.mjs chrome|firefox --binary PATH --extension DIR --app-log FILE
-//        --app-exe PATH [--port N] [--timeout SECONDS]
+//        --app-exe PATH --out DIR [--port N] [--timeout SECONDS]
 // Prints progress, then NOTE: lines for the summary. Exits 0 on pass, 1 on failure.
 import { execFileSync, spawn } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -31,7 +31,7 @@ const args = {};
 for (let i = 0; i < rest.length; i += 2) {
   args[rest[i].replace(/^--/, "")] = rest[i + 1];
 }
-for (const required of ["binary", "extension", "app-log", "app-exe"]) {
+for (const required of ["binary", "extension", "app-log", "app-exe", "out"]) {
   if (!args[required]) {
     console.error(`missing --${required}`);
     process.exit(2);
@@ -173,7 +173,7 @@ async function chrome(appLog) {
       "--password-store=basic",
       "about:blank",
     ],
-    join(args.out ?? tmpdir(), "chrome-output.log"),
+    join(args.out, "chrome-output.log"),
   );
   try {
     let version;
@@ -366,7 +366,7 @@ async function firefox(appLog) {
   const child = launch(
     args.binary,
     ["-marionette", "-remote-allow-system-access", "-no-remote", "-profile", profile, "about:blank"],
-    join(args.out ?? tmpdir(), "firefox-output.log"),
+    join(args.out, "firefox-output.log"),
   );
   try {
     const client = await Marionette.open(port, 60000);
@@ -442,6 +442,7 @@ if (!checks[browserName]) {
   process.exit(2);
 }
 try {
+  mkdirSync(args.out, { recursive: true });
   await checks[browserName](new AppLog(args["app-log"]));
   log("pass");
   process.exit(0);

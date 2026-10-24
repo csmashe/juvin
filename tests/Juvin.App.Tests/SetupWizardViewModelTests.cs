@@ -748,7 +748,7 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
     public void SettingsChangedElsewhere_AreShownWithoutSavingAgain()
     {
         const string lan = "http://10.0.3.20:11434";
-        var vm = Create();
+        using var vm = Create();
 
         _settings.Update(s => s with { ProcessingMode = ProcessingMode.Codex, CrashReportingEnabled = false, LocalServerUrl = lan });
 
@@ -757,6 +757,7 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
         Assert.False(vm.CrashReportingEnabled);
         Assert.Equal(lan, vm.ServerUrl);
 
+        // ReSharper disable once DisposeOnUsingVariable -- disposing is what the test checks; the using covers a failure before it
         vm.Dispose();
         _settings.Update(s => s with { ProcessingMode = ProcessingMode.Local });
 

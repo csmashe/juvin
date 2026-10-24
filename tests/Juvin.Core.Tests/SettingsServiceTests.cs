@@ -304,9 +304,9 @@ public sealed class SettingsServiceTests : IDisposable
         service.Update(s => s with { LocalModel = "llama3" });
         service.Update(s => s with { HistoryEnabled = true });
 
-        foreach (var file in new[] { path, path + ".bak" })
+        foreach (var json in new[] { path, path + ".bak" }.Select(File.ReadAllText))
         {
-            using var document = JsonDocument.Parse(File.ReadAllText(file));
+            using var document = JsonDocument.Parse(json);
             var future = document.RootElement.GetProperty("someFutureSetting");
             Assert.Equal([1, 2], future.GetProperty("nested").EnumerateArray().Select(n => n.GetInt32()));
         }
