@@ -81,11 +81,17 @@ The store gives the item its own ID; the package carries no `key`. Before publis
 
 Developer Hub, submit a new add-on, "On this site", upload `juvin-firefox-<version>.zip`. The ID `extension@juvin.app` is in the manifest, and the app already allows it.
 
+- Compatibility: Firefox only, not Firefox for Android; the extension needs the desktop app.
 - Source code: yes, upload `juvin-extension-source-<version>.zip`. The build steps are in its `extension/README.md`, under "Rebuilding the store package": Node 24 and npm 11, `npm ci`, `npm run build`, and `dist/firefox` is the package. The bundle is not minified.
 - Categories: Social & Communication, and Productivity if offered. Otherwise Other.
 - License: GNU General Public License v3.0
 - Privacy policy: paste the text of `docs/PRIVACY.md`, or link to it.
 - Data collection: the manifest declares `data_collection_permissions` as required `personalCommunications`, `personallyIdentifyingInfo`, `websiteContent`, and `browsingActivity`. Mozilla counts data sent to a native application as transmission, and the extension passes the draft, the conversation with its names and addresses, on other sites the page's text, and the page's address (origin and path, without the query or fragment) to the desktop app. Firefox shows these at install; the extension cannot work without them, so none is optional.
+- After submitting, Manage Listing, Images: upload `assets/brand/png/juvin-mark-color-128.png` as the custom icon (otherwise the listing shows Mozilla's default) and the four screenshots, captioned:
+  1. Select a draft and press the shortcut: the action menu opens beside it.
+  2. The rewrite replaces the selection in place, and Ctrl+Z puts the original back.
+  3. Right-click for more actions, the thread status, and Review.
+  4. Review shows the rewrite in the desktop app before you apply it.
 
 **Notes to reviewer:**
 
