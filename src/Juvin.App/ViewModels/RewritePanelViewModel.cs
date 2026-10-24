@@ -720,7 +720,7 @@ public sealed partial class RewritePanelViewModel : ObservableObject
 
     private void ReleaseBusy(object owner)
     {
-        if (_busyOwner != owner)
+        if (!ReferenceEquals(_busyOwner, owner))
         {
             return;
         }

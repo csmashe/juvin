@@ -617,6 +617,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         }
         catch (OperationCanceledException)
         {
+            // Stopped.
         }
     }
 
@@ -671,6 +672,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         }
         catch (OperationCanceledException)
         {
+            // Stopped.
         }
     }
 

@@ -71,7 +71,7 @@ internal sealed class LoopbackHttpServer : IDisposable
     private static async Task ReadRequestAsync(NetworkStream stream)
     {
         var buffer = new byte[8192];
-        var head = new MemoryStream();
+        using var head = new MemoryStream();
         var headEnd = -1;
         while (headEnd < 0)
         {
