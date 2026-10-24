@@ -30,6 +30,11 @@ LAUNCHER_NAME=Juvin
 if [[ $VERSION == *-* ]]; then
     word=${VERSION#*-}
     word=${word%%.*}
+    # The Windows build refuses any other word, since its installer removes these shortcut names only.
+    if [[ ! ${word,,} =~ ^(alpha|beta|rc|dev)$ ]]; then
+        echo "error: the prerelease word '$word' is not alpha, beta, rc, or dev" >&2
+        exit 2
+    fi
     if ((${#word} <= 2)); then
         word=${word^^}
     else
