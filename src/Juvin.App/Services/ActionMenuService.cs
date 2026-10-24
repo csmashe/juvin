@@ -455,12 +455,9 @@ public sealed class ActionMenuService
         _post(() =>
         {
             menu.EndBusy(busy);
-            if (error is null)
+            if (error is null && historyEntryId is not null)
             {
-                if (historyEntryId is not null)
-                {
-                    WriteHistory(() => _history.MarkApplied(historyEntryId));
-                }
+                WriteHistory(() => _history.MarkApplied(historyEntryId));
             }
 
             if (!IsCurrent(menu))
