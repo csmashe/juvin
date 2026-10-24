@@ -442,6 +442,7 @@ if (!checks[browserName]) {
   process.exit(2);
 }
 try {
+  mkdirSync(args.out, { recursive: true });
   await checks[browserName](new AppLog(args["app-log"]));
   log("pass");
   process.exit(0);
