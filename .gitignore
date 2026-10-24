@@ -37,4 +37,3 @@ dist/
 Thumbs.db
 
 # Spike publish output
-spikes/**/publish*/

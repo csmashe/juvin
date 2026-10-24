@@ -4,15 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Juvin is an open-source (GPL-3.0) desktop AI assistant for Linux, macOS, and Windows, built with .NET 10 and Avalonia, plus a browser extension for Firefox and Chrome. The MVP is one workflow: the user selects an email draft in Gmail, presses a shortcut, the extension captures the draft and the whole conversation, and the desktop app rewrites the draft with a local model by default. The shortcut opens an action menu beside the draft (keys 1 to 5); the picked action is applied in place and Ctrl+Z reverts it, and Review opens the desktop panel for a preview first (see section 2.8 of `docs/mvp-scope.md`).
+Juvin is an open-source (GPL-3.0) desktop AI assistant for Linux, macOS, and Windows, built with .NET 10 and Avalonia, plus a browser extension for Firefox and Chrome. The MVP is one workflow: the user selects an email draft in Gmail, presses a shortcut, the extension captures the draft and the whole conversation, and the desktop app rewrites the draft with a local model by default. The shortcut opens an action menu beside the draft (keys 1 to 5); the picked action is applied in place and Ctrl+Z reverts it, and Review opens the desktop panel for a preview first (see section 2.8 of `../Juvin-internal/docs/mvp-scope.md`).
 
-Status: Phase 0 (spikes), Phase 1 (solution skeleton and shared UI), Phase 2 (model providers and rewrite pipeline), Phase 3 (browser extension, native host, Gmail adapter), and Phase 4 (global shortcut and rewrite panel) are done on Linux and Windows, and on macOS too since the NoMac sessions of October 20 to 23 (every row of `docs/testing/macos-checklist.md` passed, M-01 and M-02 on the published v0.1.0-alpha.1 dmg); Phase 5 (setup wizard completion, history, packaging) is in progress, with history, the Try it wizard step, and Linux packaging merged; the October 13 walkthrough findings are fixed; the action menu is done (Slices A to C: the app side, the in-page renderer, Ask for a change, the right-click list, Review, and the end-to-end check on Linux and Windows), the Windows installer and launch at login are done, and Phase 6 hardening is in progress (slice 1, the acceptance scenarios, slice 2, the crash reporter, slice 3, the privacy policy, and slice 4, the carried-forward checks on VM 840, are done), with the dmg and the store submissions last (see the Phase 5 entry in `docs/mvp-scope.md`). The default shortcut is Ctrl+Shift+F on every OS, the Control key on macOS too (Cmd+Shift+F is Firefox's full screen there). The product definition and plan live in `docs/`. Read `docs/mvp-scope.md` before any work; it is the source of truth for scope, architecture, decisions, and phases. `docs/research/desktop-ai-assistant-research.md` is the market research behind it.
+Status: Phase 0 (spikes), Phase 1 (solution skeleton and shared UI), Phase 2 (model providers and rewrite pipeline), Phase 3 (browser extension, native host, Gmail adapter), and Phase 4 (global shortcut and rewrite panel) are done on Linux and Windows, and on macOS too since the NoMac sessions of October 20 to 23 (every row of `../Juvin-internal/docs/testing/macos-checklist.md` passed, M-01 and M-02 on the published v0.1.0-alpha.1 dmg); Phase 5 (setup wizard completion, history, packaging) is in progress, with history, the Try it wizard step, and Linux packaging merged; the October 13 walkthrough findings are fixed; the action menu is done (Slices A to C: the app side, the in-page renderer, Ask for a change, the right-click list, Review, and the end-to-end check on Linux and Windows), the Windows installer and launch at login are done, and Phase 6 hardening is in progress (slice 1, the acceptance scenarios, slice 2, the crash reporter, slice 3, the privacy policy, and slice 4, the carried-forward checks on VM 840, are done), with the dmg and the store submissions last (see the Phase 5 entry in `../Juvin-internal/docs/mvp-scope.md`). The default shortcut is Ctrl+Shift+F on every OS, the Control key on macOS too (Cmd+Shift+F is Firefox's full screen there). The product definition, plan, research, spikes, test checklists, and store material live in the private `csmashe/juvin-internal` repository, cloned next to this one as `../Juvin-internal`; this public repository keeps only `docs/PRIVACY.md` and the per-release notes in `docs/releases/<tag>/RELEASE_NOTES.md`. Read `../Juvin-internal/docs/mvp-scope.md` before any work; it is the source of truth for scope, architecture, decisions, and phases. `../Juvin-internal/docs/research/desktop-ai-assistant-research.md` is the market research behind it.
 
 Design reference: `/home/csmashe/RiderProjects/typewhisper-linux` (a Linux-only Avalonia app by the same author). Its settings window, setup wizard, and Linux platform services are the model for Juvin's. See "Reusing TypeWhisper code" below for what may be copied.
 
 ## Development Commands
 
-The solution is `Juvin.slnx` at the repo root. The protocol between the app and the extension is specified in `docs/connector-protocol.md`; change both sides and the spec together.
+The solution is `Juvin.slnx` at the repo root. The protocol between the app and the extension is specified in `../Juvin-internal/docs/connector-protocol.md`; change both sides and the spec together.
 
 ### Build and Test
 - `dotnet build Juvin.slnx` - Build the entire solution (0 warnings is the bar)
@@ -29,7 +29,8 @@ The solution is `Juvin.slnx` at the repo root. The protocol between the app and 
 ### Browser extension (in `extension/`)
 - `npm install` - Install dependencies
 - `npm run build` - Build both Chrome and Firefox outputs
-- `scripts/build-extension-packages.sh` (from the repo root) - Build the store packages into `dist/`: the Chrome Web Store zip (without the pinned dev `key`), the Firefox Add-ons zip, and the source zip addons.mozilla.org needs; `docs/store-listings.md` has the listing text
+- `scripts/build-extension-packages.sh` (from the repo root) - Build the store packages into `dist/`: the Chrome Web Store zip (without the pinned dev `key`), the Firefox Add-ons zip, and the source zip addons.mozilla.org needs; `../Juvin-internal/docs/store-listings.md` has the listing text
+- Each release: publish it on GitHub (a full release, so it shows as Latest), then add its notes as `docs/releases/<tag>/RELEASE_NOTES.md` and push them to `main`.
 - `npm test` - Run extension tests
 - Load `extension/dist/chrome` as an unpacked extension, or `npx web-ext run --source-dir dist/firefox`; the app must be running and the host registered. See `extension/README.md`.
 
@@ -46,7 +47,7 @@ The solution is `Juvin.slnx` at the repo root. The protocol between the app and 
 - When working with .NET code, use the Microsoft Learn MCP Server to get official best practices and current documentation from Microsoft.
 - Only add comments when the code's purpose is not apparent from reading the code itself. Avoid adding verbose comments that simply restate what the code obviously does.
 - Do not use emojis anywhere in this project (UI text, extension popup, scripts, logs, comments, docs, or commit messages). Use clear plain text or the FluentIcons set instead.
-- The word "TypeWhisper" must not appear in Juvin source, UI, docs, or commit messages, except in this file and `docs/mvp-scope.md` where the reuse rule is recorded. It is a trademark and Juvin carries no attribution to it.
+- The word "TypeWhisper" must not appear in Juvin source, UI, docs, or commit messages, except in this file and `../Juvin-internal/docs/mvp-scope.md` where the reuse rule is recorded. It is a trademark and Juvin carries no attribution to it.
 
 ## Definition of done and commit rules
 
@@ -64,14 +65,14 @@ The solution is `Juvin.slnx` at the repo root. The protocol between the app and 
 
 TypeWhisper for Linux is a GPL-3.0 derivative of an upstream project. Only files original to the Linux port may be copied into Juvin, under Juvin's own copyright notice. Before copying any file, confirm from the TypeWhisper repository's git history that it was created there and not adapted from upstream.
 
-- Safe to copy (verified Linux-only by git history, see `docs/spikes/copy-history.md`): hotkey backends and `ShortcutMatcher`/`ShortcutDispatcher`, desktop-environment shortcut writers, `ISetupTask` and setup tasks, control socket and JSON protocol, `AtomicJsonStore`, `ApiKeyProtection`, `SseEventDecoder`, `ThinkingBlockFilter`, `LlmStreamPump`, `PromptProcessingService`, `LlmCallProvenance`, AT-SPI and Wayland detection code, and the Avalonia UI (main window, wizard, section `.axaml` files).
+- Safe to copy (verified Linux-only by git history, see `../Juvin-internal/docs/spikes/copy-history.md`): hotkey backends and `ShortcutMatcher`/`ShortcutDispatcher`, desktop-environment shortcut writers, `ISetupTask` and setup tasks, control socket and JSON protocol, `AtomicJsonStore`, `ApiKeyProtection`, `SseEventDecoder`, `ThinkingBlockFilter`, `LlmStreamPump`, `PromptProcessingService`, `LlmCallProvenance`, AT-SPI and Wayland detection code, and the Avalonia UI (main window, wizard, section `.axaml` files).
 - Never copy (git traces them to upstream Windows files): `ILlmProviderRole.cs` and the code-behind files of the General, History, Appearance, Shortcuts, and Advanced sections. Write Juvin's own.
 - Never copy (exist upstream): `SettingsService`, `AppSettings`, `AtomicFileWrite`, `TypeWhisperEnvironment`, `OpenAiChatHelper`, `Loc.cs`, and the Authenticated CLI plugin. Write Juvin's equivalents fresh.
 - Rename everything on the way in. No `TypeWhisper` namespaces, class prefixes, paths, or strings survive the copy.
 
 ## Architecture Overview
 
-See `docs/mvp-scope.md` section 5 for the full layout. In short:
+See `../Juvin-internal/docs/mvp-scope.md` section 5 for the full layout. In short:
 
 - **Juvin.Core**: settings, models, rewrite pipeline, providers, native-messaging protocol types. No UI, no OS calls, no package references beyond the BCL where possible.
 - **Juvin.App**: Avalonia UI. Settings window (sidebar plus card sections), setup wizard, rewrite panel, tray icon. Registers the platform package for the current OS at startup.
@@ -117,8 +118,8 @@ See `docs/mvp-scope.md` section 5 for the full layout. In short:
 
 ### Testing
 - Pure logic (prompt framing, completeness states, protocol parsing, hash checks) gets unit tests in `tests/`.
-- Platform code gets a fake implementation for tests plus a manual checklist per OS in `docs/`.
-- The acceptance scenarios in `docs/mvp-scope.md` section 6, Phase 6, are the definition of done for the MVP.
+- Platform code gets a fake implementation for tests plus a manual checklist per OS in `../Juvin-internal/docs/testing/`.
+- The acceptance scenarios in `../Juvin-internal/docs/mvp-scope.md` section 6, Phase 6, are the definition of done for the MVP.
 
 ## Brand
 - Primary navy `#0F2D5B`, accent orange `#F5A623`. Orange is the only accent (Apply button, selected sidebar border, links, highlights). Backgrounds stay dark navy (`#0E131B`, `#141D26`, `#283644`).

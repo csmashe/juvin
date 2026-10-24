@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Drives a rented NoMac session for docs/testing/macos-checklist.md from the Linux machine, in the
+# Drives a rented NoMac session for the macOS checklist (docs/testing/macos-checklist.md in juvin-internal) from the Linux machine, in the
 # repository root. Every subcommand can be run again safely. Only stop-block1 ever stops a Mac; block 2
 # ends with a hand-off and the user stops it.
 #

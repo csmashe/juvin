@@ -29,7 +29,7 @@ public sealed class ConnectorProtocolTests
          "status":["6 messages","Entire thread","Private server: qwen3.5:27b"]}
         """;
 
-    // Every example in docs/connector-protocol.md, verbatim.
+    // Every example in the connector protocol spec (docs/connector-protocol.md in juvin-internal), verbatim.
     public static TheoryData<string, Type> SpecExamples => new()
     {
         {

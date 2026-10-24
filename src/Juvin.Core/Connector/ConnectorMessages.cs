@@ -7,7 +7,7 @@ using System.Text.Json.Serialization;
 
 namespace Juvin.Core.Connector;
 
-/// <summary>Envelope shared by every message in <c>docs/connector-protocol.md</c>.</summary>
+/// <summary>Envelope shared by every message of the connector protocol.</summary>
 public abstract record ConnectorMessage
 {
     protected ConnectorMessage(string type)

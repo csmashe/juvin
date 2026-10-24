@@ -1,6 +1,6 @@
 # Juvin browser extension
 
-Manifest V3 extension for Chrome (and other Chromium browsers) and Firefox, built from one TypeScript source. It captures the selected draft and the surrounding thread, sends them to the Juvin desktop app over native messaging, and applies the result back into the editor. The wire protocol is `docs/connector-protocol.md`.
+Manifest V3 extension for Chrome (and other Chromium browsers) and Firefox, built from one TypeScript source. It captures the selected draft and the surrounding thread, sends them to the Juvin desktop app over native messaging, and applies the result back into the editor. The wire protocol is specified in `docs/connector-protocol.md` in the private juvin-internal repository.
 
 The extension stores no settings. Everything it needs arrives from the app in the `config` message and lives in memory for the length of the connection.
 

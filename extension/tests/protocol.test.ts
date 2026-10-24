@@ -19,7 +19,7 @@ import {
   type Capture,
 } from "../src/shared/protocol";
 
-// The examples below are copied from docs/connector-protocol.md.
+// The examples below are copied from the connector protocol spec (docs/connector-protocol.md in juvin-internal).
 const spec = {
   hello: `{"v":1,"type":"hello","extension":{"id":"extension@juvin.app","version":"0.1.0"},"browser":{"name":"firefox","version":"157.0"}}`,
   config: `{"v":1,"type":"config",

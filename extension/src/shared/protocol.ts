@@ -1,4 +1,4 @@
-// Wire types and helpers for docs/connector-protocol.md (protocol version 1).
+// Wire types and helpers for the connector protocol, version 1 (docs/connector-protocol.md in juvin-internal).
 
 export const PROTOCOL_VERSION = 1;
 export const HOST_NAME = "com.juvin.host";

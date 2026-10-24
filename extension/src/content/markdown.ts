@@ -1,4 +1,4 @@
-// The Markdown subset shared with the app (docs/connector-protocol.md): bold, italic, links with an allowed
+// The Markdown subset shared with the app (the connector protocol spec): bold, italic, links with an allowed
 // scheme, bulleted and numbered list lines nested by indentation, and newlines as line breaks. Anything else is
 // literal text.
 

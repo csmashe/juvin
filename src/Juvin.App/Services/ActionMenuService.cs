@@ -9,7 +9,7 @@ using Juvin.Core.Rewrite;
 namespace Juvin.App.Services;
 
 /// <summary>
-///     Owns the action menu (section 2.8 of <c>docs/mvp-scope.md</c>): shows it over every capture, runs the
+///     Owns the action menu (section 2.8 of the MVP scope): shows it over every capture, runs the
 ///     action the user picks, applies the result through the capture's hash and format checks, and reports each
 ///     state back with <c>menu.update</c>. Review, a declined capture, and a page that cannot draw the menu go to
 ///     the rewrite panel instead, as does a finished result the browser disconnected before it could take.

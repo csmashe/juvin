@@ -7,9 +7,8 @@ Juvin is an open-source desktop assistant for Linux, macOS, and Windows that hel
 Status: alpha. The full workflow works on all three systems; see the [user guide](https://github.com/csmashe/juvin/wiki) to install and set it up.
 
 - [User guide (wiki)](https://github.com/csmashe/juvin/wiki)
-- [MVP scope and phases](docs/mvp-scope.md)
 - [Privacy policy](docs/PRIVACY.md)
-- [Research](docs/research/desktop-ai-assistant-research.md)
+- [Release notes](docs/releases)
 - [Brand assets](assets/brand/README.md)
 
 Built with .NET 10 and Avalonia, plus a browser extension for Firefox and Chrome.

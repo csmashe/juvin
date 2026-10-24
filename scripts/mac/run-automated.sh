@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs the automated rows of docs/testing/macos-checklist.md on this Mac, side by side where they do
+# Runs the automated rows of the macOS checklist (docs/testing/macos-checklist.md in juvin-internal) on this Mac, side by side where they do
 # not share state, into a results folder with one log and one status per row and a summary.md.
 # Runs on the Mac with its own /bin/bash 3.2, after scripts/mac/prepare.sh.
 #

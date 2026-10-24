@@ -74,7 +74,7 @@ public static class ConnectorErrorCodes
     /// <summary>Not on the wire: no browser is connected.</summary>
     public const string NoBrowser = "no-browser";
 
-    /// <summary>Every code in <c>docs/connector-protocol.md</c>, the envelope codes above and those of each response, plus the app's own.</summary>
+    /// <summary>Every code in the connector protocol spec, the envelope codes above and those of each response, plus the app's own.</summary>
     public static readonly FrozenSet<string> All = FrozenSet.Create(
         StringComparer.Ordinal,
         BadMessage,
@@ -137,7 +137,7 @@ public sealed record ConnectorParseResult(ConnectorMessage? Message, ErrorMessag
     public bool RejectedErrorReply { get; init; }
 }
 
-/// <summary>Parses and serializes connector messages as specified in <c>docs/connector-protocol.md</c>.</summary>
+/// <summary>Parses and serializes connector messages as the connector protocol spec (in juvin-internal) defines them.</summary>
 public static class ConnectorProtocol
 {
     public const int Version = 1;
