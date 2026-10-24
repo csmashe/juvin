@@ -1,16 +1,19 @@
 namespace Juvin.Platform;
 
 /// <summary>
-///     Identity of the native messaging host and the extensions allowed to launch it. The
-///     extension IDs are pinned in <c>extension/src/manifest.json</c>; change both together.
+///     Identity of the native messaging host and the extensions allowed to launch it. The Firefox ID and
+///     the development Chrome key are pinned in the extension's build; change both together.
 /// </summary>
 public static class NativeHost
 {
     public const string Name = "com.juvin.host";
     public const string Description = "Juvin browser connector";
     public const string FirefoxExtensionId = "extension@juvin.app";
-    private const string ChromeExtensionId = "okfcbcoboinjniofikfnmllkbaeadelo";
-    public static string ChromeOrigin => $"chrome-extension://{ChromeExtensionId}/";
+    private const string ChromeStoreExtensionId = "igmlmppjhljfjnepflcpjblbdilkalkg";
+    private const string ChromeDevExtensionId = "okfcbcoboinjniofikfnmllkbaeadelo";
+
+    public static IReadOnlyList<string> ChromeOrigins { get; } =
+        [$"chrome-extension://{ChromeStoreExtensionId}/", $"chrome-extension://{ChromeDevExtensionId}/"];
 
     /// <summary>Environment variable that overrides where the host executable is looked for; for development.</summary>
     public const string PathOverrideVariable = "JUVIN_HOST_PATH";

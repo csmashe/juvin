@@ -39,7 +39,10 @@ public static class NativeHostManifest
             else
             {
                 writer.WriteStartArray("allowed_origins");
-                writer.WriteStringValue(NativeHost.ChromeOrigin);
+                foreach (var origin in NativeHost.ChromeOrigins)
+                {
+                    writer.WriteStringValue(origin);
+                }
             }
 
             writer.WriteEndArray();

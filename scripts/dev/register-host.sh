@@ -9,7 +9,7 @@ set -euo pipefail
 
 name="com.juvin.host"
 firefox_extension_id="extension@juvin.app"
-chrome_origin="chrome-extension://okfcbcoboinjniofikfnmllkbaeadelo/"
+chrome_origins='"chrome-extension://igmlmppjhljfjnepflcpjblbdilkalkg/", "chrome-extension://okfcbcoboinjniofikfnmllkbaeadelo/"'
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 host_path="$repo_root/src/Juvin.NativeHost/bin/Debug/net10.0/juvin-host"
@@ -51,7 +51,7 @@ cat > "$chrome_dir/$name.json" <<EOF
   "description": "Juvin browser connector",
   "path": "$host_path",
   "type": "stdio",
-  "allowed_origins": ["$chrome_origin"]
+  "allowed_origins": [$chrome_origins]
 }
 EOF
 

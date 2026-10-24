@@ -29,7 +29,7 @@ The extension is useless without the Juvin desktop app, so both listings say so 
 > - The extension reads a page only when you press the shortcut, and only on Gmail unless you allow another site.
 > - It keeps no settings and no history, and talks to no server. It hands what it read to the Juvin app on your computer.
 > - By default the app sends it to a model server on your own computer or network (Ollama, LM Studio, or llama.cpp). If you choose Codex mode instead, it goes to OpenAI under your own Codex sign-in.
-> - No telemetry and no analytics. Juvin is open source under the GPL-3.0.
+> - No analytics. The desktop app sends a crash report if it crashes, and the report never includes email content. Crash reports are on by default, and you can turn them off in the setup wizard or later under Privacy and data. Juvin is open source under the GPL-3.0.
 >
 > Privacy policy: https://github.com/csmashe/juvin/blob/main/docs/PRIVACY.md
 > Source code: https://github.com/csmashe/juvin
@@ -44,7 +44,7 @@ The extension is useless without the Juvin desktop app, so both listings say so 
 
 Developer Dashboard, new item, upload `juvin-chrome-<version>.zip`.
 
-The store gives the item its own ID; the package carries no `key`. Before publishing, copy the item ID from the dashboard so the app's native host manifest can allow it (`NativeHost` in `src/Juvin.Platform`), and ship that app version first: without it the store build cannot reach the app.
+The store gives the item its own ID, `igmlmppjhljfjnepflcpjblbdilkalkg`; the package carries no `key`. The app's native host manifest allows it (`NativeHost` in `src/Juvin.Platform`), and the store build can reach only an app version that does, so release that version before submitting the listing for review. An app that registered Chrome before then wrote only the development ID; its browser row reads "Needs update" until the user presses Update, and only then can the store build connect. Say so in that release's notes.
 
 **Store listing tab:**
 - Category: Productivity, Communication
@@ -67,15 +67,9 @@ The store gives the item its own ID; the package carries no `key`. Before publis
 
 **Distribution tab:** Public, all regions.
 
-**Test instructions** (Account tab, or the notes field the dashboard offers):
+**Test instructions** (Test instructions tab, Additional instructions; the field allows 500 characters):
 
-> The extension needs the Juvin desktop app, which is free and open source. To test without a Gmail account:
-> 1. Install Juvin from https://github.com/csmashe/juvin/releases (Windows installer, macOS dmg, or Linux AppImage) and start it. The setup wizard opens.
-> 2. In the wizard, choose Local mode with an Ollama or LM Studio server, or Codex mode, then on the browser step press Register for Chrome. Note that the item ID must match the one the app allows; the store release of the app includes it.
-> 3. Click the Juvin toolbar icon. The popup should say "Connected to Juvin". Press "Open test page".
-> 4. Select a line of the reply draft at the bottom of the test page and press Ctrl+Shift+F (Control+Shift+F on a Mac). The action menu opens beside it; press 3 for Make clearer. The line is rewritten in place, and Ctrl+Z restores it.
->
-> Without the app running, the popup says "Not connected", and the shortcut does nothing on the page.
+> Needs the free Juvin desktop app; no Gmail account needed. 1) Install it from github.com/csmashe/juvin/releases and start it. 2) In its setup wizard, pick Local mode (Ollama or LM Studio) or Codex, then press Register for Chrome. 3) The extension popup should say "Connected to Juvin"; press "Open test page". 4) Select a line of the reply draft, press Ctrl+Shift+F (Control+Shift+F on a Mac), then 3 (Make clearer). The line is rewritten in place; Ctrl+Z restores it.
 
 ## Firefox Add-ons
 
@@ -85,6 +79,7 @@ Developer Hub, submit a new add-on, "On this site", upload `juvin-firefox-<versi
 - Source code: yes, upload `juvin-extension-source-<version>.zip`. The build steps are in its `extension/README.md`, under "Rebuilding the store package": Node 24 and npm 11, `npm ci`, `npm run build`, and `dist/firefox` is the package. The bundle is not minified.
 - Categories: Social & Communication, and Productivity if offered. Otherwise Other.
 - License: GNU General Public License v3.0
+- Tick "This add-on is experimental" while Juvin is an alpha or beta; untick it for the first stable release.
 - Privacy policy: paste the text of `docs/PRIVACY.md`, or link to it.
 - Data collection: the manifest declares `data_collection_permissions` as required `personalCommunications`, `personallyIdentifyingInfo`, `websiteContent`, and `browsingActivity`. Mozilla counts data sent to a native application as transmission, and the extension passes the draft, the conversation with its names and addresses, on other sites the page's text, and the page's address (origin and path, without the query or fragment) to the desktop app. Firefox shows these at install; the extension cannot work without them, so none is optional.
 - After submitting, Manage Listing, Images: upload `assets/brand/png/juvin-mark-color-128.png` as the custom icon (otherwise the listing shows Mozilla's default) and the four screenshots, captioned:
@@ -103,6 +98,5 @@ Developer Hub, submit a new add-on, "On this site", upload `juvin-firefox-<versi
 
 ## After publishing
 
-- Record the store IDs and listing URLs here and in `extension/README.md`.
-- The Chrome store ID goes into the app's native host allowlist before the listing is public, as above.
+- Record the listing URLs here and in `extension/README.md`.
 - Each new extension version: bump `version` in `extension/src/manifest.json`, rebuild with the script, and upload both packages (and the new source package to Firefox).

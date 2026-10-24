@@ -19,7 +19,7 @@ Juvin has never run on a Mac. Every macOS check so far was deferred ("macOS assu
 
 - Data folder: `~/Library/Application Support/Juvin` (`Environment.SpecialFolder.LocalApplicationData` on .NET 10). `XDG_DATA_HOME` has no effect on macOS. Each session is a fresh VM, so use the real folder.
 - Runtime files: `Runtime/control.sock`, `Runtime/connector.sock`, and the persistent `Runtime/control.lock` and `Runtime/connector.lock`. macOS always uses the data folder, never `XDG_RUNTIME_DIR`.
-- Manifests: `com.juvin.host.json` in `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/` and `~/Library/Application Support/Mozilla/NativeMessagingHosts/`. Chrome origin `chrome-extension://okfcbcoboinjniofikfnmllkbaeadelo/`, Firefox id `extension@juvin.app`. The manifest `path` is `juvin-host` next to the app executable (or `JUVIN_HOST_PATH` when set).
+- Manifests: `com.juvin.host.json` in `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/` and `~/Library/Application Support/Mozilla/NativeMessagingHosts/`. Chrome origins `chrome-extension://igmlmppjhljfjnepflcpjblbdilkalkg/` (the store build) and `chrome-extension://okfcbcoboinjniofikfnmllkbaeadelo/` (unpacked), Firefox id `extension@juvin.app`. The manifest `path` is `juvin-host` next to the app executable (or `JUVIN_HOST_PATH` when set).
 - LaunchAgent: `~/Library/LaunchAgents/com.juvin.app.plist`. Keychain items: generic passwords under service `Juvin`. No code in the MVP stores one.
 - Juvin writes no log file. To keep its output and still let macOS treat the app as its own process for Accessibility, start it with `open --stdout <file> --stderr <file> /Applications/Juvin.app`. If you start the binary from a shell, Accessibility trust belongs to the terminal and a trust check means nothing.
 - The default shortcut on macOS is the physical Control+Shift+F (the extension's suggested key is `MacCtrl+Shift+F`), not Command: Command+Shift+F belongs to the browsers and other apps.
@@ -141,7 +141,7 @@ A is automated, H is by hand. Block is 1 or 2.
 - Kit: row `M-10` checks both files below and passes only when the description is the app's; with the kit's manifests still there it checks their shape and skips.
 - Pass:
   - Detected browsers lists Firefox and Google Chrome only, and both rows read Registered.
-  - Both `com.juvin.host.json` files have `name` `com.juvin.host`, `type` `stdio`, and `path` set to the bundle's `juvin-host`. Chrome's has `allowed_origins` `["chrome-extension://okfcbcoboinjniofikfnmllkbaeadelo/"]` and Firefox's has `allowed_extensions` `["extension@juvin.app"]`.
+  - Both `com.juvin.host.json` files have `name` `com.juvin.host`, `type` `stdio`, and `path` set to the bundle's `juvin-host`. Chrome's has `allowed_origins` `["chrome-extension://igmlmppjhljfjnepflcpjblbdilkalkg/", "chrome-extension://okfcbcoboinjniofikfnmllkbaeadelo/"]` and Firefox's has `allowed_extensions` `["extension@juvin.app"]`.
   - `python3 -m json.tool` accepts both.
 
 **M-11** (connector-protocol Transport; A; block 2). The host round trip without a browser.

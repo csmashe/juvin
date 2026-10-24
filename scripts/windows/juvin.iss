@@ -4,9 +4,10 @@
 ; The installer only lays files down under %LOCALAPPDATA%\Programs\Juvin. The app writes the
 ; native messaging manifests and the browsers' HKCU NativeMessagingHosts keys itself when the
 ; wizard registers the connector, pointing them at {app}\juvin-host.exe; an upgrade installs into
-; the same folder, so they stay valid. Uninstall removes {app}, the shortcuts, and the App Paths
-; key, and leaves %LOCALAPPDATA%\Juvin (settings, history, secrets, the manifests) and the browser
-; keys in place, as the Linux packages leave the data folder.
+; the same folder, so they stay valid unless the version changes the allowlist in NativeHost; then
+; the wizard's browser row reads Needs update until the user presses Update. Uninstall removes {app},
+; the shortcuts, and the App Paths key, and leaves %LOCALAPPDATA%\Juvin (settings, history, secrets,
+; the manifests) and the browser keys in place, as the Linux packages leave the data folder.
 
 #ifndef AppVersion
   #error Pass /DAppVersion=<version>

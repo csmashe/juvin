@@ -401,11 +401,11 @@ row_M_10() {
             file=$FIREFOX_HOSTS_DIR/com.juvin.host.json
         fi
         [[ -f $file ]] || fail "no $family manifest at $file; run prepare.sh or press Register"
-        out=$(python3 - "$file" "$family" "$HOST_EXE" "$CHROME_ORIGIN" "$FIREFOX_EXTENSION_ID" "$APP_DESCRIPTION" <<'EOF'
+        out=$(python3 - "$file" "$family" "$HOST_EXE" "[$CHROME_ORIGINS]" "$FIREFOX_EXTENSION_ID" "$APP_DESCRIPTION" <<'EOF'
 import json, os, sys
-path, family, host, origin, extension_id, app_description = sys.argv[1:]
+path, family, host, origins, extension_id, app_description = sys.argv[1:]
 manifest = json.load(open(path))
-allow = ("allowed_extensions", [extension_id]) if family == "firefox" else ("allowed_origins", [origin])
+allow = ("allowed_extensions", [extension_id]) if family == "firefox" else ("allowed_origins", json.loads(origins))
 problems = []
 for key, wanted in (("name", "com.juvin.host"), ("type", "stdio"), ("path", host), allow):
     if manifest.get(key) != wanted:
