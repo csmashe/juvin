@@ -32,10 +32,11 @@ The build bundles each entry point in `src/` with esbuild, without minifying, an
 
 | Browser | ID | Where it comes from |
 | --- | --- | --- |
-| Chrome, Edge, Chromium | `okfcbcoboinjniofikfnmllkbaeadelo` | the public `key` added to the Chrome manifest in `build.mjs`; the private key is kept outside the repository |
+| Chrome, Edge, Chromium (unpacked) | `okfcbcoboinjniofikfnmllkbaeadelo` | the public `key` added to the Chrome manifest in `build.mjs`; the private key is kept outside the repository |
+| Chrome Web Store | `igmlmppjhljfjnepflcpjblbdilkalkg` | assigned by the store to the Juvin item |
 | Firefox | `extension@juvin.app` | `browser_specific_settings.gecko.id` in the Firefox manifest |
 
-The native host manifest allowlists these IDs, so they must not change. The Chrome Web Store gives the store build a key and ID of its own, so its package leaves the pinned key out. The app must allow the store ID beside the pinned one before that build is published; `docs/store-listings.md` has the steps.
+The native host manifest allowlists these IDs (`NativeHost` in `src/Juvin.Platform`), so they must not change. The store package leaves the pinned key out, because the Chrome Web Store build carries the store's own key and ID.
 
 ## Run it
 

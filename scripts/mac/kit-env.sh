@@ -40,7 +40,7 @@ CLI_EXE=$APP/Contents/MacOS/juvin-cli
 DATA_DIR="$HOME/Library/Application Support/Juvin"
 CHROME_HOSTS_DIR="$HOME/Library/Application Support/Google/Chrome/NativeMessagingHosts"
 FIREFOX_HOSTS_DIR="$HOME/Library/Application Support/Mozilla/NativeMessagingHosts"
-CHROME_ORIGIN=chrome-extension://okfcbcoboinjniofikfnmllkbaeadelo/
+CHROME_ORIGINS='"chrome-extension://igmlmppjhljfjnepflcpjblbdilkalkg/", "chrome-extension://okfcbcoboinjniofikfnmllkbaeadelo/"'
 FIREFOX_EXTENSION_ID=extension@juvin.app
 APP_DESCRIPTION="Juvin browser connector"
 KIT_MANIFEST_DESCRIPTION="Juvin browser connector (session kit)"
@@ -51,7 +51,7 @@ kit_manifest() {
     if [[ $1 == firefox ]]; then
         allow="\"allowed_extensions\": [\"$FIREFOX_EXTENSION_ID\"]"
     else
-        allow="\"allowed_origins\": [\"$CHROME_ORIGIN\"]"
+        allow="\"allowed_origins\": [$CHROME_ORIGINS]"
     fi
     cat <<EOF
 {

@@ -13,7 +13,7 @@ $ErrorActionPreference = 'Stop'
 
 $name = 'com.juvin.host'
 $firefoxExtensionId = 'extension@juvin.app'
-$chromeOrigin = 'chrome-extension://okfcbcoboinjniofikfnmllkbaeadelo/'
+$chromeOrigins = @('chrome-extension://igmlmppjhljfjnepflcpjblbdilkalkg/', 'chrome-extension://okfcbcoboinjniofikfnmllkbaeadelo/')
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $hostDir = Join-Path $repoRoot 'src\Juvin.NativeHost\bin\Debug\net10.0'
@@ -57,7 +57,7 @@ $chromium = [ordered]@{
     description = 'Juvin browser connector'
     path = $hostPath
     type = 'stdio'
-    allowed_origins = @($chromeOrigin)
+    allowed_origins = $chromeOrigins
 }
 
 # UTF-8 without a byte order mark; browsers reject a manifest that starts with one.
