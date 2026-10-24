@@ -784,6 +784,26 @@ describe("MenuRenderer", () => {
     });
   });
 
+  it("cuts the draft-changed result to what the viewport leaves, so its buttons stay on screen", () => {
+    // A long rewrite on a 680 px tall viewport: 760 px of content with a 200 px result.
+    const heights = new Map([["result", { scrollHeight: 200, clientHeight: 200 }], ["root", { scrollHeight: 760, clientHeight: 760 }]]);
+    const measure = (property: "scrollHeight" | "clientHeight") =>
+      vi.spyOn(HTMLElement.prototype, property, "get").mockImplementation(function (this: HTMLElement) {
+        return heights.get(this.className)?.[property] ?? 0;
+      });
+    measure("scrollHeight");
+    measure("clientHeight");
+    vi.spyOn(window, "innerHeight", "get").mockReturnValue(680);
+    try {
+      h.renderer.show(request(h));
+      h.renderer.update(update({ state: "draft-changed", text: "the rewrite" }));
+      vi.advanceTimersByTime(600);
+      expect(h.root().querySelector<HTMLElement>(".result")!.style.maxHeight).toBe("104px");
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
   it("reaches and activates every card control from the keyboard", () => {
     h.renderer.show(request(h));
     h.renderer.update(update({ state: "draft-changed", text: "the rewrite" }));

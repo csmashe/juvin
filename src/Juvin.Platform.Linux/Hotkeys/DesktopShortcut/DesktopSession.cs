@@ -35,19 +35,32 @@ internal sealed record DesktopSession(
     public string? DesktopId => DetectDesktop(GetEnvironment);
 
     /// <summary>
-    ///     "gnome", "kde", "hyprland", "sway", or null. The compositors' own session variables win
-    ///     over <c>XDG_CURRENT_DESKTOP</c>, which a nested session may have inherited.
+    ///     "gnome", "kde", "hyprland", "sway", or null. A compositor's own session variable wins over
+    ///     <c>XDG_CURRENT_DESKTOP</c>, which a nested session may have inherited, while its socket exists. A
+    ///     variable left over from an earlier session, whose socket is gone, loses to the desktop that
+    ///     <c>XDG_CURRENT_DESKTOP</c> names.
     /// </summary>
     public static string? DetectDesktop(Func<string, string?> getEnvironment)
     {
-        if (!string.IsNullOrEmpty(getEnvironment("HYPRLAND_INSTANCE_SIGNATURE")))
+        string? leftover = null;
+        if (getEnvironment("HYPRLAND_INSTANCE_SIGNATURE") is { Length: > 0 } signature)
         {
-            return "hyprland";
+            if (HyprlandIsRunning(signature, getEnvironment("XDG_RUNTIME_DIR")))
+            {
+                return "hyprland";
+            }
+
+            leftover = "hyprland";
         }
 
-        if (!string.IsNullOrEmpty(getEnvironment("SWAYSOCK")))
+        if (getEnvironment("SWAYSOCK") is { Length: > 0 } swaySocket)
         {
-            return "sway";
+            if (File.Exists(swaySocket))
+            {
+                return "sway";
+            }
+
+            leftover ??= "sway";
         }
 
         // Colon-separated, such as "ubuntu:GNOME".
@@ -58,9 +71,14 @@ internal sealed record DesktopSession(
             _ when desktops.Contains("sway") => "sway",
             _ when desktops.Contains("gnome") || desktops.Contains("ubuntu") => "gnome",
             _ when desktops.Contains("kde") || desktops.Contains("plasma") => "kde",
-            _ => null,
+            _ => leftover,
         };
     }
+
+    // Hyprland keeps its IPC socket in $XDG_RUNTIME_DIR/hypr/<signature>, and in /tmp/hypr/<signature> before 0.40.
+    private static bool HyprlandIsRunning(string signature, string? runtimeDirectory) =>
+        (!string.IsNullOrEmpty(runtimeDirectory) && File.Exists(Path.Join(runtimeDirectory, "hypr", signature, ".socket.sock")))
+        || File.Exists(Path.Join("/tmp/hypr", signature, ".socket.sock"));
 
     public bool HasExecutable(string name) =>
         ExecutableDirectories.Any(directory => File.Exists(Path.Join(directory, name)));

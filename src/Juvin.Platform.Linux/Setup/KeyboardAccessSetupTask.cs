@@ -28,6 +28,14 @@ public sealed class KeyboardAccessSetupTask : ISetupTask
     // authentication agent to show the password prompt (Sway, most tiling window managers).
     private const int PkexecNotAuthorized = 127;
 
+    // LaunchScript's exit code when pkexec is not installed.
+    private const int PkexecMissing = 99;
+
+    // .NET raises the open-file limit to the hard maximum, which children inherit, and pkexec marks every
+    // descriptor up to that limit close-on-exec one call at a time: with systemd's limit of about a billion
+    // it spins for over an hour after the password is accepted. 1024 is the usual default.
+    private const string LaunchScript = "command -v pkexec > /dev/null || exit 99; ulimit -n 1024 2> /dev/null; exec pkexec \"$@\"";
+
     // Arguments arrive as $1 and $2, so the rule text needs no shell quoting. Any failed step
     // exits 1, so 126 and 127 can only come from pkexec itself.
     private const string InstallScript =
@@ -120,12 +128,18 @@ public sealed class KeyboardAccessSetupTask : ISetupTask
         try
         {
             exitCode = (await _processRunner
-                .RunAsync("pkexec", ["/bin/sh", "-c", InstallScript, "sh", RuleHeader, Rule, RulePath], null, null, ct)
+                .RunAsync("/bin/sh", ["-c", LaunchScript, "sh", "/bin/sh", "-c", InstallScript, "sh", RuleHeader, Rule, RulePath], null, null, ct)
                 .ConfigureAwait(false)).ExitCode;
         }
         catch (Win32Exception ex)
         {
             Trace.WriteLine($"[KeyboardAccessSetupTask] pkexec could not start ({ex.NativeErrorCode}).");
+            return new SetupActionOutcome(false, _localizer["Setup.KeyboardAccess.NoPkexec"]);
+        }
+
+        if (exitCode == PkexecMissing)
+        {
+            Trace.WriteLine("[KeyboardAccessSetupTask] pkexec is not installed.");
             return new SetupActionOutcome(false, _localizer["Setup.KeyboardAccess.NoPkexec"]);
         }
 

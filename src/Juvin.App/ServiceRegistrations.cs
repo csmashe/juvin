@@ -135,6 +135,7 @@ public static class ServiceRegistrations
             sp.GetRequiredService<ActionMenuService>(),
             sp.GetRequiredService<ICrashReporter>(),
             sp.GetServices<ISetupTask>(),
+            sp.GetRequiredService<IForegroundHandoff>(),
             action => Dispatcher.UIThread.Post(action)
         ));
         services.AddTransient<SetupWizard>();

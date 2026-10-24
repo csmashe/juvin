@@ -49,7 +49,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public ObservableCollection<NavItem> NavItems { get; }
 
-    // ReSharper disable once UnusedMember.Global -- the tray and the rewrite panel navigate once they land
     public void Navigate<TSection>()
         where TSection : class
     {

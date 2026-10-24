@@ -2,6 +2,8 @@
     <PropertyGroup>
         <TargetFramework>net10.0</TargetFramework>
         <RootNamespace>Juvin.Platform.Windows</RootNamespace>
+        <!-- Required by the LibraryImport source generator. -->
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     </PropertyGroup>
 
     <ItemGroup>

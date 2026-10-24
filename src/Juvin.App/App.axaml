@@ -4,6 +4,13 @@
              Name="Juvin"
              RequestedThemeVariant="Dark">
 
+    <!-- macOS shows this menu under the app name; without it Avalonia adds an "About Avalonia" item. Start fills it in. -->
+    <NativeMenu.Menu>
+        <NativeMenu>
+            <NativeMenuItem />
+        </NativeMenu>
+    </NativeMenu.Menu>
+
     <Application.Styles>
         <FluentTheme>
             <FluentTheme.Palettes>
