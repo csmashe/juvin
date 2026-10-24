@@ -15,6 +15,19 @@ npm test        # vitest, no browser needed
 npm run watch   # rebuild scripts on change (static files are copied once at start)
 ```
 
+### Rebuilding the store package
+
+The Firefox package is the contents of `dist/firefox`, zipped. To rebuild it from the source package, on Linux or macOS with Node 24, npm 11, and zip:
+
+```sh
+cd extension
+npm ci
+npm run build   # writes dist/chrome and dist/firefox
+cd dist/firefox && zip -qrX ../juvin-firefox.zip .   # the package: the contents of dist/firefox at the zip's root
+```
+
+The build bundles each entry point in `src/` with esbuild, without minifying, and copies the manifest, the popup and test page files, and the icons from `../assets/brand/png`. `webextension-polyfill` is the only runtime dependency. `scripts/build-extension-packages.sh` in the repository builds both store zips and this source package.
+
 ## Pinned IDs
 
 | Browser | ID | Where it comes from |
@@ -22,7 +35,7 @@ npm run watch   # rebuild scripts on change (static files are copied once at sta
 | Chrome, Edge, Chromium | `okfcbcoboinjniofikfnmllkbaeadelo` | the public `key` added to the Chrome manifest in `build.mjs`; the private key is kept outside the repository |
 | Firefox | `extension@juvin.app` | `browser_specific_settings.gecko.id` in the Firefox manifest |
 
-The native host manifest allowlists these IDs, so they must not change.
+The native host manifest allowlists these IDs, so they must not change. The Chrome Web Store gives the store build a key and ID of its own, so its package leaves the pinned key out. The app must allow the store ID beside the pinned one before that build is published; `docs/store-listings.md` has the steps.
 
 ## Run it
 
