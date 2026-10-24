@@ -44,7 +44,7 @@ public sealed class AppImageLauncherIntegrationTests : IDisposable
     private Task RunAsync(string? processPath = null, string? dataHome = null)
     {
         var environment = new Dictionary<string, string?> { ["APPDIR"] = AppDir, ["APPIMAGE"] = _appImage };
-        return new AppImageLauncherIntegration(environment.GetValueOrDefault, processPath ?? ProcessPath, dataHome ?? DataHome)
+        return new AppImageLauncherIntegration(environment.GetValueOrDefault, processPath ?? ProcessPath, dataHome ?? DataHome, "Juvin (Alpha)")
             .EnsureInstalledAsync(CancellationToken.None);
     }
 
@@ -64,6 +64,7 @@ public sealed class AppImageLauncherIntegrationTests : IDisposable
         await RunAsync();
 
         var entry = await File.ReadAllTextAsync(EntryPath);
+        Assert.Contains("Name=Juvin (Alpha)\n", entry);
         Assert.Contains($"Exec=\"{_appImage}\"\n", entry);
         Assert.Contains("Icon=juvin\n", entry);
         Assert.Contains("StartupWMClass=juvin\n", entry);

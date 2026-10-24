@@ -2,7 +2,7 @@
 # juvin-cli.exe beside it as single-file executables, packed by Inno Setup 6 into a per-user setup.
 #
 # Usage: scripts\build-windows-installer.ps1 <version> [output-dir]
-#   version     MAJOR.MINOR.PATCH, optionally followed by -word or -word.number (alpha, beta.2, rc.1)
+#   version     MAJOR.MINOR.PATCH, optionally followed by -word or -word.number, the word one of alpha, beta, rc, dev, or ci (alpha, beta.2, rc.1)
 #   output-dir  where the installer goes (default dist\)
 # Runs on Windows PowerShell 5.1 and PowerShell 7. Needs the .NET 10 SDK and Inno Setup 6.3 or later (ISCC).
 
@@ -22,6 +22,22 @@ if ($version -cnotmatch $versionPattern) {
 }
 # The file version resource only takes four numbers.
 $numericVersion = ($version -split '-')[0] + '.0'
+# Matches LauncherName in Juvin.Core: "Juvin (Alpha)" for 0.1.0-alpha.2, "Juvin" for a release.
+$launcherName = 'Juvin'
+if ($version.Contains('-')) {
+    $word = ($version -split '-', 2)[1].Split('.')[0]
+    # juvin.iss removes the shortcut names of these words only, so an upgrade never leaves two.
+    if ($word -notin @('alpha', 'beta', 'rc', 'dev', 'ci')) {
+        [Console]::Error.WriteLine("error: the prerelease word '$word' is not alpha, beta, rc, dev, or ci; add its shortcut names to [InstallDelete] in scripts\windows\juvin.iss first")
+        exit 2
+    }
+    if ($word.Length -le 2) {
+        $word = $word.ToUpperInvariant()
+    } else {
+        $word = $word.Substring(0, 1).ToUpperInvariant() + $word.Substring(1).ToLowerInvariant()
+    }
+    $launcherName = "Juvin ($word)"
+}
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 if ($args.Count -eq 2) {
@@ -142,7 +158,7 @@ try {
     }
 
     Write-Host '==> Building the installer'
-    & $iscc /Q "/DAppVersion=$version" "/DNumericVersion=$numericVersion" "/DPayloadDir=$payload" `
+    & $iscc /Q "/DAppVersion=$version" "/DNumericVersion=$numericVersion" "/DLauncherName=$launcherName" "/DPayloadDir=$payload" `
         "/DOutputDir=$outDir" "/DIconFile=$iconFile" $issFile
     if ($LASTEXITCODE -ne 0) {
         Fail "ISCC failed with exit code $LASTEXITCODE"

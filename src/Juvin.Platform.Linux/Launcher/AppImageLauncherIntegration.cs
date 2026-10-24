@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using Juvin.Core;
 using Juvin.Core.Services;
 
 namespace Juvin.Platform.Linux.Launcher;
@@ -15,7 +16,7 @@ public sealed class AppImageLauncherIntegration : ILauncherIntegration
     private const string EntryTemplate = """
         [Desktop Entry]
         Type=Application
-        Name=Juvin
+        Name={1}
         GenericName=Email writing assistant
         Comment=Works beside you
         Exec={0}
@@ -31,15 +32,18 @@ public sealed class AppImageLauncherIntegration : ILauncherIntegration
     private readonly Func<string, string?> _getEnvironment;
     private readonly string? _processPath;
     private readonly string _dataHome;
+    private readonly string _launcherName;
 
     /// <param name="getEnvironment">Reads <c>APPDIR</c> and <c>APPIMAGE</c>.</param>
     /// <param name="processPath">The running executable, which must sit under <c>APPDIR</c>.</param>
     /// <param name="dataHome"><c>$XDG_DATA_HOME</c>, or <c>~/.local/share</c>.</param>
-    public AppImageLauncherIntegration(Func<string, string?> getEnvironment, string? processPath, string dataHome)
+    /// <param name="launcherName">The entry's <c>Name</c>, see <see cref="LauncherName" />.</param>
+    public AppImageLauncherIntegration(Func<string, string?> getEnvironment, string? processPath, string dataHome, string launcherName)
     {
         _getEnvironment = getEnvironment;
         _processPath = processPath;
         _dataHome = dataHome;
+        _launcherName = launcherName;
     }
 
     public Task EnsureInstalledAsync(CancellationToken ct) =>
@@ -60,7 +64,7 @@ public sealed class AppImageLauncherIntegration : ILauncherIntegration
 
             var applications = Path.Join(_dataHome, "applications");
             var entryPath = Path.Join(applications, "juvin-appimage.desktop");
-            var entry = string.Format(CultureInfo.InvariantCulture, EntryTemplate, DesktopEntryExec.Quote(appImage));
+            var entry = string.Format(CultureInfo.InvariantCulture, EntryTemplate, DesktopEntryExec.Quote(appImage), _launcherName);
             if (File.Exists(entryPath) && File.ReadAllText(entryPath) == entry)
             {
                 return;

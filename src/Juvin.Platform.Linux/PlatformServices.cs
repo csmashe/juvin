@@ -1,3 +1,4 @@
+using Juvin.Core;
 using Juvin.Core.Localization;
 using Juvin.Core.Providers;
 using Juvin.Platform.Hotkeys;
@@ -34,7 +35,8 @@ public static class PlatformServices
         services.AddSingleton<ILauncherIntegration>(_ => new AppImageLauncherIntegration(
             Environment.GetEnvironmentVariable,
             Environment.ProcessPath,
-            DesktopSession.FromEnvironment().DataHome
+            DesktopSession.FromEnvironment().DataHome,
+            LauncherName.Current
         ));
         services.AddSingleton<ILoginItem>(_ => new XdgAutostartLoginItem(
             Environment.GetEnvironmentVariable,
