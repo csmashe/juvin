@@ -20,7 +20,7 @@ The extension is useless without the Juvin desktop app, so both listings say so 
 >
 > How it works:
 > - Select your draft, or part of it, and press Ctrl+Shift+F (Control+Shift+F on a Mac).
-> - A menu opens beside the draft: Soften, Make clearer, Make shorter, Fix grammar, or What am I missing?, with keys 1 to 5. More actions and your own are a right-click away, and you can type a request of your own.
+> - A menu opens beside the draft with five actions on keys 1 to 5: What am I missing?, Soften, Make clearer, Make shorter, and Fix grammar. More actions and your own are a right-click away, and you can type a request of your own.
 > - The rewrite replaces your selection in place. Ctrl+Z (Cmd+Z on a Mac) puts the original back. Review opens the result in the desktop app first, so you can read it before applying it.
 >
 > Juvin reads the whole conversation, including collapsed messages, so the rewrite keeps the deadlines, names, and commitments already in the thread. It changes only your draft, and it refuses to apply a result if you edited the draft while it was working.
@@ -49,6 +49,7 @@ The store gives the item its own ID; the package carries no `key`. Before publis
 **Store listing tab:**
 - Category: Productivity, Communication
 - Language: English
+- Store icon: `assets/brand/png/juvin-mark-color-128.png` (128x128).
 - Screenshots: the four above. Small promo tile: `promo-small-440x280.png`. Marquee: `promo-marquee-1400x560.png`.
 - Official URL: none. Homepage URL and support URL: as above.
 
@@ -61,7 +62,7 @@ The store gives the item its own ID; the package carries no `key`. Before publis
   - Host permission `https://mail.google.com/*`: "Gmail is the supported email site. The content script reads the selected draft and the conversation only when the user presses the shortcut, and writes the rewrite back into the draft."
   - Optional host permission `<all_urls>`: "Requested only when the user presses 'Allow Juvin on all sites' in the popup, to let the shortcut work in email editors on other sites. Not granted by default."
 - Remote code: No. All scripts are in the package.
-- Data usage: check "Personally identifiable information" (names and addresses in the conversation), "Personal communications" (the draft and the email conversation), and "Website content". Then certify all three statements: not sold to third parties, not used or transferred for purposes unrelated to the single purpose, not used for creditworthiness or lending. The data goes only to the Juvin app on the user's computer, and from there to the model server or Codex account the user chose.
+- Data usage: check "Personally identifiable information" (names and addresses in the conversation), "Personal communications" (the draft and the email conversation), and "Website content" (on other sites, the page's text and address). Then certify all three statements: not sold to third parties, not used or transferred for purposes unrelated to the single purpose, not used for creditworthiness or lending. The data goes only to the Juvin app on the user's computer, and from there to the model server or Codex account the user chose.
 - Privacy policy URL: as above.
 
 **Distribution tab:** Public, all regions.
@@ -84,11 +85,11 @@ Developer Hub, submit a new add-on, "On this site", upload `juvin-firefox-<versi
 - Categories: Social & Communication, and Productivity if offered. Otherwise Other.
 - License: GNU General Public License v3.0
 - Privacy policy: paste the text of `docs/PRIVACY.md`, or link to it.
-- Data collection: the manifest declares `data_collection_permissions` as required `personalCommunications`, `personallyIdentifyingInfo`, and `websiteContent`. Mozilla counts data sent to a native application as transmission, and the extension passes the draft, the conversation with its names and addresses, and on other sites the page's text, to the desktop app. Firefox shows these at install; the extension cannot work without them, so none is optional.
+- Data collection: the manifest declares `data_collection_permissions` as required `personalCommunications`, `personallyIdentifyingInfo`, `websiteContent`, and `browsingActivity`. Mozilla counts data sent to a native application as transmission, and the extension passes the draft, the conversation with its names and addresses, on other sites the page's text, and the page's address (origin and path, without the query or fragment) to the desktop app. Firefox shows these at install; the extension cannot work without them, so none is optional.
 
 **Notes to reviewer:**
 
-> Juvin is the browser half of an open-source desktop app (https://github.com/csmashe/juvin). The extension reads the selected email draft and its conversation only when the user presses Ctrl+Shift+F, and passes them over native messaging to the Juvin app on the same computer (host `com.juvin.host`). It talks to no server and keeps no data. Because native messaging counts as transmission, the manifest declares personal communications, personally identifying information, and website content as required data. The app rewrites the draft with a model the user chose, and it keeps no history unless the user turns that on. The app uses a local model server by default and sends the result back, which the extension applies in place.
+> Juvin is the browser half of an open-source desktop app (https://github.com/csmashe/juvin). The extension reads the selected email draft and its conversation only when the user presses Ctrl+Shift+F, and passes them over native messaging to the Juvin app on the same computer (host `com.juvin.host`). It talks to no server and keeps no data. Because native messaging counts as transmission, the manifest declares personal communications, personally identifying information, website content, and browsing activity (the address of the page the draft is on) as required data. The app rewrites the draft with a model the user chose, and it keeps no history unless the user turns that on. The app uses a local model server by default and sends the result back, which the extension applies in place.
 >
 > To test without a Gmail account: install the app from https://github.com/csmashe/juvin/releases and start it; in its setup wizard choose a model server and press Register for Firefox on the browser step. Then open the extension popup, check that it says "Connected to Juvin", and press "Open test page". Select a line of the reply draft at the bottom, press Ctrl+Shift+F (on macOS, Juvin's desktop shortcut handles it), and press 3 (Make clearer) in the menu that opens. The line is rewritten in place and Ctrl+Z restores it.
 >

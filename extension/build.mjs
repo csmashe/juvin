@@ -22,8 +22,8 @@ const targets = {
         id: "extension@juvin.app",
         strict_min_version: "142.0",
         // Firefox counts what native messaging passes to the Juvin app as data transmission: the draft, the conversation,
-        // with its names and addresses, and on other sites the page's text.
-        data_collection_permissions: { required: ["personalCommunications", "personallyIdentifyingInfo", "websiteContent"] },
+        // with its names and addresses, on other sites the page's text, and the page's address.
+        data_collection_permissions: { required: ["personalCommunications", "personallyIdentifyingInfo", "websiteContent", "browsingActivity"] },
       },
     },
   }),
