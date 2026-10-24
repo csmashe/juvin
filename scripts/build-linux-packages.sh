@@ -4,7 +4,7 @@
 # binaries. A format whose tool is missing (dpkg-deb, rpmbuild, wget) is skipped with a warning.
 #
 # Usage: scripts/build-linux-packages.sh <version> [output-dir]
-#   version     MAJOR.MINOR.PATCH, optionally followed by -word or -word.number (alpha, beta.2, rc.1)
+#   version     MAJOR.MINOR.PATCH, optionally followed by -word or -word.number, the word one of alpha, beta, rc, dev, or ci (alpha, beta.2, rc.1)
 #   output-dir  where the packages go (default dist/)
 set -euo pipefail
 
@@ -25,6 +25,24 @@ fi
 # A '~' sorts before the release in both dpkg and rpm, as a SemVer prerelease does; '-' is not allowed in an rpm version
 # and in a deb version it would start the Debian revision.
 PKG_VERSION=${VERSION/-/\~}
+# Matches LauncherName in Juvin.Core: "Juvin (Alpha)" for 0.1.0-alpha.2, "Juvin" for a release.
+LAUNCHER_NAME=Juvin
+if [[ $VERSION == *-* ]]; then
+    word=${VERSION#*-}
+    word=${word%%.*}
+    # The Windows build refuses any other word, since its installer removes these shortcut names only.
+    if [[ ! ${word,,} =~ ^(alpha|beta|rc|dev|ci)$ ]]; then
+        echo "error: the prerelease word '$word' is not alpha, beta, rc, dev, or ci" >&2
+        exit 2
+    fi
+    if ((${#word} <= 2)); then
+        word=${word^^}
+    else
+        word=${word,,}
+        word=${word^}
+    fi
+    LAUNCHER_NAME="Juvin ($word)"
+fi
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 mkdir -p "${2:-$REPO_ROOT/dist}"
@@ -157,10 +175,10 @@ glibc_floor() {
 }
 
 write_desktop_file() {
-    cat >"$1" <<'EOF'
+    cat >"$1" <<EOF
 [Desktop Entry]
 Type=Application
-Name=Juvin
+Name=$LAUNCHER_NAME
 GenericName=Email writing assistant
 Comment=Works beside you
 Exec=juvin

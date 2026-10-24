@@ -14,6 +14,17 @@ if ($args.Count -lt 1 -or $args.Count -gt 2) {
 }
 
 $version = [string]$args[0]
+# Matches LauncherName in Juvin.Core: "Juvin (Alpha)" for 0.1.0-alpha.2, "Juvin" for a release.
+$launcherName = 'Juvin'
+if ($version.Contains('-')) {
+    $word = ($version -split '-', 2)[1].Split('.')[0]
+    if ($word.Length -le 2) {
+        $word = $word.ToUpperInvariant()
+    } else {
+        $word = $word.Substring(0, 1).ToUpperInvariant() + $word.Substring(1).ToLowerInvariant()
+    }
+    $launcherName = "Juvin ($word)"
+}
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 if ($args.Count -eq 2) {
     $packageDir = (Resolve-Path ([string]$args[1])).Path
@@ -26,7 +37,7 @@ $appId = '{6E0B71C2-4F3D-4C8E-9A57-2D1B8E4F6A90}'
 $installer = Join-Path $packageDir "Juvin-$version-x64-setup.exe"
 $installDir = Join-Path $env:LOCALAPPDATA 'Programs\Juvin'
 $dataDir = Join-Path $env:LOCALAPPDATA 'Juvin'
-$startMenuShortcut = Join-Path ([Environment]::GetFolderPath('Programs')) 'Juvin.lnk'
+$startMenuShortcut = Join-Path ([Environment]::GetFolderPath('Programs')) "$launcherName.lnk"
 $appPathsKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\juvin.exe'
 $uninstallKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\${appId}_is1"
 $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
