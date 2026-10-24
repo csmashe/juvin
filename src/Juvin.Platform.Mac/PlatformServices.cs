@@ -27,6 +27,7 @@ public static class PlatformServices
         services.AddSingleton<INativeHostRegistrar>(sp => new MacNativeHostRegistrar(NativeHost.Locate, sp.GetRequiredService<Localizer>()));
         // The bundle carries the launcher entry.
         services.AddSingleton<ILauncherIntegration, NoLauncherIntegration>();
+        services.AddSingleton<IForegroundHandoff, NoForegroundHandoff>();
         services.AddSingleton<ILoginItem, LaunchAgentLoginItem>();
         services.AddSingleton<IHotkeyBackend, SharpHookHotkeyBackend>();
         services.AddSingleton<ISetupTask>(sp => new AccessibilityPermissionSetupTask(

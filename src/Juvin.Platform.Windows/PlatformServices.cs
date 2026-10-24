@@ -26,6 +26,7 @@ public static class PlatformServices
         services.AddSingleton<INativeHostRegistrar>(_ => new WindowsNativeHostRegistrar(NativeHost.Locate));
         // The installer carries the launcher entry.
         services.AddSingleton<ILauncherIntegration, NoLauncherIntegration>();
+        services.AddSingleton<IForegroundHandoff, WindowsForegroundHandoff>();
         services.AddSingleton<ILoginItem, RunKeyLoginItem>();
         services.AddSingleton<IHotkeyBackend, SharpHookHotkeyBackend>();
         return services;

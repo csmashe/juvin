@@ -11,6 +11,7 @@ using Juvin.Core.Interfaces;
 using Juvin.Core.Localization;
 using Juvin.Core.Models;
 using Juvin.Core.Providers;
+using Juvin.Platform;
 using Juvin.Platform.Setup;
 
 namespace Juvin.App.ViewModels;
@@ -49,6 +50,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
 
     private readonly ConnectorService _connector;
     private readonly ProbeGate _detection = new();
+    private readonly IForegroundHandoff _foreground;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly Localizer _localizer;
     private readonly ActionMenuService _menus;
@@ -149,6 +151,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         ActionMenuService menus,
         ICrashReporter crashReporter,
         IEnumerable<ISetupTask> setupTasks,
+        IForegroundHandoff foreground,
         Action<Action> post
     )
     {
@@ -156,6 +159,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         _connector = connectorService;
         _panel = panel;
         _menus = menus;
+        _foreground = foreground;
         _post = post;
         Connector = connector;
         Shortcut = shortcut;
@@ -469,6 +473,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         ConnectorError? error;
         try
         {
+            _foreground.AllowOtherAppToComeForward();
             error = await _connector.OpenTestPageAsync(s_openSampleTimeout, _lifetime.Token);
         }
         catch (OperationCanceledException) when (IsClosed)

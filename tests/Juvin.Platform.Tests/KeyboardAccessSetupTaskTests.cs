@@ -96,17 +96,19 @@ public sealed class KeyboardAccessSetupTaskTests
         Assert.True(outcome.Success);
         Assert.Equal(1, _restarts);
         var (fileName, arguments) = Assert.Single(runner.Calls);
-        Assert.Equal("pkexec", fileName);
-        Assert.Equal("/bin/sh", arguments[0]);
-        Assert.Contains("udevadm control --reload-rules", arguments[2]);
-        Assert.EndsWith("|| exit 1", arguments[2]);
+        Assert.Equal("/bin/sh", fileName);
+        Assert.Contains("ulimit -n 1024", arguments[1]);
+        Assert.EndsWith("exec pkexec \"$@\"", arguments[1]);
+        Assert.Equal(["/bin/sh", "-c"], arguments.Skip(3).Take(2));
+        Assert.Contains("udevadm control --reload-rules", arguments[5]);
+        Assert.EndsWith("|| exit 1", arguments[5]);
         Assert.Equal(
             [
                 "# Juvin: lets the signed-in user read keyboards for its global shortcut.",
                 "SUBSYSTEM==\"input\", ENV{ID_INPUT_KEYBOARD}==\"1\", TAG+=\"uaccess\", GROUP=\"input\", MODE=\"0660\"",
                 "/etc/udev/rules.d/70-juvin-input.rules",
             ],
-            arguments.Skip(4)
+            arguments.Skip(7)
         );
     }
 
@@ -130,6 +132,16 @@ public sealed class KeyboardAccessSetupTaskTests
 
         Assert.False(outcome.Success);
         Assert.Contains("pkexec", outcome.Message);
+    }
+
+    [LinuxFact]
+    public async Task RunAction_WhenPkexecIsMissing_PointsAtTheManualCommand()
+    {
+        var outcome = await Create(new FakeProcessRunner(99)).RunActionAsync(CancellationToken.None);
+
+        Assert.False(outcome.Success);
+        Assert.Contains("pkexec", outcome.Message);
+        Assert.Equal(0, _restarts);
     }
 
     private sealed class ThrowingRunner : IProcessRunner

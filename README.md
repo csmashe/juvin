@@ -2,10 +2,11 @@
 
 Works beside you.
 
-Juvin is an open-source desktop assistant for Linux, macOS, and Windows that helps inside the apps you already use. Select the email you are drafting, press a shortcut, and Juvin reads your draft together with the whole conversation it replies to, then offers a rewrite that is softer, clearer, shorter, or corrected while keeping your deadlines, names, and intent intact. You review the result, ask for changes in plain language, and apply it back into your editor. Juvin runs on your own machine and uses a local model by default, so your email never leaves your computer unless you choose otherwise.
+Juvin is an open-source desktop assistant for Linux, macOS, and Windows that helps inside the apps you already use. Select the email you are drafting in Gmail, press Ctrl+Shift+F, and a menu of actions opens beside the draft: What am I missing?, Soften, Make clearer, Make shorter, and Fix grammar, or a request of your own. Juvin reads your draft together with the whole conversation it replies to, so the rewrite keeps your deadlines, names, and intent, and it replaces your selection in place, where Ctrl+Z puts the original back. Juvin uses a model on your own computer or network by default, so your email never leaves your machines unless you choose otherwise.
 
-Status: early development. The desktop app skeleton (settings window, setup wizard, tray, local control socket) builds and runs on Linux and Windows; the rewrite workflow and the browser extension are in progress.
+Status: alpha. The full workflow works on all three systems; see the [user guide](https://github.com/csmashe/juvin/wiki) to install and set it up.
 
+- [User guide (wiki)](https://github.com/csmashe/juvin/wiki)
 - [MVP scope and phases](docs/mvp-scope.md)
 - [Privacy policy](docs/PRIVACY.md)
 - [Research](docs/research/desktop-ai-assistant-research.md)
@@ -15,7 +16,7 @@ Built with .NET 10 and Avalonia, plus a browser extension for Firefox and Chrome
 
 ## Installing
 
-Linux packages (deb, rpm, and AppImage, each with the browser connector bundled) are attached to every release on the [Releases](https://github.com/csmashe/juvin/releases) page. The deb and rpm install under `/opt/juvin` and add a menu entry; the AppImage runs from wherever you put it. The Windows installer is attached to releases too; it installs for the current user under `%LOCALAPPDATA%\Programs\Juvin` without asking for administrator rights. A macOS build is still to come. The browser extension is not in the stores yet; see [extension/README.md](extension/README.md) for loading it.
+Every release on the [Releases](https://github.com/csmashe/juvin/releases) page has the Linux packages (deb, rpm, and AppImage), the Windows installer, and the macOS dmg, each with the browser connector bundled. The deb and rpm install under `/opt/juvin` and add a menu entry; the AppImage runs from wherever you put it. The Windows installer installs for the current user under `%LOCALAPPDATA%\Programs\Juvin` without asking for administrator rights. The macOS app is not notarized yet, so the first start needs Open Anyway in System Settings. The browser extension is on its way to the Chrome Web Store and Firefox Add-ons; until then, see [extension/README.md](extension/README.md) for loading it. The [user guide](https://github.com/csmashe/juvin/wiki/Installing) walks through each system.
 
 To build the Linux packages yourself:
 

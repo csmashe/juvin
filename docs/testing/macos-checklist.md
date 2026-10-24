@@ -188,7 +188,7 @@ A is automated, H is by hand. Block is 1 or 2.
 
 **M-17** (hotkey-checklist "Not yet covered", mvp-scope Phase 4 slice 4; H; block 2). The physical key.
 - Steps: add the German input source and switch to it. Record a shortcut by pressing Control+Shift and the key in the Y position (labelled Z). Send `key code 16` (physical Y) and `key code 6` (physical Z) with Control and Shift.
-- Pass: `settings.json` stores `rewriteShortcut` `Ctrl+Shift+Z` and `rewriteShortcutPhysicalKey` `Y`. The hook fires on key code 16 only, and no longer on Control+Shift+F. Restore the default and the US layout afterwards.
+- Pass: the Shortcuts section shows Ctrl+Shift+Z, and `settings.json` stores `rewriteShortcut` `Shift+Super+Z` (on macOS `Super` is the Control key) and `rewriteShortcutPhysicalKey` `Y`. The hook fires on key code 16 only, and no longer on Control+Shift+F. Restore the default and the US layout afterwards.
 
 ### Panel and action menu
 
@@ -205,7 +205,7 @@ A is automated, H is by hand. Block is 1 or 2.
   - The panel opens at the top right of the main screen's working area, below the menu bar, streams the result, and stays above Chrome while Chrome has focus. Avalonia's `Topmost` maps to a floating level on macOS.
   - Apply hides the panel and replaces the selection, and focus returns to Chrome so that Cmd+Z works without a click.
   - Typing in the draft before Apply gives "Draft changed" with Copy and Recapture. After Copy, `pbpaste | wc -c` matches the result's length.
-  - Escape, then the shortcut again, reopens the panel in the same corner.
+  - Escape hides the panel, and Review from the right-click list reopens it in the same corner.
 
 **M-20** (MacPanelWindowSupport; H; block 2). Spaces and full screen.
 - Steps: put Chrome in full screen (its own Space) and open Review there. Switch Spaces with Control+Right.

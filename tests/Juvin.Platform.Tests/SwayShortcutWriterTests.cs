@@ -74,6 +74,18 @@ public sealed class SwayShortcutWriterTests : IDisposable
     }
 
     [LinuxFact]
+    public async Task WriteAndRemove_KeepABlankLastLine()
+    {
+        const string trailingBlank = "set $mod Mod4\nbindsym $mod+Return exec foot\n\n";
+        _session.WriteConfig("sway/config", trailingBlank);
+
+        await _writer.WriteAsync(DesktopShortcutTestSession.Spec(), CancellationToken.None);
+        await _writer.RemoveAsync("juvin.rewrite", CancellationToken.None);
+
+        Assert.Equal(trailingBlank, await File.ReadAllTextAsync(Config));
+    }
+
+    [LinuxFact]
     public async Task WriteAndRemove_KeepTheFilesCrlfLineEndings()
     {
         const string crlfConfig = "set $mod Mod4\r\nbindsym $mod+Return exec foot\r\n";

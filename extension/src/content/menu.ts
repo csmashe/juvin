@@ -42,6 +42,8 @@ const MARK = -1;
 const GAP = 12;
 const MARGIN = 8;
 const LIST_MAX_HEIGHT = 240;
+/** The result block's cap in menu-styles.ts. */
+const RESULT_MAX_HEIGHT = 200;
 /** About two rows, so a list squeezed by a short viewport still shows that it scrolls. */
 const LIST_MIN_HEIGHT = 92;
 const EDITOR_POLL_MS = 500;
@@ -838,7 +840,8 @@ export class MenuRenderer {
     }
 
     if (this.menu === menu && menu.anchor) {
-      fitList(menu.card);
+      fitScrollable(menu.card, ".list", LIST_MAX_HEIGHT);
+      fitScrollable(menu.card, ".result", RESULT_MAX_HEIGHT);
       placeHost(menu.host, menu.anchor, MENU_FALLBACK_SIZE);
     }
   }
@@ -1001,18 +1004,18 @@ function mountPoint(editor: Editor): Element {
   return editor.closest("dialog:modal") ?? editor.ownerDocument.body;
 }
 
-// Measured from the list's content rather than its current height, so a list already cut keeps its scroll position.
-function fitList(card: HTMLElement): void {
-  const list = card.querySelector<HTMLElement>(".list");
+// Measured from the block's content rather than its current height, so a block already cut keeps its scroll position.
+function fitScrollable(card: HTMLElement, selector: string, maxHeight: number): void {
+  const block = card.querySelector<HTMLElement>(selector);
   const panel = card.parentElement;
-  if (card.hidden || !list || !panel) {
+  if (card.hidden || !block || !panel) {
     return;
   }
 
-  const natural = Math.min(list.scrollHeight, LIST_MAX_HEIGHT);
-  const content = panel.scrollHeight - list.clientHeight + natural;
+  const natural = Math.min(block.scrollHeight, maxHeight);
+  const content = panel.scrollHeight - block.clientHeight + natural;
   const win = card.ownerDocument.defaultView ?? window;
-  list.style.maxHeight = `${Math.floor(fitListHeight(content, natural, win.innerHeight))}px`;
+  block.style.maxHeight = `${Math.floor(fitListHeight(content, natural, win.innerHeight))}px`;
 }
 
 function placeHost(host: HTMLElement, anchor: Box, fallback: Size): void {

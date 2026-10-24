@@ -8,6 +8,7 @@ using Juvin.App.Localization;
 using Juvin.App.Services;
 using Juvin.App.Services.CrashReporting;
 using Juvin.App.ViewModels;
+using Juvin.App.ViewModels.Sections;
 using Juvin.App.Views;
 using Juvin.Core.Interfaces;
 using Juvin.Core.Localization;
@@ -100,6 +101,15 @@ public class App : Application
         };
 
         tray.ShowSettingsRequested += (_, _) => ShowMainWindow(main);
+        if (NativeMenu.GetMenu(this)?.Items[0] is NativeMenuItem about)
+        {
+            about.Header = localizer["App.AboutMenu"];
+            about.Click += (_, _) =>
+            {
+                ShowMainWindow(main);
+                (main.DataContext as MainWindowViewModel)?.Navigate<AboutSectionViewModel>();
+            };
+        }
         // A Dock icon click on macOS, sent to this process rather than to a second launch.
         if (this.TryGetFeature<IActivatableLifetime>() is { } activatable)
         {

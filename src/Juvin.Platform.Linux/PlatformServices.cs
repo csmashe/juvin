@@ -38,6 +38,7 @@ public static class PlatformServices
             DesktopSession.FromEnvironment().DataHome,
             LauncherName.Current
         ));
+        services.AddSingleton<IForegroundHandoff, NoForegroundHandoff>();
         services.AddSingleton<ILoginItem>(_ => new XdgAutostartLoginItem(
             Environment.GetEnvironmentVariable,
             Environment.ProcessPath,

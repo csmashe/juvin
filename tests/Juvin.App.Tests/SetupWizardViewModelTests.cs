@@ -22,6 +22,7 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
 
     private readonly ConnectorService _connector;
     private readonly FakeCrashReporter _crashReporter = new();
+    private readonly CountingForegroundHandoff _foreground = new();
     private readonly Localizer _localizer = new();
     private readonly FakeConnectorChannel _menuChannel = new();
     private readonly Task _menuLoop;
@@ -435,6 +436,7 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
         var open = vm.OpenSampleCommand.ExecuteAsync(null);
         var request = await ReadAsync(stream);
         Assert.Equal("testpage.request", request.GetProperty("type").GetString());
+        Assert.Equal(1, _foreground.Calls);
         await WriteAsync(stream, $$"""{"v":1,"type":"testpage.response","id":"{{request.GetProperty("id").GetString()}}","ok":true}""");
         await open;
 
@@ -1140,6 +1142,7 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
             _menus,
             _crashReporter,
             tasks,
+            _foreground,
             action => action()
         );
     }
@@ -1204,5 +1207,12 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
         vm.StepIndex = SetupWizardViewModel.StepCount - 1;
         await vm.RecheckSetupCommand.ExecuteAsync(null);
         return vm;
+    }
+
+    private sealed class CountingForegroundHandoff : IForegroundHandoff
+    {
+        public int Calls { get; private set; }
+
+        public void AllowOtherAppToComeForward() => Calls++;
     }
 }

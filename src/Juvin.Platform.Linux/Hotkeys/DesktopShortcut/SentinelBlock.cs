@@ -38,11 +38,9 @@ internal static class SentinelBlock
             finalEnding = lines.Count == 0 ? newline : lines[^1].Ending;
             if (lines.Count > 0)
             {
+                // Always a separator, even after a blank last line, so Remove can take exactly it back out.
                 lines[^1] = lines[^1] with { Ending = newline };
-                if (lines[^1].Text.Length > 0)
-                {
-                    lines.Add(new Line("", newline));
-                }
+                lines.Add(new Line("", newline));
             }
 
             open = lines.Count;
