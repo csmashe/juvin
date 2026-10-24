@@ -21,7 +21,7 @@ Juvin makes no other network connections. There are no update checks, license ch
 
 ## What Juvin keeps on your computer
 
-Juvin's data folder is `~/.local/share/Juvin` on Linux and `%LOCALAPPDATA%\Juvin` on Windows; Privacy and data shows the exact path on your system and opens the folder. On Linux and macOS the folder is readable only by your user account; on Windows it has the usual permissions of your local app data.
+Juvin's data folder is `~/.local/share/Juvin` on Linux, `~/Library/Application Support/Juvin` on macOS, and `%LOCALAPPDATA%\Juvin` on Windows; Privacy and data shows the exact path on your system and opens the folder. On Linux and macOS the folder is readable only by your user account; on Windows it has the usual permissions of your local app data.
 
 - **Settings** (`settings.json`): the processing mode, server address, model names, your sender name, the shortcut, custom actions and instruction edits, and the switches below. Juvin keeps a last-known-good copy as `settings.json.bak` and quarantines an unreadable copy as `settings.json.broken-*`.
 - **Rewrite history** (`history.json`), off by default: with the switch on, each completed rewrite keeps the draft, the result, the subject, the action, the mode, provider, and model, the message count, and timing. Entries older than the retention period (30 days by default) are removed when you change the period and each time Juvin starts. An unreadable history file is quarantined as `history.json.broken-*`; Juvin keeps no backup copy of history.
