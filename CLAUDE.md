@@ -29,6 +29,7 @@ The solution is `Juvin.slnx` at the repo root. The protocol between the app and 
 ### Browser extension (in `extension/`)
 - `npm install` - Install dependencies
 - `npm run build` - Build both Chrome and Firefox outputs
+- `scripts/build-extension-packages.sh` (from the repo root) - Build the store packages into `dist/`: the Chrome Web Store zip (without the pinned dev `key`), the Firefox Add-ons zip, and the source zip addons.mozilla.org needs; `docs/store-listings.md` has the listing text
 - `npm test` - Run extension tests
 - Load `extension/dist/chrome` as an unpacked extension, or `npx web-ext run --source-dir dist/firefox`; the app must be running and the host registered. See `extension/README.md`.
 

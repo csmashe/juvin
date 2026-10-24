@@ -21,8 +21,9 @@ const targets = {
       gecko: {
         id: "extension@juvin.app",
         strict_min_version: "142.0",
-        // Content goes only to the local Juvin app over native messaging, never to a server run by the extension.
-        data_collection_permissions: { required: ["none"] },
+        // Firefox counts what native messaging passes to the Juvin app as data transmission: the draft, the conversation,
+        // with its names and addresses, and on other sites the page's text.
+        data_collection_permissions: { required: ["personalCommunications", "personallyIdentifyingInfo", "websiteContent"] },
       },
     },
   }),
