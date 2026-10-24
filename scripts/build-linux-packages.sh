@@ -4,7 +4,7 @@
 # binaries. A format whose tool is missing (dpkg-deb, rpmbuild, wget) is skipped with a warning.
 #
 # Usage: scripts/build-linux-packages.sh <version> [output-dir]
-#   version     MAJOR.MINOR.PATCH, optionally followed by -word or -word.number (alpha, beta.2, rc.1)
+#   version     MAJOR.MINOR.PATCH, optionally followed by -word or -word.number, the word one of alpha, beta, rc, dev, or ci (alpha, beta.2, rc.1)
 #   output-dir  where the packages go (default dist/)
 set -euo pipefail
 
@@ -31,8 +31,8 @@ if [[ $VERSION == *-* ]]; then
     word=${VERSION#*-}
     word=${word%%.*}
     # The Windows build refuses any other word, since its installer removes these shortcut names only.
-    if [[ ! ${word,,} =~ ^(alpha|beta|rc|dev)$ ]]; then
-        echo "error: the prerelease word '$word' is not alpha, beta, rc, or dev" >&2
+    if [[ ! ${word,,} =~ ^(alpha|beta|rc|dev|ci)$ ]]; then
+        echo "error: the prerelease word '$word' is not alpha, beta, rc, dev, or ci" >&2
         exit 2
     fi
     if ((${#word} <= 2)); then

@@ -73,11 +73,13 @@ Type: files; Name: "{autoprograms}\Juvin (Alpha).lnk"
 Type: files; Name: "{autoprograms}\Juvin (Beta).lnk"
 Type: files; Name: "{autoprograms}\Juvin (RC).lnk"
 Type: files; Name: "{autoprograms}\Juvin (Dev).lnk"
+Type: files; Name: "{autoprograms}\Juvin (CI).lnk"
 Type: files; Name: "{autodesktop}\Juvin.lnk"
 Type: files; Name: "{autodesktop}\Juvin (Alpha).lnk"
 Type: files; Name: "{autodesktop}\Juvin (Beta).lnk"
 Type: files; Name: "{autodesktop}\Juvin (RC).lnk"
 Type: files; Name: "{autodesktop}\Juvin (Dev).lnk"
+Type: files; Name: "{autodesktop}\Juvin (CI).lnk"
 
 [Icons]
 Name: "{autoprograms}\{#LauncherName}"; Filename: "{app}\juvin.exe"
