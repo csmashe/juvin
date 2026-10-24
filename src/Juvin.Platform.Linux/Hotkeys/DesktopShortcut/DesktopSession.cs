@@ -75,10 +75,10 @@ internal sealed record DesktopSession(
         };
     }
 
-    // Hyprland keeps its sockets in $XDG_RUNTIME_DIR/hypr/<signature>, and in /tmp/hypr/<signature> before 0.40.
+    // Hyprland keeps its IPC socket in $XDG_RUNTIME_DIR/hypr/<signature>, and in /tmp/hypr/<signature> before 0.40.
     private static bool HyprlandIsRunning(string signature, string? runtimeDirectory) =>
-        (!string.IsNullOrEmpty(runtimeDirectory) && Directory.Exists(Path.Join(runtimeDirectory, "hypr", signature)))
-        || Directory.Exists(Path.Join("/tmp/hypr", signature));
+        (!string.IsNullOrEmpty(runtimeDirectory) && File.Exists(Path.Join(runtimeDirectory, "hypr", signature, ".socket.sock")))
+        || File.Exists(Path.Join("/tmp/hypr", signature, ".socket.sock"));
 
     public bool HasExecutable(string name) =>
         ExecutableDirectories.Any(directory => File.Exists(Path.Join(directory, name)));

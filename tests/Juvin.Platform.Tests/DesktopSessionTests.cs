@@ -35,12 +35,22 @@ public sealed class DesktopSessionTests : IDisposable
     }
 
     [LinuxFact]
-    public void ARunningHyprland_IsFoundByItsRuntimeFolder()
+    public void ARunningHyprland_IsFoundByItsSocket()
+    {
+        var runtime = _temp.File("run");
+        Directory.CreateDirectory(Path.Join(runtime, "hypr", "abc"));
+        File.WriteAllText(Path.Join(runtime, "hypr", "abc", ".socket.sock"), "");
+
+        Assert.Equal("hyprland", Detect(("HYPRLAND_INSTANCE_SIGNATURE", "abc"), ("XDG_RUNTIME_DIR", runtime), ("XDG_CURRENT_DESKTOP", "KDE")));
+    }
+
+    [LinuxFact]
+    public void AHyprlandFolderWithoutItsSocket_LosesToTheCurrentDesktop()
     {
         var runtime = _temp.File("run");
         Directory.CreateDirectory(Path.Join(runtime, "hypr", "abc"));
 
-        Assert.Equal("hyprland", Detect(("HYPRLAND_INSTANCE_SIGNATURE", "abc"), ("XDG_RUNTIME_DIR", runtime), ("XDG_CURRENT_DESKTOP", "KDE")));
+        Assert.Equal("kde", Detect(("HYPRLAND_INSTANCE_SIGNATURE", "abc"), ("XDG_RUNTIME_DIR", runtime), ("XDG_CURRENT_DESKTOP", "KDE")));
     }
 
     [LinuxFact]
