@@ -33,7 +33,7 @@ public sealed class NativeHostManifestTests : IDisposable
 
         Assert.Contains("Zoë", json);
         Assert.Equal(@"C:\Users\Zoë\juvin-host.exe", manifest.RootElement.GetProperty("path").GetString());
-        Assert.Equal([NativeHost.ChromeOrigin], manifest.RootElement.GetProperty("allowed_origins").EnumerateArray().Select(e => e.GetString()));
+        Assert.Equal(["chrome-extension://igmlmppjhljfjnepflcpjblbdilkalkg/", "chrome-extension://okfcbcoboinjniofikfnmllkbaeadelo/"], manifest.RootElement.GetProperty("allowed_origins").EnumerateArray().Select(e => e.GetString()));
         Assert.False(manifest.RootElement.TryGetProperty("allowed_extensions", out _));
     }
 
