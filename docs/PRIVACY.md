@@ -28,7 +28,7 @@ Juvin's data folder is `~/.local/share/Juvin` on Linux, `~/Library/Application S
 - **Provenance capture**, off by default: adds the exact prompt and messages sent for each rewrite to its history entry.
 - **Secrets** (`Secrets/` and, on Linux, `secret.key`): the folder exists for provider credentials, and the key file that encrypts them is created only when the first one is stored. No provider in the current version needs a credential, so nothing is stored.
 - **Runtime** (`Runtime/`): the local socket the native host connects to, removed at shutdown, and on macOS or a Linux session without a runtime directory, two empty lock files that stay. None holds content.
-- **Logs** (`Logs/juvin.log` and `Logs/juvin.previous.log`): diagnostic output, also printed to the terminal that started the app. A new log starts at each launch and whenever the current one reaches 1 MB, and only the one before it is kept. It carries message types, lengths, identifiers, and error types, never the draft, the conversation, a prompt, or a response, and nothing sends it anywhere.
+- **Logs** (`Logs/juvin.log` and `Logs/juvin.previous.log`): diagnostic output. A new log starts at each launch and whenever the current one reaches 1 MB, and only the one before it is kept. It carries message types, lengths, identifiers, and error types, never the draft, the conversation, a prompt, or a response, and nothing sends it anywhere.
 
 Exporting history writes a Markdown or JSON file wherever you choose; that file is yours to keep or delete.
 
