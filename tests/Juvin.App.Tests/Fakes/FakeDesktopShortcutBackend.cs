@@ -3,17 +3,19 @@ using Juvin.Platform.Hotkeys;
 
 namespace Juvin.App.Tests.Fakes;
 
-/// <summary>A desktop-shortcut backend that records whether the shortcut was removed.</summary>
+/// <summary>A desktop-shortcut backend that records starts and removals; removing fails with <see cref="RemoveFailure" /> when that is set.</summary>
 public sealed class FakeDesktopShortcutBackend(bool requiresSessionRestart) : IHotkeyBackend, IDesktopShortcutInfo
 {
+    public string? RemoveFailure { get; set; }
     public int RemoveCount { get; private set; }
+    public int StartCount { get; private set; }
 
     public bool RequiresSessionRestartToApply { get; } = requiresSessionRestart;
 
     public Task RemoveAsync(CancellationToken ct)
     {
         RemoveCount++;
-        return Task.CompletedTask;
+        return RemoveFailure is null ? Task.CompletedTask : throw new HotkeyBackendException(RemoveFailure);
     }
 
     public string Id => "desktop-shortcut";
@@ -32,7 +34,11 @@ public sealed class FakeDesktopShortcutBackend(bool requiresSessionRestart) : IH
         remove { }
     }
 
-    public Task StartAsync(KeyChord chord, CancellationToken ct) => Task.CompletedTask;
+    public Task StartAsync(KeyChord chord, CancellationToken ct)
+    {
+        StartCount++;
+        return Task.CompletedTask;
+    }
 
     public Task StopAsync() => Task.CompletedTask;
 }

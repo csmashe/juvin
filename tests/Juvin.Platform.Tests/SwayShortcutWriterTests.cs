@@ -46,6 +46,20 @@ public sealed class SwayShortcutWriterTests : IDisposable
     }
 
     [LinuxFact]
+    public async Task Write_PointsABindNamingAnOldBinaryAtTheRunningApp()
+    {
+        _session.WriteConfig("sway/config", UserConfig);
+        await _writer.WriteAsync(DesktopShortcutTestSession.Spec(command: "/home/user/old-build/juvin --trigger"), CancellationToken.None);
+        Assert.False(await _writer.IsInstalledAsync(DesktopShortcutTestSession.Spec(), CancellationToken.None));
+
+        await _writer.WriteAsync(DesktopShortcutTestSession.Spec(), CancellationToken.None);
+
+        Assert.Equal(UserConfig + "\n" + Block("\n") + "\n", await File.ReadAllTextAsync(Config));
+        Assert.Equal(2, _runner.Calls.Count);
+        Assert.True(await _writer.IsInstalledAsync(DesktopShortcutTestSession.Spec(), CancellationToken.None));
+    }
+
+    [LinuxFact]
     public async Task Remove_RestoresTheUsersConfig()
     {
         _session.WriteConfig("sway/config", UserConfig);

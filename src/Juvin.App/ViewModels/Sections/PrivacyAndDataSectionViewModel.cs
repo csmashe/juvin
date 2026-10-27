@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Juvin.App.Services;
 using Juvin.App.Services.CrashReporting;
 using Juvin.Core;
 using Juvin.Core.Interfaces;
@@ -9,6 +10,7 @@ using Juvin.Core.Localization;
 using Juvin.Core.Models;
 using Juvin.Core.Services;
 using Juvin.Platform;
+using Juvin.Platform.Hotkeys;
 
 namespace Juvin.App.ViewModels.Sections;
 
@@ -20,6 +22,7 @@ public sealed partial class PrivacyAndDataSectionViewModel : ObservableObject
 {
     private const string PolicyRepository = "https://github.com/csmashe/juvin/blob/";
     private readonly IHistoryService _history;
+    private readonly HotkeyService _hotkeys;
     private readonly Localizer _localizer;
     private readonly ILoginItem _loginItem;
     private readonly ISettingsService _settings;
@@ -52,9 +55,10 @@ public sealed partial class PrivacyAndDataSectionViewModel : ObservableObject
         IHistoryService history,
         Localizer localizer,
         ILoginItem loginItem,
+        HotkeyService hotkeys,
         ICrashReporter crashReporter
     )
-        : this(settings, history, localizer, loginItem, crashReporter, JuvinEnvironment.DataPath)
+        : this(settings, history, localizer, loginItem, hotkeys, crashReporter, JuvinEnvironment.DataPath)
     {
     }
 
@@ -62,6 +66,7 @@ public sealed partial class PrivacyAndDataSectionViewModel : ObservableObject
     /// <param name="history">The history the Storage card counts, exports, and clears.</param>
     /// <param name="localizer">The string table for labels and messages.</param>
     /// <param name="loginItem">The OS login entry Delete all data removes along with the setting.</param>
+    /// <param name="hotkeys">Removes the desktop shortcut on Delete all data.</param>
     /// <param name="crashReporter">Whether this build can send crash reports at all.</param>
     /// <param name="dataPath">The folder whose secrets Delete all data removes; tests pass a temporary one.</param>
     public PrivacyAndDataSectionViewModel(
@@ -69,6 +74,7 @@ public sealed partial class PrivacyAndDataSectionViewModel : ObservableObject
         IHistoryService history,
         Localizer localizer,
         ILoginItem loginItem,
+        HotkeyService hotkeys,
         ICrashReporter crashReporter,
         string dataPath
     )
@@ -77,6 +83,7 @@ public sealed partial class PrivacyAndDataSectionViewModel : ObservableObject
         _history = history;
         _localizer = localizer;
         _loginItem = loginItem;
+        _hotkeys = hotkeys;
         DataFolder = dataPath;
         IsCrashReportingAvailable = crashReporter.IsAvailable;
         RetentionOptions =
@@ -171,6 +178,7 @@ public sealed partial class PrivacyAndDataSectionViewModel : ObservableObject
         IsConfirmingDeleteAll = false;
         ErrorMessage = null;
         var removedLoginItem = false;
+        var stoppedHotkeys = false;
         try
         {
             // First, so a refused removal leaves the setting that still describes the entry.
@@ -180,12 +188,13 @@ public sealed partial class PrivacyAndDataSectionViewModel : ObservableObject
                 removedLoginItem = true;
             }
 
+            stoppedHotkeys = await _hotkeys.RemoveDesktopShortcutUntilStartAsync(CancellationToken.None);
             _history.Clear();
             JuvinEnvironment.DeleteSecretsIn(DataFolder);
             _settings.Reset();
             Trace.WriteLine("[PrivacyAndDataSection] Deleted all data.");
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or LoginItemException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or LoginItemException or HotkeyBackendException)
         {
             Trace.WriteLine($"[PrivacyAndDataSection] Could not delete all data: {ex.GetType().Name}");
             ErrorMessage = _localizer.Format("PrivacyAndData.DeleteAllFailed", ex.Message);
@@ -194,6 +203,11 @@ public sealed partial class PrivacyAndDataSectionViewModel : ObservableObject
             if (removedLoginItem && _settings.Current.LaunchAtLogin)
             {
                 await RestoreLoginItemAsync();
+            }
+
+            if (stoppedHotkeys)
+            {
+                await _hotkeys.StartAsync(CancellationToken.None);
             }
         }
     }

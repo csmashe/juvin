@@ -33,11 +33,11 @@ Juvin writes no log files. Diagnostic output goes to the terminal that started i
 
 Exporting history writes a Markdown or JSON file wherever you choose; that file is yours to keep or delete.
 
-**Clear history** removes every entry and the quarantine copies of the history file. **Delete all data** removes history, the secrets, the launch-at-login entry, and resets settings with their copies, and setup runs again at the next start.
+**Clear history** removes every entry and the quarantine copies of the history file. **Delete all data** removes history, the secrets, the launch-at-login entry, and the shortcut registered with your desktop, then resets settings with their copies; setup runs again at the next start.
 
 ## What Juvin writes outside its data folder
 
-Setup registers the native messaging host with Firefox and Chrome by writing a small manifest in each browser's per-user folder (a registry key on Windows), and registers the shortcut with your desktop environment where one is needed. On Linux, allowing keyboard access adds a udev rule (`/etc/udev/rules.d/70-juvin-input.rules`) that lets the signed-in user read keyboards; that access covers every program running as you, not only Juvin, which uses it only to watch for its shortcut. Launch at login, off by default, adds an autostart entry, a launch agent, or a Run key, and turning the switch off removes it. None of these files holds email content.
+Setup registers the native messaging host with Firefox and Chrome by writing a small manifest in each browser's per-user folder (a registry key on Windows), and registers the shortcut with your desktop environment where one is needed. On Linux, allowing keyboard access adds a udev rule (`/etc/udev/rules.d/70-juvin-input.rules`) that lets the signed-in user read keyboards; that access covers every program running as you, not only Juvin, which uses it only to watch for its shortcut. Launch at login, off by default, adds an autostart entry, a launch agent, or a Run key, and turning the switch off removes it. Uninstalling Juvin on Linux or macOS leaves these per-user entries in place; run Delete all data first to remove the desktop shortcut and the login entry. None of these files holds email content.
 
 ## Crash reports
 
