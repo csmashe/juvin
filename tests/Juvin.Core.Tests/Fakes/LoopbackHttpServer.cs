@@ -34,7 +34,6 @@ internal sealed class LoopbackHttpServer : IDisposable
         _stopping.Cancel();
         _listener.Dispose();
         _loop.Wait(TimeSpan.FromSeconds(5));
-        _stopping.Dispose();
     }
 
     private async Task ServeAsync(Func<LoopbackResponse> respond)

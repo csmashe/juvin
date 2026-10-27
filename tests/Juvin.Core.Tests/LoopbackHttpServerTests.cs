@@ -10,7 +10,9 @@ public sealed class LoopbackHttpServerTests
     {
         for (var i = 0; i < 200; i++)
         {
-            new LoopbackHttpServer(() => new LoopbackResponse(HttpStatusCode.NoContent)).Dispose();
+            var server = new LoopbackHttpServer(() => new LoopbackResponse(HttpStatusCode.NoContent));
+            server.Dispose();
+            server.Dispose();
         }
     }
 }
