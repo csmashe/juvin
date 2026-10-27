@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Juvin",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Rewrites the selected email draft with the Juvin desktop app, using the whole conversation as context.",
   "icons": {
     "16": "icons/icon-16.png",
