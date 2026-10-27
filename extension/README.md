@@ -28,6 +28,11 @@ cd dist/firefox && zip -qrX ../juvin-firefox.zip .   # the package: the contents
 
 The build bundles each entry point in `src/` with esbuild, without minifying, and copies the manifest, the popup and test page files, and the icons from `../assets/brand/png`. `webextension-polyfill` is the only runtime dependency. `scripts/build-extension-packages.sh` in the repository builds both store zips and this source package.
 
+## Store listings
+
+- Chrome Web Store: https://chromewebstore.google.com/detail/juvin/igmlmppjhljfjnepflcpjblbdilkalkg
+- Firefox Add-ons: https://addons.mozilla.org/firefox/addon/juvin/
+
 ## Pinned IDs
 
 | Browser | ID | Where it comes from |
