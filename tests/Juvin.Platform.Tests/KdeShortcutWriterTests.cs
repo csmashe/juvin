@@ -44,6 +44,20 @@ public sealed class KdeShortcutWriterTests : IDisposable
     }
 
     [LinuxFact]
+    public async Task Write_PointsAnEntryNamingAnOldBinaryAtTheRunningApp()
+    {
+        await _writer.WriteAsync(DesktopShortcutTestSession.Spec(command: "/home/user/old-build/juvin --trigger"), CancellationToken.None);
+        Assert.False(await _writer.IsInstalledAsync(DesktopShortcutTestSession.Spec(), CancellationToken.None));
+
+        await _writer.WriteAsync(DesktopShortcutTestSession.Spec(), CancellationToken.None);
+
+        var lines = await File.ReadAllLinesAsync(EntryPath);
+        Assert.Contains("Exec=/opt/juvin/juvin --trigger", lines);
+        Assert.DoesNotContain(lines, line => line.Contains("old-build", StringComparison.Ordinal));
+        Assert.True(await _writer.IsInstalledAsync(DesktopShortcutTestSession.Spec(), CancellationToken.None));
+    }
+
+    [LinuxFact]
     public async Task Write_LeavesAFileJuvinDidNotWrite()
     {
         Directory.CreateDirectory(Path.GetDirectoryName(EntryPath)!);

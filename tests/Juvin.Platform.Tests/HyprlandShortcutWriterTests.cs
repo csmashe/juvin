@@ -130,6 +130,21 @@ public sealed class HyprlandShortcutWriterTests : IDisposable
     }
 
     [LinuxFact]
+    public async Task Write_PointsABindNamingAnOldBinaryAtTheRunningApp()
+    {
+        _session.WriteConfig("hypr/hyprland.conf", "");
+        await _writer.WriteAsync(DesktopShortcutTestSession.Spec(command: "/home/user/old-build/juvin --trigger"), CancellationToken.None);
+        Assert.False(await _writer.IsInstalledAsync(DesktopShortcutTestSession.Spec(), CancellationToken.None));
+
+        await _writer.WriteAsync(DesktopShortcutTestSession.Spec(), CancellationToken.None);
+
+        var lines = await File.ReadAllLinesAsync(JuvinConfig);
+        Assert.Equal("bind = CTRL SHIFT, F, exec, /opt/juvin/juvin --trigger", Assert.Single(lines, line => line.StartsWith("bind", StringComparison.Ordinal)));
+        Assert.Equal(2, _runner.Calls.Count);
+        Assert.True(await _writer.IsInstalledAsync(DesktopShortcutTestSession.Spec(), CancellationToken.None));
+    }
+
+    [LinuxFact]
     public async Task Write_WithoutAHyprlandConfig_Throws()
     {
         await Assert.ThrowsAsync<InvalidOperationException>(() => _writer.WriteAsync(DesktopShortcutTestSession.Spec(), CancellationToken.None));

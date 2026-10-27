@@ -1,7 +1,9 @@
+using Juvin.App.Services;
 using Juvin.App.Tests.Fakes;
 using Juvin.App.ViewModels.Sections;
 using Juvin.Core.Localization;
 using Juvin.Core.Models;
+using Juvin.Platform.Hotkeys;
 
 namespace Juvin.App.Tests;
 
@@ -9,6 +11,7 @@ public sealed class PrivacyAndDataSectionViewModelTests : IDisposable
 {
     private readonly string _dataPath = Path.Join(Path.GetTempPath(), "juvin-tests-" + Guid.NewGuid().ToString("N"));
     private readonly FakeCrashReporter _crashReporter = new();
+    private readonly FakeDesktopShortcutBackend _desktopShortcut = new(requiresSessionRestart: false);
     private readonly FakeHistoryService _history = new();
     private readonly Localizer _localizer = new();
     private readonly FakeLoginItem _loginItem = new();
@@ -231,6 +234,76 @@ public sealed class PrivacyAndDataSectionViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task DeleteAll_RemovesTheDesktopShortcut_AndKeepsItOutUntilTheNextStart()
+    {
+        _settings.Update(s => s with { HotkeyBackend = "desktop-shortcut" });
+        var hotkeys = Hotkeys(_desktopShortcut);
+        await hotkeys.StartAsync(CancellationToken.None);
+        var vm = Create(hotkeys);
+
+        vm.RequestDeleteAllCommand.Execute(null);
+        vm.ConfirmDeleteAllCommand.Execute(null);
+
+        Assert.False(vm.HasError);
+        Assert.Equal(1, _desktopShortcut.RemoveCount);
+        Assert.Null(_settings.Current.HotkeyBackend);
+        Assert.Equal(HotkeyStatus.Stopped, hotkeys.Status);
+        Assert.Equal(1, _desktopShortcut.StartCount);
+    }
+
+    [Fact]
+    public async Task DeleteAll_KeepsAnotherBackendListening()
+    {
+        var evdev = new FakeHotkeyBackend("evdev");
+        var hotkeys = Hotkeys(evdev, _desktopShortcut);
+        await hotkeys.StartAsync(CancellationToken.None);
+        var vm = Create(hotkeys);
+
+        vm.RequestDeleteAllCommand.Execute(null);
+        vm.ConfirmDeleteAllCommand.Execute(null);
+
+        Assert.False(vm.HasError);
+        Assert.Equal(new HotkeyStatus(HotkeyStatusKind.Active, "evdev"), hotkeys.Status);
+        Assert.True(evdev.IsRunning);
+    }
+
+    [Fact]
+    public async Task ARefusedDesktopShortcutRemoval_StopsDeleteAll_AndListensAgain()
+    {
+        _settings.Update(s => s with { LaunchAtLogin = true, HistoryEnabled = true });
+        _history.Add(Entry("a", DateTimeOffset.UtcNow));
+        _desktopShortcut.RemoveFailure = "gsettings set custom-keybindings exited with 1.";
+        var hotkeys = Hotkeys(_desktopShortcut);
+        await hotkeys.StartAsync(CancellationToken.None);
+        var vm = Create(hotkeys);
+
+        vm.RequestDeleteAllCommand.Execute(null);
+        vm.ConfirmDeleteAllCommand.Execute(null);
+
+        Assert.True(vm.HasError);
+        Assert.Contains("gsettings", vm.ErrorMessage);
+        Assert.Single(_history.Entries);
+        Assert.True(_loginItem.Enabled);
+        Assert.Equal(new HotkeyStatus(HotkeyStatusKind.Active, "desktop-shortcut"), hotkeys.Status);
+    }
+
+    [Fact]
+    public async Task AFailedDeleteAllAfterRemovingTheDesktopShortcut_ListensAgain()
+    {
+        var hotkeys = Hotkeys(_desktopShortcut);
+        await hotkeys.StartAsync(CancellationToken.None);
+        var vm = Create(hotkeys);
+        _settings.UpdateFailure = new UnauthorizedAccessException("denied");
+
+        vm.RequestDeleteAllCommand.Execute(null);
+        vm.ConfirmDeleteAllCommand.Execute(null);
+
+        Assert.True(vm.HasError);
+        Assert.Equal(new HotkeyStatus(HotkeyStatusKind.Active, "desktop-shortcut"), hotkeys.Status);
+        Assert.Equal(2, _desktopShortcut.StartCount);
+    }
+
+    [Fact]
     public void AnUnreadableHistory_IsReported()
     {
         _history.IsAvailable = false;
@@ -261,7 +334,11 @@ public sealed class PrivacyAndDataSectionViewModelTests : IDisposable
         Assert.Equal(new Uri(expected), PrivacyAndDataSectionViewModel.PolicyUrlFor(version, isReleaseTag));
     }
 
-    private PrivacyAndDataSectionViewModel Create() => new(_settings, _history, _localizer, _loginItem, _crashReporter, _dataPath);
+    private PrivacyAndDataSectionViewModel Create(HotkeyService? hotkeys = null) =>
+        new(_settings, _history, _localizer, _loginItem, hotkeys ?? Hotkeys(), _crashReporter, _dataPath);
+
+    private HotkeyService Hotkeys(params IHotkeyBackend[] backends) =>
+        new(backends, _settings, new ConnectorService(new FakeConnectorSocket(), new FakeNativeHostRegistrar(), _settings, _localizer));
 
     private static HistoryEntry Entry(string id, DateTimeOffset createdAt) =>
         new() { Id = id, CreatedAt = createdAt, ActionTitle = "Make clearer", Draft = "draft", Result = "result" };
