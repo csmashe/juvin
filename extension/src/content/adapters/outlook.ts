@@ -187,7 +187,7 @@ function headerDate(line: string | undefined): string | undefined {
     return undefined;
   }
 
-  const time = Date.parse(value.replace(/[  ]/g, " ").replace(/^[^,\d]+,\s*/, "").replace(" at ", " "));
+  const time = Date.parse(value.replace(/[\u00a0\u202f]/g, " ").replace(/^[^,\d]+,\s*/, "").replace(" at ", " "));
   return Number.isNaN(time) ? undefined : new Date(time).toISOString();
 }
 
