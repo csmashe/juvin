@@ -26,7 +26,7 @@ public sealed class ConnectorService
 
     public const string BrowserNotFocusedCode = "browser-not-focused";
 
-    private static readonly IReadOnlyList<string> s_adapters = ["gmail", "generic", "test-page"];
+    private static readonly IReadOnlyList<string> s_adapters = ["gmail", "outlook", "generic", "test-page"];
 
     /// <summary>
     ///     On Windows and X11 one press fires both the global hook and the extension's command;

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { PageLocation, SiteAdapter } from "../src/content/adapters/adapter";
 import { PAGE_TEXT_LIMIT } from "../src/content/adapters/generic";
 import { createGmailAdapter } from "../src/content/adapters/gmail";
+import { outlookAdapter } from "../src/content/adapters/outlook";
 import { selectAdapter } from "../src/content/adapters/registry";
 import { applyReplacement, type ExecCommand } from "../src/content/apply";
 import { captureContext } from "../src/content/capture";
@@ -10,6 +11,7 @@ import { EditorRegistry } from "../src/content/editor-registry";
 import { hashText } from "../src/content/hash";
 import { formatSignature } from "../src/content/formatting";
 import { offsetsToRange, readPlainText } from "../src/content/plain-text";
+import type { CaptureResult } from "../src/shared/runtime-messages";
 
 type TestLocation = PageLocation & Pick<Location, "origin">;
 
@@ -1528,5 +1530,273 @@ describe("Gmail adapter", () => {
     expect(result).toEqual({ ok: true });
     expect(readPlainText(editor).text).toBe("hi Ana\nsounds good\nMe");
     expect(editor.querySelector(".gmail_quote")!.textContent).toBe("quoted");
+  });
+});
+
+describe("Outlook adapter", () => {
+  const OUTLOOK: TestLocation = {
+    protocol: "https:",
+    hostname: "outlook.office.com",
+    pathname: "/mail/inbox/id/AAQk",
+    origin: "https://outlook.office.com",
+  };
+
+  const EDITOR = `<div id="editorParent_1"><div id="reply" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Message body"><div>hi ana</div><div>sounds good</div></div></div>`;
+
+  interface Message {
+    id: string;
+    from: string;
+    to?: string;
+    date: string;
+    body: string;
+  }
+
+  /** A received or sent message as Outlook draws it expanded, with its reply toolbar and recipient line; `inside` lands after the body. */
+  function expanded(message: Message, inside = ""): string {
+    return `
+      <div data-itempart-id="${message.id}"><div aria-expanded="true">
+        <span id="MSG_${message.id}_SUBJ" role="heading" aria-labelledby="CONV_1_SUBJECT"></span>
+        <div aria-label="Email message">
+          <span id="MSG_${message.id}_FROM" role="heading">${message.from}</span>
+          <div role="toolbar"><div role="menuitem" aria-label="Reply"></div></div>
+          <div data-testid="RecipientWell"><div id="MSG_${message.id}_TO">${message.to ? `<span class="_Entity _EType_RECIPIENT_ENTITY"><span aria-label="${message.to}">Me</span></span>` : ""}</div></div>
+          <div data-testid="SentReceivedSavedTime">${message.date}</div>
+          <div data-test-id="mailMessageBodyContainer"><div id="UniqueMessageBody_${message.id}" role="document" aria-label="Message body"><div>${message.body}</div></div></div>
+        </div>
+        ${inside}
+      </div></div>`;
+  }
+
+  /** A collapsed message shows only its sender, a preview, and its date. */
+  function collapsed(message: Message): string {
+    return `
+      <div data-itempart-id="${message.id}"><div aria-expanded="false"><div>
+        <span id="MSG_${message.id}_FROM" role="heading">${message.from}</span>
+        <div>${message.body.slice(0, 10)}</div>
+        <div data-testid="SentReceivedSavedTime">${message.date}</div>
+      </div></div></div>`;
+  }
+
+  /** A saved draft is drawn expanded, with no reply toolbar and no recipient line. */
+  function savedDraft(id: string): string {
+    return `
+      <div data-itempart-id="${id}"><div aria-expanded="true">
+        <span id="MSG_${id}_FROM" role="heading">[Draft]</span>
+        <div data-testid="SentReceivedSavedTime">Saved: Wed 10/28/2026 3:13 PM</div>
+        <div id="UniqueMessageBody_${id}" role="document"><div>an older unsent reply</div></div>
+      </div></div>`;
+  }
+
+  /** The reading pane of a conversation, items in the order given, with the subject the items point at. */
+  function conversation(label: string, items: string): void {
+    document.body.innerHTML = `
+      <div role="main" aria-label="Reading Pane">
+        <span id="CONV_1_SUBJECT">Venue for the offsite</span>
+        <div data-app-section="ConversationContainer" aria-label="${label}"><div>
+          <div data-itempart-id="placeholder"></div>
+          ${items}
+        </div></div>
+      </div>`;
+  }
+
+  const ANA: Message = { id: "a", from: "Ana Lopez", to: "Me <me@example.com>", date: "Wed 10/28/2026 9:12 AM", body: "First message" };
+  const SAM: Message = { id: "b", from: "Sam Lee", date: "Wed 10/28/2026 10:05 AM", body: "Second message" };
+  const KIM: Message = { id: "c", from: "Kim Park", date: "Wed 10/28/2026 3:03 PM", body: "Third message" };
+
+  async function capture(registry = new EditorRegistry(() => "e-1")): Promise<CaptureResult> {
+    const editor = document.getElementById("reply")!;
+    select(editor, 3, 6);
+    return captureContext(document, OUTLOOK, registry, [outlookAdapter]);
+  }
+
+  beforeEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("is picked on every Outlook on the web host and nowhere else", () => {
+    for (const hostname of ["outlook.live.com", "outlook.office.com", "outlook.office365.com", "outlook.cloud.microsoft"]) {
+      expect(selectAdapter({ ...OUTLOOK, hostname })?.id).toBe("outlook");
+    }
+
+    expect(selectAdapter({ ...OUTLOOK, protocol: "http:" })?.id).toBe("generic");
+    expect(selectAdapter({ ...OUTLOOK, hostname: "outlook.example.com" })?.id).toBe("generic");
+  });
+
+  it("reads a newest-first conversation oldest first, skipping a saved draft and counting a collapsed message", async () => {
+    conversation("5 messages", savedDraft("d") + expanded(KIM, EDITOR) + collapsed(SAM) + expanded(ANA));
+    const result = await capture();
+
+    expect(result.ok && result.capture).toMatchObject({
+      adapter: "outlook",
+      subject: "Venue for the offsite",
+      selection: { text: "ana", start: 3, end: 6 },
+      thread: { completeness: "loaded-messages-only", collapsedCount: 1 },
+    });
+    expect(result.ok && result.capture.thread.messages).toEqual([
+      { from: "Ana Lopez", to: ["Me <me@example.com>"], sent: new Date(2026, 9, 28, 9, 12).toISOString(), body: "First message" },
+      { from: "Kim Park", sent: new Date(2026, 9, 28, 15, 3).toISOString(), body: "Third message" },
+    ]);
+  });
+
+  it("reports the entire thread when every message is open, even with the reply counted in the label", async () => {
+    conversation("4 messages", expanded(ANA) + expanded(SAM) + expanded(KIM, EDITOR));
+    const result = await capture();
+
+    expect(result.ok && result.capture.thread).toMatchObject({ completeness: "entire-thread", collapsedCount: 0 });
+    expect(result.ok && result.capture.thread.messages.map((m) => m.body)).toEqual(["First message", "Second message", "Third message"]);
+  });
+
+  it("keeps an oldest-first conversation in order when its first two messages share a minute", async () => {
+    conversation("3 messages", expanded({ ...ANA, date: SAM.date }) + expanded(SAM) + expanded(KIM, EDITOR));
+    const result = await capture();
+    expect(result.ok && result.capture.thread.messages.map((m) => m.body)).toEqual(["First message", "Second message", "Third message"]);
+  });
+
+  it("counts messages the label promises but the page has not drawn", async () => {
+    conversation("6 messages", expanded(KIM, EDITOR) + expanded(SAM));
+    const result = await capture();
+    expect(result.ok && result.capture.thread).toMatchObject({ completeness: "loaded-messages-only", collapsedCount: 3 });
+  });
+
+  it("reads day-first dates when a day past 12 proves the order", async () => {
+    conversation(
+      "2 messages",
+      expanded({ ...KIM, date: "Wed 28/10/2026 15:03" }, EDITOR) + expanded({ ...ANA, date: "Mon 05/10/2026 09:12" }),
+    );
+    const result = await capture();
+    expect(result.ok && result.capture.thread.messages.map((m) => m.sent)).toEqual([
+      new Date(2026, 9, 5, 9, 12).toISOString(),
+      new Date(2026, 9, 28, 15, 3).toISOString(),
+    ]);
+  });
+
+  it("leaves sent out when a date has no year or no time", async () => {
+    conversation("2 messages", expanded({ ...KIM, date: "Wed 3:03 PM" }, EDITOR) + expanded({ ...ANA, date: "Wed 10/28/2026" }));
+    const result = await capture();
+    expect(result.ok && result.capture.thread.messages.map((m) => m.sent)).toEqual([undefined, undefined]);
+  });
+
+  it("falls back to visible text when items remain but the body hook is gone", async () => {
+    conversation("1 message", expanded(KIM, EDITOR).replace(/UniqueMessageBody/g, "RenamedBody"));
+    const result = await capture();
+    expect(result.ok && result.capture.thread.completeness).toBe("visible-text-only");
+  });
+
+  it("reads the quoted original under a reply composed outside the conversation", async () => {
+    document.body.innerHTML = `
+      <div role="main">
+        <div>${EDITOR}</div>
+        <div class="quoted">
+          <a name="_MailOriginal"></a>
+          <div id="divRplyFwdMsg"><div><b>From:</b> Ana Lopez &lt;ana@example.com&gt;<br><b>Sent:</b> Wednesday, October 28, 2026 3:00 PM<br><b>To:</b> Me &lt;me@example.com&gt;<br><b>Subject:</b> Venue for the offsite</div></div>
+          <div>Shall we book the hall?</div>
+          <blockquote><div>On Tue, Sam wrote:</div><div>Any venue ideas?</div></blockquote>
+        </div>
+      </div>`;
+    const result = await capture();
+
+    expect(result.ok && result.capture).toMatchObject({
+      subject: "Venue for the offsite",
+      editor: { hash: await hashText("hi ana\nsounds good") },
+      thread: { completeness: "loaded-messages-only", collapsedCount: 0 },
+    });
+    expect(result.ok && result.capture.thread.messages).toEqual([
+      {
+        from: "Ana Lopez <ana@example.com>",
+        sent: new Date(2026, 9, 28, 15, 0).toISOString(),
+        body: "Shall we book the hall?\n\nOn Tue, Sam wrote:\nAny venue ideas?",
+      },
+    ]);
+  });
+
+  it("captures the draft alone in a new message", async () => {
+    document.body.innerHTML = `<div role="main"><div id="To" contenteditable="true" aria-label="To">ana@example.com</div>${EDITOR}</div>`;
+    const result = await capture();
+    expect(result.ok && result.capture.thread).toEqual({ completeness: "draft-only", collapsedCount: 0, messages: [] });
+  });
+
+  /** Does what Outlook's editor does with a key press over a selection: deletes it and selects a zero-width space in its place. */
+  const outlookKeyPress = (): void => {
+    const range = document.getSelection()!.getRangeAt(0);
+    range.deleteContents();
+    const placeholder = document.createTextNode("\u200b");
+    range.insertNode(placeholder);
+    const selection = document.getSelection()!;
+    const held = document.createRange();
+    held.selectNodeContents(placeholder);
+    selection.removeAllRanges();
+    selection.addRange(held);
+  };
+
+  async function captured(): Promise<{ registry: EditorRegistry; hash: string }> {
+    const registry = new EditorRegistry(() => "e-1");
+    const result = await capture(registry);
+    return { registry, hash: result.ok ? result.capture.editor.hash : "" };
+  }
+
+  it("applies over the placeholder the editor leaves after recording an undo point", async () => {
+    document.body.innerHTML = EDITOR;
+    const editor = document.getElementById("reply")!;
+    const { registry, hash } = await captured();
+    const recorded: HTMLElement[] = [];
+    const record = (target: HTMLElement): void => {
+      recorded.push(target);
+      outlookKeyPress();
+    };
+
+    const result = await applyReplacement(document, registry, { editorId: "e-1", expectedHash: hash, start: 3, end: 6, text: "Ana" }, fakeExec, record);
+
+    expect(result).toEqual({ ok: true });
+    expect(recorded).toEqual([editor]);
+    expect(readPlainText(editor).text).toBe("hi Ana\nsounds good");
+  });
+
+  it("puts the selected text back over the placeholder when the editor rejects the edit", async () => {
+    document.body.innerHTML = EDITOR;
+    const editor = document.getElementById("reply")!;
+    const { registry, hash } = await captured();
+    const rejectRewrite: ExecCommand = (doc, command, value) => value !== "Ana" && fakeExec(doc, command, value);
+
+    const result = await applyReplacement(document, registry, { editorId: "e-1", expectedHash: hash, start: 3, end: 6, text: "Ana" }, rejectRewrite, outlookKeyPress);
+    expect(result).toMatchObject({ ok: false, error: { code: "internal" } });
+    expect(readPlainText(editor).text).toBe("hi ana\nsounds good");
+  });
+
+  it("applies as usual when the editor ignores the key press", async () => {
+    document.body.innerHTML = EDITOR;
+    const editor = document.getElementById("reply")!;
+    const { registry, hash } = await captured();
+    const result = await applyReplacement(document, registry, { editorId: "e-1", expectedHash: hash, start: 3, end: 6, text: "Ana" }, fakeExec, () => {});
+    expect(result).toEqual({ ok: true });
+    expect(readPlainText(editor).text).toBe("hi Ana\nsounds good");
+  });
+
+  it("stops before the edit when the key press changes the draft some other way", async () => {
+    document.body.innerHTML = EDITOR;
+    const editor = document.getElementById("reply")!;
+    const { registry, hash } = await captured();
+    const typed = (target: HTMLElement): void => {
+      target.firstElementChild!.append("a");
+    };
+
+    const result = await applyReplacement(document, registry, { editorId: "e-1", expectedHash: hash, start: 3, end: 6, text: "Ana" }, fakeExec, typed);
+    expect(result).toMatchObject({ ok: false, error: { code: "internal" } });
+    expect(readPlainText(editor).text).toBe("hi anaa\nsounds good");
+  });
+
+  it("makes the editor record an undo point with a key press over the selection", () => {
+    document.body.innerHTML = EDITOR;
+    const editor = document.getElementById("reply")!;
+    const keys: string[] = [];
+    editor.addEventListener("keydown", (event) => keys.push(`down ${event.key}`));
+    editor.addEventListener("keyup", (event) => keys.push(`up ${event.key}`));
+    outlookAdapter.recordUndoPoint!(editor);
+    expect(keys).toEqual(["down a", "up a"]);
+  });
+
+  it("finds the message editor rather than the recipient field", () => {
+    document.body.innerHTML = `<div id="To" contenteditable="true" aria-label="To">ana@example.com</div>${EDITOR}`;
+    select(document.getElementById("To")!, 0, 3);
+    expect(outlookAdapter.findEditor(document)?.id).toBe("reply");
   });
 });
