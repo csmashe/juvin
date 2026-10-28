@@ -90,6 +90,7 @@ export async function applyReplacement(
   registry: EditorRegistry,
   request: { editorId: string; expectedHash: string; start: number; end: number; text: string; format?: "markdown"; expectedFormatHash?: string },
   exec: ExecCommand = browserExecCommand,
+  recordUndoPoint?: (editor: HTMLElement) => void,
 ): Promise<ApplyResult> {
   const editor = registry.find(request.editorId);
   if (!editor) {
@@ -157,6 +158,16 @@ export async function applyReplacement(
     };
     const breaks = new Set(editor.querySelectorAll("br"));
     select();
+    if (recordUndoPoint) {
+      recordUndoPoint(editor);
+      const now = editorText(editor);
+      if (now === before) {
+        select();
+      } else if (selection.toString() !== "\u200b" || now !== before.slice(0, offsets.start) + "\u200b" + before.slice(offsets.end)) {
+        return failure("internal", "The editor did not change as expected before the edit command.");
+      }
+    }
+
     accepted = exec(doc, insertion.command, insertion.value);
 
     // A whole line inserted as its own block needs no <br>; the retry is one edit, so one Undo still reverts it.

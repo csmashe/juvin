@@ -61,7 +61,7 @@ public sealed class ConnectorServiceTests : IAsyncDisposable
 
         Assert.Equal(RewriteAction.BuiltIn.Select(action => action.Id), config.Actions.Select(action => action.Id));
         Assert.Equal("Make clearer", config.Actions.Single(action => action.Id == "clearer").Title);
-        Assert.Equal(["gmail", "generic", "test-page"], config.Adapters);
+        Assert.Equal(["gmail", "outlook", "generic", "test-page"], config.Adapters);
         Assert.Equal("Ctrl+Alt+J", config.Shortcut);
         Assert.Null(config.ShortcutKey);
         Assert.Equal(new ConnectorHealth("codex", null), config.Health);

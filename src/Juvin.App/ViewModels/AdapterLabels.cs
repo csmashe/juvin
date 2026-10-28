@@ -8,6 +8,7 @@ internal static class AdapterLabels
         adapter switch
         {
             "gmail" => localizer["Panel.Adapter.Gmail"],
+            "outlook" => localizer["Panel.Adapter.Outlook"],
             "generic" => localizer["Panel.Adapter.Generic"],
             "test-page" => localizer["Panel.Adapter.TestPage"],
             _ => adapter,

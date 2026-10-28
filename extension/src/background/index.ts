@@ -464,7 +464,7 @@ async function syncAllSitesScript(): Promise<void> {
     const registered = (await browser.scripting.getRegisteredContentScripts({ ids: [ALL_SITES_SCRIPT] })).length > 0;
     if (granted && !registered) {
       await browser.scripting.registerContentScripts([
-        { id: ALL_SITES_SCRIPT, matches: ["<all_urls>"], excludeMatches: ["https://mail.google.com/*"], js: [CONTENT_SCRIPT], runAt: "document_idle" },
+        { id: ALL_SITES_SCRIPT, matches: ["<all_urls>"], excludeMatches: browser.runtime.getManifest().content_scripts?.flatMap((script) => script.matches ?? []) ?? [], js: [CONTENT_SCRIPT], runAt: "document_idle" },
       ]);
     } else if (!granted && registered) {
       await browser.scripting.unregisterContentScripts({ ids: [ALL_SITES_SCRIPT] });
