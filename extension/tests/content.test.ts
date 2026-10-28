@@ -1751,6 +1751,17 @@ describe("Outlook adapter", () => {
     expect(readPlainText(editor).text).toBe("hi Ana\nsounds good");
   });
 
+  it("puts the selected text back over the placeholder when the editor rejects the edit", async () => {
+    document.body.innerHTML = EDITOR;
+    const editor = document.getElementById("reply")!;
+    const { registry, hash } = await captured();
+    const rejectRewrite: ExecCommand = (doc, command, value) => value !== "Ana" && fakeExec(doc, command, value);
+
+    const result = await applyReplacement(document, registry, { editorId: "e-1", expectedHash: hash, start: 3, end: 6, text: "Ana" }, rejectRewrite, outlookKeyPress);
+    expect(result).toMatchObject({ ok: false, error: { code: "internal" } });
+    expect(readPlainText(editor).text).toBe("hi ana\nsounds good");
+  });
+
   it("applies as usual when the editor ignores the key press", async () => {
     document.body.innerHTML = EDITOR;
     const editor = document.getElementById("reply")!;

@@ -120,6 +120,8 @@ export async function applyReplacement(
   }
 
   const insertion = insertionFor(doc, editor, text, request.format === "markdown");
+  // Set when the editor swapped the selection for a placeholder: a failed edit then has to put the text back itself.
+  let restoreSelection = (): void => {};
   let accepted: boolean;
   let usedFallback = false;
   editor.focus();
@@ -161,10 +163,19 @@ export async function applyReplacement(
     if (recordUndoPoint) {
       recordUndoPoint(editor);
       const now = editorText(editor);
+      const placeholder = before.slice(0, offsets.start) + "\u200b" + before.slice(offsets.end);
       if (now === before) {
         select();
-      } else if (selection.toString() !== "\u200b" || now !== before.slice(0, offsets.start) + "\u200b" + before.slice(offsets.end)) {
+      } else if (selection.toString() !== "\u200b" || now !== placeholder) {
         return failure("internal", "The editor did not change as expected before the edit command.");
+      } else {
+        restoreSelection = () => {
+          if (editorText(editor) === placeholder) {
+            selection.removeAllRanges();
+            selection.addRange(offsetsToRange(editor, readPlainText(editor), offsets.start, offsets.start + 1));
+            exec(doc, "insertText", before.slice(offsets.start, offsets.end));
+          }
+        };
       }
     }
 
@@ -193,6 +204,7 @@ export async function applyReplacement(
   }
 
   if (!accepted) {
+    restoreSelection();
     return failure("internal", "The editor rejected the edit command.");
   }
 
@@ -205,6 +217,7 @@ export async function applyReplacement(
         editor.value = before;
       } else {
         exec(doc, "undo");
+        restoreSelection();
       }
     }
 
