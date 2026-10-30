@@ -15,7 +15,7 @@ internal static class CrashReportScrubber
 
     private const string DotNetContext = ".NET";
     private const string DynamicCodeContext = "Dynamic Code";
-    private const string DeterministicSourceRoot = "/_/";
+    private const string JuvinSourceRoot = "/_/src/Juvin.";
 
     private static readonly string[] s_dynamicCodeFlags = ["Compiled", "Supported"];
 
@@ -156,14 +156,14 @@ internal static class CrashReportScrubber
     {
         foreach (var frame in stack?.Frames ?? [])
         {
-            frame.FileName = DeterministicPathOrNull(frame.FileName);
-            frame.AbsolutePath = DeterministicPathOrNull(frame.AbsolutePath);
+            frame.FileName = JuvinSourcePathOrNull(frame.FileName);
+            frame.AbsolutePath = JuvinSourcePathOrNull(frame.AbsolutePath);
         }
     }
 
     // Release builds map the repository root to /_/, so such a path names nothing on the user's machine.
-    private static string? DeterministicPathOrNull(string? path)
+    private static string? JuvinSourcePathOrNull(string? path)
     {
-        return path?.StartsWith(DeterministicSourceRoot, StringComparison.Ordinal) == true ? path : null;
+        return path?.StartsWith(JuvinSourceRoot, StringComparison.Ordinal) == true ? path : null;
     }
 }
