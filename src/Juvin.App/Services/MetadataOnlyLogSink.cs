@@ -3,10 +3,7 @@ using Avalonia.Logging;
 
 namespace Juvin.App.Services;
 
-/// <summary>
-/// Forwards Avalonia diagnostics as level, area, and source type only. The message and its values are dropped
-/// because binding warnings can quote bound values such as draft text.
-/// </summary>
+/// <summary>Forwards Avalonia warnings without their message, since binding warnings can quote bound values such as draft text.</summary>
 internal sealed class MetadataOnlyLogSink : ILogSink
 {
     public bool IsEnabled(LogEventLevel level, string area) => level >= LogEventLevel.Warning;
