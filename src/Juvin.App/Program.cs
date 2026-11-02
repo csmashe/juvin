@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Avalonia;
+using Avalonia.Logging;
 using Juvin.App.Services;
 using Juvin.App.Services.CrashReporting;
 using Juvin.Core;
@@ -65,7 +66,9 @@ public static class Program
     // ReSharper disable once MemberCanBePrivate.Global -- the Avalonia previewer locates this by reflection and needs it public
     public static AppBuilder BuildAvaloniaApp()
     {
-        return AppBuilder.Configure<App>().UsePlatformDetect().WithInterFont().LogToTextWriter(Console.Out);
+        var builder = AppBuilder.Configure<App>().UsePlatformDetect().WithInterFont();
+        Logger.Sink = new MetadataOnlyLogSink();
+        return builder;
     }
 
     // The process ends when this returns, so the report is flushed here rather than left in the queue.
