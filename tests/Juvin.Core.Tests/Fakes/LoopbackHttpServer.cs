@@ -14,6 +14,7 @@ internal sealed record LoopbackResponse(HttpStatusCode Status, string? Location 
 internal sealed class LoopbackHttpServer : IDisposable
 {
     private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
+    private readonly CancellationTokenSource _stopping = new();
     private readonly Task _loop;
     private int _requests;
 
@@ -30,6 +31,7 @@ internal sealed class LoopbackHttpServer : IDisposable
 
     public void Dispose()
     {
+        _stopping.Cancel();
         _listener.Dispose();
         _loop.Wait(TimeSpan.FromSeconds(5));
     }
@@ -41,9 +43,10 @@ internal sealed class LoopbackHttpServer : IDisposable
             TcpClient client;
             try
             {
-                client = await _listener.AcceptTcpClientAsync();
+                client = await _listener.AcceptTcpClientAsync(_stopping.Token);
             }
-            catch (Exception ex) when (ex is SocketException or ObjectDisposedException)
+            // Stopping the listener can fail a pending or starting accept with several exception types.
+            catch (Exception) when (_stopping.IsCancellationRequested)
             {
                 return;
             }
