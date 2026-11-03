@@ -2,7 +2,7 @@
 
 Works beside you.
 
-Juvin is an open-source desktop assistant for Linux, macOS, and Windows that helps inside the apps you already use. Select the email you are drafting in Gmail, press Ctrl+Shift+F, and a menu of actions opens beside the draft: What am I missing?, Soften, Make clearer, Make shorter, and Fix grammar, or a request of your own. Juvin reads your draft together with the whole conversation it replies to, so the rewrite keeps your deadlines, names, and intent, and it replaces your selection in place, where Ctrl+Z puts the original back. Juvin uses a model on your own computer or network by default, so your email never leaves your machines unless you choose otherwise.
+Juvin is an open-source desktop assistant for Linux, macOS, and Windows that helps inside the apps you already use. Select the email you are drafting in Gmail or Outlook on the web, press Ctrl+Shift+F, and a menu of actions opens beside the draft: What am I missing?, Soften, Make clearer, Make shorter, and Fix grammar, or a request of your own. Juvin reads your draft together with the whole conversation it replies to, so the rewrite keeps your deadlines, names, and intent, and it replaces your selection in place, where Ctrl+Z puts the original back. Juvin uses a model on your own computer or network by default, so your email never leaves your machines unless you choose otherwise.
 
 Status: alpha. The full workflow works on all three systems; see the [user guide](https://github.com/csmashe/juvin/wiki) to install and set it up.
 

@@ -397,6 +397,7 @@
   "Panel.Notice.FollowUpFailed": "The follow-up did not finish, so the previous result is shown. {0}",
   "Panel.DraftChanged": "Draft changed. The draft was edited after it was captured, so Apply would overwrite your edits. Copy the rewrite, or Recapture to start again from the current draft.",
   "Panel.Adapter.Gmail": "Gmail",
+  "Panel.Adapter.Outlook": "Outlook",
   "Panel.Adapter.Generic": "Page text",
   "Panel.Adapter.TestPage": "Test page",
   "Panel.MessageCountOne": "1 message",

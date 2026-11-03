@@ -1,6 +1,7 @@
 import browser from "webextension-polyfill";
 import { isContentRequest, type ApplyResult, type CaptureResult, type ContentRequest, type MenuDeliveryResult, type MenuNotice, type MenuShowResult, type PopupRequest, type Status } from "../shared/runtime-messages";
 import { isMacShortcut } from "../shared/shortcut-format";
+import { selectAdapter } from "./adapters/registry";
 import { applyReplacement } from "./apply";
 import { captureContext } from "./capture";
 import { EditorRegistry } from "./editor-registry";
@@ -23,7 +24,7 @@ async function handle(
       case "juvin.capture":
         return await captureContext(document, location, registry, undefined, request.editorId);
       case "juvin.apply":
-        return await applyReplacement(document, registry, request);
+        return await applyReplacement(document, registry, request, undefined, selectAdapter(location)?.recordUndoPoint);
       case "juvin.menu.show":
         return menu.show(request);
       case "juvin.menu.update":

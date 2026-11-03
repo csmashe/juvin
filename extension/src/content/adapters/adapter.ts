@@ -18,6 +18,11 @@ export interface SiteAdapter {
   matches(location: PageLocation): boolean;
   findEditor(doc: Document): HTMLElement | null;
   captureThread(doc: Document, editor: HTMLElement): Promise<ThreadSnapshot>;
+  /**
+   * For an editor with its own undo history that an edit command does not record: makes it record an undo point
+   * before the replacement. The editor may swap the selection for a selected zero-width space, which the edit then replaces.
+   */
+  recordUndoPoint?(editor: HTMLElement): void;
 }
 
 /** The textarea or contenteditable host that holds the current selection, or null. */

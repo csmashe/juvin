@@ -10,7 +10,13 @@
     "128": "icons/icon-128.png"
   },
   "permissions": ["nativeMessaging", "activeTab", "scripting"],
-  "host_permissions": ["https://mail.google.com/*"],
+  "host_permissions": [
+    "https://mail.google.com/*",
+    "https://outlook.live.com/*",
+    "https://outlook.office.com/*",
+    "https://outlook.office365.com/*",
+    "https://outlook.cloud.microsoft/*"
+  ],
   "optional_host_permissions": ["<all_urls>"],
   "action": {
     "default_title": "Juvin",
@@ -31,7 +37,13 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://mail.google.com/*"],
+      "matches": [
+        "https://mail.google.com/*",
+        "https://outlook.live.com/*",
+        "https://outlook.office.com/*",
+        "https://outlook.office365.com/*",
+        "https://outlook.cloud.microsoft/*"
+      ],
       "js": ["content.js"],
       "run_at": "document_idle"
     }

@@ -6,7 +6,7 @@ Everything else Juvin does with your email happens on your computer, or on a mac
 
 ## What Juvin reads
 
-When you press the shortcut on a draft, the browser extension reads the draft, the subject, and the messages of the conversation it replies to (sender, recipients, date, and body). It reads nothing until you ask, and nothing from pages it is not allowed on: the extension runs on Gmail only unless you grant it access to another site yourself.
+When you press the shortcut on a draft, the browser extension reads the draft, the subject, and the messages of the conversation it replies to (sender, recipients, date, and body). It reads nothing until you ask, and nothing from pages it is not allowed on: the extension runs on Gmail and Outlook on the web only unless you grant it access to another site yourself.
 
 The extension keeps no settings and no history, and talks to no server. It hands the capture to the desktop app through the browser's native messaging host, `juvin-host`, which relays the bytes to the running app over a local socket and never parses, logs, or stores them.
 
