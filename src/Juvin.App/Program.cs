@@ -1,8 +1,11 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Avalonia;
+using Avalonia.Logging;
 using Juvin.App.Services;
 using Juvin.App.Services.CrashReporting;
 using Juvin.Core;
+using Juvin.Core.Diagnostics;
 using Juvin.Platform;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -39,16 +42,33 @@ public static class Program
             return args.Contains(ILoginItem.BackgroundArgument) ? 0 : ShowRunningInstance(services.GetRequiredService<ILocalSocketClient>());
         }
 
+        StartLogFile();
         s_services = services;
         var crashReporting = services.GetRequiredService<CrashReportingService>();
         AppDomain.CurrentDomain.UnhandledException += (_, e) => ReportCrash(crashReporting, e.ExceptionObject);
         return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
 
+    // Only the instance that holds the lock writes the log, so a --trigger launch never rotates it away.
+    private static void StartLogFile()
+    {
+        try
+        {
+            Trace.Listeners.Add(new LogFileTraceListener(JuvinEnvironment.LogsPath));
+            Trace.WriteLine($"[Program] Juvin {AppVersion.Current} on {RuntimeInformation.OSDescription} ({RuntimeInformation.OSArchitecture}).");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Trace.WriteLine($"[Program] Could not open the log file: {ex.GetType().Name}");
+        }
+    }
+
     // ReSharper disable once MemberCanBePrivate.Global -- the Avalonia previewer locates this by reflection and needs it public
     public static AppBuilder BuildAvaloniaApp()
     {
-        return AppBuilder.Configure<App>().UsePlatformDetect().WithInterFont().LogToTrace();
+        var builder = AppBuilder.Configure<App>().UsePlatformDetect().WithInterFont();
+        Logger.Sink = new MetadataOnlyLogSink();
+        return builder;
     }
 
     // The process ends when this returns, so the report is flushed here rather than left in the queue.
