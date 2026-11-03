@@ -71,6 +71,19 @@ public sealed class HotkeyServiceTests
     }
 
     [Fact]
+    public async Task RemoveDesktopShortcutUntilStart_KeepsListeningWithoutADesktopShortcutBackend()
+    {
+        var hook = new FakeHotkeyBackend("sharphook");
+        var service = Create(hook);
+        await service.StartAsync(CancellationToken.None);
+
+        Assert.False(await service.RemoveDesktopShortcutUntilStartAsync(CancellationToken.None));
+
+        Assert.Equal(new HotkeyStatus(HotkeyStatusKind.Active, "sharphook"), service.Status);
+        Assert.True(hook.IsRunning);
+    }
+
+    [Fact]
     public async Task Start_PrefersTheChosenBackendWhenItIsAvailable()
     {
         var first = new FakeHotkeyBackend("evdev");

@@ -172,6 +172,38 @@ public sealed class HotkeyService : IHotkeyRestart
         }
     }
 
+    /// <summary>
+    ///     For Delete all data: removes the desktop shortcut, which outlives an uninstall and would keep the
+    ///     keys pointed at a missing binary. Unless another backend listens, listening stops until the next
+    ///     <see cref="StartAsync" />, so the reset settings cannot write the shortcut back.
+    /// </summary>
+    /// <returns>True when listening stopped; a failed removal starts it again before throwing.</returns>
+    public async Task<bool> RemoveDesktopShortcutUntilStartAsync(CancellationToken ct)
+    {
+        if (!_backends.OfType<IDesktopShortcutInfo>().Any())
+        {
+            return false;
+        }
+
+        var stop = _started && _active is null or IDesktopShortcutInfo;
+        if (stop)
+        {
+            await StopAsync().ConfigureAwait(false);
+        }
+
+        try
+        {
+            await RemoveDesktopShortcutAsync(ct).ConfigureAwait(false);
+        }
+        catch (HotkeyBackendException) when (stop)
+        {
+            await StartAsync(CancellationToken.None).ConfigureAwait(false);
+            throw;
+        }
+
+        return stop;
+    }
+
     /// <summary>Re-runs backend selection, for a setup task that just granted the access a better backend needs.</summary>
     public async Task RestartAsync(CancellationToken ct)
     {

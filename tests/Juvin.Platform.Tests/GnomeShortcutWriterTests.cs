@@ -54,6 +54,19 @@ public sealed class GnomeShortcutWriterTests : IDisposable
     }
 
     [LinuxFact]
+    public async Task Write_PointsAnEntryNamingAnOldBinaryAtTheRunningApp()
+    {
+        await _writer.WriteAsync(DesktopShortcutTestSession.Spec(command: "/home/user/old-build/juvin --trigger"), CancellationToken.None);
+        Assert.False(await _writer.IsInstalledAsync(DesktopShortcutTestSession.Spec(), CancellationToken.None));
+
+        await _writer.WriteAsync(DesktopShortcutTestSession.Spec(), CancellationToken.None);
+
+        Assert.Equal("'/opt/juvin/juvin --trigger'", _gsettings.Values[EntrySchema + " command"]);
+        Assert.Equal([JuvinPath], GnomeShortcutWriter.ParseList(_gsettings.Values[ListKey]));
+        Assert.True(await _writer.IsInstalledAsync(DesktopShortcutTestSession.Spec(), CancellationToken.None));
+    }
+
+    [LinuxFact]
     public async Task Write_RefusesAListItCannotParse()
     {
         _gsettings.Values[ListKey] = "['/org/gnome/custom0/' oops";
