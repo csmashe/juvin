@@ -100,6 +100,40 @@ public sealed class CrashReportScrubberTests
     }
 
     [Fact]
+    public void Scrub_KeepsJuvinSourcePathsOnly()
+    {
+        const string sourcePath = "/_/src/Juvin.App/App.axaml.cs";
+        var e = new SentryEvent(new InvalidOperationException())
+        {
+            SentryExceptions =
+            [
+                new SentryException
+                {
+                    Stacktrace = new SentryStackTrace
+                    {
+                        Frames =
+                        [
+                            new SentryStackFrame { FileName = sourcePath, AbsolutePath = sourcePath, LineNumber = 152 },
+                            new SentryStackFrame { FileName = @"C:\Users\chris\_\App.axaml.cs", AbsolutePath = "/home/chris/_/App.axaml.cs" },
+                            new SentryStackFrame { FileName = "/_/src/CommunityToolkit.Mvvm/ObservableObject.cs", AbsolutePath = "/_/src/CommunityToolkit.Mvvm/ObservableObject.cs" },
+                        ],
+                    },
+                },
+            ],
+        };
+
+        var frames = CrashReportScrubber.Scrub(e)!.SentryExceptions!.Single().Stacktrace!.Frames;
+
+        Assert.Equal(sourcePath, frames[0].FileName);
+        Assert.Equal(sourcePath, frames[0].AbsolutePath);
+        Assert.Equal(152, frames[0].LineNumber);
+        Assert.Null(frames[1].FileName);
+        Assert.Null(frames[1].AbsolutePath);
+        Assert.Null(frames[2].FileName);
+        Assert.Null(frames[2].AbsolutePath);
+    }
+
+    [Fact]
     public void Scrub_RebuildsEachKeptContextFromApprovedFieldsOnly()
     {
         var startTime = DateTimeOffset.UtcNow;

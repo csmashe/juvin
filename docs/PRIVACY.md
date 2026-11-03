@@ -47,13 +47,13 @@ A report includes:
 
 - The Juvin version and the build's environment.
 - The operating system name and version and the .NET runtime version.
-- The exception types and the stack frames of Juvin's own code, as module and function names only.
+- The exception types and the stack frames of Juvin's own code: module and function names, and the line and the source file in Juvin's public repository, such as `/_/src/Juvin.App/App.axaml.cs`.
 - Which part of Juvin was running when it crashed, and error facts such as an HTTP status or socket error code where one applies.
 
 A report never includes:
 
 - The draft, the conversation, a prompt, a model response, or any error message text. The report's own message is dropped and every exception message is replaced with `<redacted>` before the report is built.
-- File names or paths, your user name, home folder, machine name, or time zone.
+- File names or paths from your computer, your user name, home folder, machine name, or time zone.
 - Keys, tokens, URLs, or server addresses.
 - Any persistent install or user identifier. Reports carry no IP-address field and the SDK's automatic IP capture is off; like any HTTPS service, Sentry's servers still see the connection's source address. IP storage is turned off in the project, so Sentry does not keep it, though it may derive a coarse location from it when the report arrives.
 

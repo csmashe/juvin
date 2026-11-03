@@ -6,7 +6,7 @@ namespace Juvin.App.Services.CrashReporting;
 
 /// <summary>
 ///     Reduces a report to the app version, OS, runtime, exception types, and stack frames. Every free-text
-///     field is dropped rather than pattern-scrubbed, so no email content, path, or name can survive.
+///     field is dropped rather than pattern-scrubbed, so no email content, local path, or name can survive.
 /// </summary>
 internal static class CrashReportScrubber
 {
@@ -15,6 +15,7 @@ internal static class CrashReportScrubber
 
     private const string DotNetContext = ".NET";
     private const string DynamicCodeContext = "Dynamic Code";
+    private const string JuvinSourceRoot = "/_/src/Juvin.";
 
     private static readonly string[] s_dynamicCodeFlags = ["Compiled", "Supported"];
 
@@ -155,8 +156,14 @@ internal static class CrashReportScrubber
     {
         foreach (var frame in stack?.Frames ?? [])
         {
-            frame.FileName = null;
-            frame.AbsolutePath = null;
+            frame.FileName = JuvinSourcePathOrNull(frame.FileName);
+            frame.AbsolutePath = JuvinSourcePathOrNull(frame.AbsolutePath);
         }
+    }
+
+    // Release builds map the repository root to /_/, so such a path names nothing on the user's machine.
+    private static string? JuvinSourcePathOrNull(string? path)
+    {
+        return path?.StartsWith(JuvinSourceRoot, StringComparison.Ordinal) == true ? path : null;
     }
 }
