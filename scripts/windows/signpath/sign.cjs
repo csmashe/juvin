@@ -44,10 +44,28 @@ function run(command, args, env = process.env) {
   if (result.status !== 0) throw new Error(`${path.basename(command)} failed (${result.status})`);
 }
 
-function readOutputs(file) {
-  return Object.fromEntries(fs.readFileSync(file, 'utf8').split(/\r?\n/).filter(line => line.includes('=')).map(line => {
-    const at = line.indexOf('='); return [line.slice(0, at), line.slice(at + 1)];
-  }));
+function parseOutputs(text) {
+  const lines = text.split(/\r?\n/);
+  const result = {};
+  for (let i = 0; i < lines.length; i++) {
+    if (!lines[i]) continue;
+    const block = /^([A-Za-z0-9_-]+)<<(.+)$/.exec(lines[i]);
+    let name, value;
+    if (block) {
+      name = block[1];
+      const parts = [];
+      while (++i < lines.length && lines[i] !== block[2]) parts.push(lines[i]);
+      if (i === lines.length) throw new Error('Incomplete action output block');
+      value = parts.join('\n');
+    } else {
+      const pair = /^([A-Za-z0-9_-]+)=(.*)$/.exec(lines[i]);
+      if (!pair) throw new Error('Invalid action output');
+      [, name, value] = pair;
+    }
+    if (Object.hasOwn(result, name)) throw new Error('Duplicate action output');
+    result[name] = value;
+  }
+  return result;
 }
 
 function invokeAction(entry, inputs, directory) {
@@ -56,7 +74,7 @@ function invokeAction(entry, inputs, directory) {
   const env = { ...process.env, GITHUB_OUTPUT: output };
   for (const [name, value] of Object.entries(inputs)) env[`INPUT_${name.toUpperCase()}`] = String(value);
   run(process.execPath, [entry], env);
-  return readOutputs(output);
+  return parseOutputs(fs.readFileSync(output, 'utf8'));
 }
 
 function verify(directory, files, config, metadataOnly = false) {
@@ -132,4 +150,4 @@ if (require.main === module) {
   try { sign(process.argv[2], process.argv[3]); }
   catch (error) { console.error(error.message); process.exitCode = 1; }
 }
-module.exports = { configuration, payloadFiles, signedFiles };
+module.exports = { configuration, payloadFiles, signedFiles, parseOutputs };

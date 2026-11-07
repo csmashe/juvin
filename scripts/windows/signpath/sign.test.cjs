@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { configuration, payloadFiles, signedFiles } = require('./sign.cjs');
+const { configuration, payloadFiles, signedFiles, parseOutputs } = require('./sign.cjs');
 
 const trusted = {
   INPUT_POLICY: 'test-signing', GITHUB_REPOSITORY: 'csmashe/juvin',
@@ -13,6 +13,13 @@ const trusted = {
   'INPUT_ARTIFACT-CONFIGURATION-SLUG': 'example',
   'INPUT_CERTIFICATE-THUMBPRINT': 'A'.repeat(40), 'INPUT_API-TOKEN': 'test-placeholder',
 };
+test('reads GitHub action output blocks and rejects incomplete or ambiguous output', () => {
+  assert.deepEqual(parseOutputs('artifact-id<<delimiter\r\n12345\r\ndelimiter\r\nurl=https://example.com/a=b\r\n'),
+    { 'artifact-id': '12345', url: 'https://example.com/a=b' });
+  assert.throws(() => parseOutputs('artifact-id<<missing\n123'), /Incomplete/);
+  assert.throws(() => parseOutputs('artifact-id=1\nartifact-id=2'), /Duplicate/);
+  assert.throws(() => parseOutputs('invalid'), /Invalid/);
+});
 test('unsigned builds need no signing credentials', () => {
   assert.deepEqual(configuration({}), { policy: 'none' });
 });
