@@ -13,22 +13,42 @@ on:
         description: "Package version (MAJOR.MINOR.PATCH[-word[.number]]); defaults to the version in Directory.Build.props"
         required: false
         type: string
+      signing_policy:
+        description: SignPath policy; test signatures cannot be published
+        type: choice
+        default: none
+        options: [none, test-signing, release-signing]
+      publish_signed_release:
+        description: Attach production-signed installer to the existing matching tag's draft release
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
   package:
+    # Once signing is activated, build Windows from protected main with an explicit signing request.
+    if: github.ref_type != 'tag' || vars.SIGNPATH_SIGNING_POLICY != 'release-signing'
     # Inno Setup 6 is preinstalled on the image.
     runs-on: windows-latest
+    timeout-minutes: 120
+    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.signing_policy != 'none' && 'signpath' || 'unsigned-windows' }}
+    permissions:
+      contents: read
+      actions: read
     outputs:
       version: ${{ steps.version.outputs.version }}
+      policy: ${{ steps.version.outputs.policy }}
+      artifact: ${{ steps.version.outputs.artifact }}
     defaults:
       run:
         shell: pwsh
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -38,6 +58,11 @@ jobs:
         id: version
         env:
           INPUT_VERSION: ${{ inputs.version }}
+          INPUT_POLICY: ${{ inputs.signing_policy }}
+          INPUT_PUBLISH: ${{ inputs.publish_signed_release }}
+          TEST_THUMBPRINT: ${{ vars.SIGNPATH_TEST_CERTIFICATE_THUMBPRINT }}
+          RELEASE_THUMBPRINT: ${{ vars.SIGNPATH_CERTIFICATE_THUMBPRINT }}
+          RELEASE_POLICY: ${{ vars.SIGNPATH_SIGNING_POLICY }}
         run: |
           if ($env:GITHUB_REF_TYPE -eq 'tag') {
             $version = $env:GITHUB_REF_NAME
@@ -52,6 +77,47 @@ jobs:
             exit 1
           }
           "version=$version" >> $env:GITHUB_OUTPUT
+          $policy = if ($env:INPUT_POLICY) { $env:INPUT_POLICY } else { 'none' }
+          if ($env:RELEASE_POLICY -and $env:RELEASE_POLICY -ne 'release-signing') { throw 'Invalid SIGNPATH_SIGNING_POLICY activation value' }
+          if ($policy -notin @('none', 'test-signing', 'release-signing')) { throw 'Invalid signing policy' }
+          if ($policy -ne 'none' -and ($env:GITHUB_EVENT_NAME -ne 'workflow_dispatch' -or $env:GITHUB_REF -ne 'refs/heads/main')) {
+            throw 'Signing requires a manual run from protected main'
+          }
+          if ($env:INPUT_PUBLISH -eq 'true') {
+            if ($policy -ne 'release-signing') { throw 'Only production signatures can be published' }
+            git fetch --no-tags origin "refs/tags/v${version}:refs/tags/v${version}"
+            if ($LASTEXITCODE -ne 0) { throw 'Create the matching release tag first' }
+            $tagCommit = git rev-parse "v${version}^{commit}"
+            if ($LASTEXITCODE -ne 0 -or $tagCommit -ne $env:GITHUB_SHA) {
+              throw 'The release tag must identify the exact main commit being built'
+            }
+          }
+          $thumbprint = if ($policy -eq 'test-signing') { $env:TEST_THUMBPRINT } else { $env:RELEASE_THUMBPRINT }
+          if ($policy -ne 'none') {
+            $thumbprint = $thumbprint -replace '\s', ''
+            if ($thumbprint -notmatch '^[A-Fa-f0-9]{40}$') { throw 'Configure the expected signing certificate thumbprint first' }
+          } else { $thumbprint = '' }
+          "policy=$policy" >> $env:GITHUB_OUTPUT
+          "thumbprint=$thumbprint" >> $env:GITHUB_OUTPUT
+          "artifact=juvin-windows-$version-$policy" >> $env:GITHUB_OUTPUT
+
+      - name: Get pinned artifact upload action
+        if: steps.version.outputs.policy != 'none'
+        uses: actions/checkout@v4
+        with:
+          repository: actions/upload-artifact
+          ref: cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+          path: .signpath-tools/upload
+          persist-credentials: false
+
+      - name: Get pinned SignPath action
+        if: steps.version.outputs.policy != 'none'
+        uses: actions/checkout@v4
+        with:
+          repository: signpath/github-action-submit-signing-request
+          ref: f6d04783b4569d051e0c80105fe66e82819d0092 # v3
+          path: .signpath-tools/submit
+          persist-credentials: false
 
       - name: Restore
         run: dotnet restore Juvin.slnx
@@ -63,11 +129,22 @@ jobs:
         run: dotnet test Juvin.slnx -c Release --no-build
 
       - name: Build installer
+        uses: ./.github/actions/windows-signing
+        with:
+          version: ${{ steps.version.outputs.version }}
+          output-directory: dist
+          policy: ${{ steps.version.outputs.policy }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
+          certificate-thumbprint: ${{ steps.version.outputs.thumbprint }}
+          api-token: ${{ steps.version.outputs.policy != 'none' && github.ref == 'refs/heads/main' && secrets.SIGNPATH_API_TOKEN || '' }}
         env:
           JUVIN_SENTRY_DSN: ${{ secrets.JUVIN_SENTRY_DSN }}
+          GITHUB_TOKEN: ${{ github.token }}
+          JUVIN_SIGNPATH_TOOLS: ${{ github.workspace }}/.signpath-tools
           # Set only for a pushed v* tag; "Run workflow" builds have no tag to link to.
           JUVIN_RELEASE_TAG: ${{ github.ref_type == 'tag' && 'true' || '' }}
-        run: scripts/build-windows-installer.ps1 "${{ steps.version.outputs.version }}" dist
 
       - name: Smoke test installer
         run: scripts/smoke-test-windows-installer.ps1 "${{ steps.version.outputs.version }}" dist
@@ -76,18 +153,18 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: juvin-windows-${{ steps.version.outputs.version }}
+          name: ${{ steps.version.outputs.artifact }}
           path: dist/*
           if-no-files-found: error
 
   release:
-    if: github.ref_type == 'tag'
+    if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.publish_signed_release && inputs.signing_policy == 'release-signing')
     needs: package
     runs-on: ubuntu-24.04
     # Shared with the other release workflows so only one creates the draft; queue: max keeps a rerun
     # from cancelling another platform's waiting job.
     concurrency:
-      group: release-${{ github.ref_name }}
+      group: release-v${{ needs.package.outputs.version }}
       queue: max
     permissions:
       contents: write
@@ -95,19 +172,36 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: juvin-windows-${{ needs.package.outputs.version }}
+          name: ${{ needs.package.outputs.artifact }}
           path: dist
 
       # Release Linux and Release macOS attach to the same draft; whichever release job runs first creates it.
       - name: Attach to the draft release
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: v${{ needs.package.outputs.version }}
         run: |
-          if ! is_draft=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null); then
-            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft \
+          if ! is_draft=$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null); then
+            gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft \
               --title "Juvin ${{ needs.package.outputs.version }}" --generate-notes
           elif [ "$is_draft" != true ]; then
-            echo "::error::Release $GITHUB_REF_NAME is already published; refusing to replace its assets"
+            echo "::error::Release $RELEASE_TAG is already published; refusing to replace its assets"
             exit 1
           fi
-          gh release upload "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body > release-notes.txt
+          if ! grep -Fq '/docs/CODE_SIGNING.md' release-notes.txt; then
+            cat >> release-notes.txt <<'POLICY'
+
+          ## Code signing policy
+
+          See https://github.com/csmashe/juvin/blob/main/docs/CODE_SIGNING.md for the signing provider, approval roles, and current signing status.
+          POLICY
+            gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --notes-file release-notes.txt
+          fi
+          gh release upload "$RELEASE_TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+
+  signed-release-instructions:
+    if: github.ref_type == 'tag' && vars.SIGNPATH_SIGNING_POLICY == 'release-signing'
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo 'Windows signing is enabled. Run Release Windows from main with this version, release-signing, and publish_signed_release to attach the signed installer.' >> "$GITHUB_STEP_SUMMARY"

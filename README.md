@@ -41,6 +41,13 @@ dotnet test Juvin.slnx
 dotnet run --project src/Juvin.App
 ```
 
+## Code signing policy
+
+Windows signing through SignPath Foundation is being prepared. Existing Windows
+GitHub installers are unsigned until onboarding is complete. See the
+[code signing policy](docs/CODE_SIGNING.md) for maintainers, approval roles, privacy,
+and signing scope.
+
 ## License
 
 GPL-3.0. See [LICENSE](LICENSE).

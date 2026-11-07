@@ -1,0 +1,30 @@
+name: Build Windows signing candidate
+description: Keep GitHub artifact credentials within the packaging action and its signing callbacks.
+inputs:
+  version:
+    description: Installer version
+    required: true
+  output-directory:
+    description: Destination for the installer
+    default: dist
+  policy:
+    description: none, test-signing, or release-signing
+    default: none
+  organization-id:
+    description: Assigned SignPath Foundation organization ID
+    required: false
+  project-slug:
+    description: Assigned SignPath project
+    required: false
+  artifact-configuration-slug:
+    description: Approved artifact configuration
+    required: false
+  certificate-thumbprint:
+    description: Expected signing certificate SHA-1 identifier
+    required: false
+  api-token:
+    description: Submitter token from the protected signpath environment
+    required: false
+runs:
+  using: node24
+  main: index.cjs

@@ -141,6 +141,16 @@ jobs:
         with:
           global-json-file: global.json
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Test signing safeguards
+        run: |
+          node --test scripts/windows/signpath/sign.test.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'Signing safeguard tests failed' }
+          scripts/windows/signpath/test-verification.ps1
+
       - name: Build installer
         run: scripts/build-windows-installer.ps1 "0.0.0-ci.${{ github.run_number }}" dist
 
