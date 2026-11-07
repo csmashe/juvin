@@ -4,14 +4,22 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'verify.ps1')
 if ($SignFile) {
     if (-not $env:JUVIN_TEST_CERTIFICATE -or -not $env:JUVIN_TEST_SIGN_LOG) { throw 'Missing fixture context' }
-    $info = [Diagnostics.FileVersionInfo]::GetVersionInfo($SignFile)
-    if ($info.ProductName -ne 'Juvin' -or $info.ProductVersion -ne '1.2.3' -or $info.CompanyName -ne 'Excel on the Web') {
-        throw 'Inno did not preserve the product metadata required by SignPath'
+    $normalized = Join-Path ([IO.Path]::GetDirectoryName($env:JUVIN_TEST_SIGN_LOG)) 'callback.exe'
+    try {
+        Copy-Item -LiteralPath $SignFile -Destination $normalized -Force
+        $info = [Diagnostics.FileVersionInfo]::GetVersionInfo($normalized)
+        if ($info.ProductName -ne 'Juvin' -or $info.ProductVersion -ne '1.2.3' -or $info.CompanyName -ne 'Excel on the Web') {
+            throw "Unexpected Inno metadata: product=$($info.ProductName), version=$($info.ProductVersion), company=$($info.CompanyName)"
+        }
+        $certificate = Get-Item "Cert:\CurrentUser\My\$env:JUVIN_TEST_CERTIFICATE"
+        $null = Set-AuthenticodeSignature -FilePath $normalized -Certificate $certificate -HashAlgorithm SHA256
+        Test-JuvinSignature $normalized $certificate.Thumbprint 'test-signing'
+        Copy-Item -LiteralPath $normalized -Destination $SignFile -Force
+        Add-Content $env:JUVIN_TEST_SIGN_LOG $SignFile
+    } catch {
+        Add-Content $env:JUVIN_TEST_SIGN_LOG "ERROR: $($_.Exception.Message)"
+        throw
     }
-    $certificate = Get-Item "Cert:\CurrentUser\My\$env:JUVIN_TEST_CERTIFICATE"
-    $null = Set-AuthenticodeSignature -FilePath $SignFile -Certificate $certificate -HashAlgorithm SHA256
-    Test-JuvinSignature $SignFile $certificate.Thumbprint 'test-signing'
-    Add-Content $env:JUVIN_TEST_SIGN_LOG $SignFile
     exit 0
 }
 $work = Join-Path ([IO.Path]::GetTempPath()) ('juvin-trust-test-' + [guid]::NewGuid().ToString('N'))
@@ -55,11 +63,14 @@ public class JuvinSigningFixture { public static int Value => 42; }
     $env:JUVIN_TEST_SIGN_LOG = Join-Path $work 'callbacks.txt'
     $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
     $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
-    $callback = '$q' + (Get-Process -Id $PID).Path + '$q -NoProfile -File $q' + $PSCommandPath + '$q -SignFile $f'
-    & $iscc /Q '/DAppVersion=1.2.3' '/DNumericVersion=1.2.3.0' '/DInformationalVersion=1.2.3' '/DLauncherName=Juvin' `
+    $callback = '$q' + (Get-Process -Id $PID).Path + '$q -NoProfile -File $q' + (Join-Path $PSScriptRoot 'test-verification.ps1') + '$q -SignFile $f'
+    & $iscc '/DAppVersion=1.2.3' '/DNumericVersion=1.2.3.0' '/DInformationalVersion=1.2.3' '/DLauncherName=Juvin' `
         "/DPayloadDir=$payload" "/DOutputDir=$output" "/DIconFile=$root\assets\brand\ico\juvin.ico" `
         /DJuvinSignpath "/DSignedUninstallerDir=$uninstallers" "/Ssignpath=$callback" "$root\scripts\windows\juvin.iss"
-    if ($LASTEXITCODE -ne 0) { throw 'Inno signing callback contract failed' }
+    if ($LASTEXITCODE -ne 0) {
+        if (Test-Path $env:JUVIN_TEST_SIGN_LOG) { Get-Content $env:JUVIN_TEST_SIGN_LOG | Write-Host }
+        throw 'Inno signing callback contract failed'
+    }
     $calls = @(Get-Content $env:JUVIN_TEST_SIGN_LOG)
     if ($calls.Count -ne 2 -or -not ($calls | Where-Object { [IO.Path]::GetDirectoryName($_) -eq $uninstallers }) -or
         -not ($calls | Where-Object { $_ -eq (Join-Path $output 'Juvin-1.2.3-x64-setup.exe') })) {

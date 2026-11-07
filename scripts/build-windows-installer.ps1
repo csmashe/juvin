@@ -162,8 +162,9 @@ try {
     }
 
     $productVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $payload 'juvin.exe')).ProductVersion
-    $compilerArgs = @('/Q', "/DAppVersion=$version", "/DNumericVersion=$numericVersion", "/DInformationalVersion=$productVersion",
+    $compilerArgs = @("/DAppVersion=$version", "/DNumericVersion=$numericVersion", "/DInformationalVersion=$productVersion",
         "/DLauncherName=$launcherName", "/DPayloadDir=$payload", "/DOutputDir=$outDir", "/DIconFile=$iconFile")
+    if (-not $signing) { $compilerArgs += '/Q' }
     if ($signing) {
         $env:JUVIN_SIGNPATH_PRODUCT_VERSION = $productVersion
         $env:JUVIN_SIGNPATH_INSTALLER = Join-Path $outDir "Juvin-$version-x64-setup.exe"
