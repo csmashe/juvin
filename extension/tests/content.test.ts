@@ -198,6 +198,21 @@ describe("captureContext", () => {
     expect(!result.ok && result.error.code).toBe("no-adapter");
   });
 
+  it("captures visible page text when a site adapter fails reading the thread", async () => {
+    document.body.innerHTML = `<main><p>Earlier message on the page.</p><div id="ed" contenteditable="true">my draft</div></main>`;
+    select(document.getElementById("ed")!, 0, 2);
+    const failing: SiteAdapter = {
+      id: "site",
+      matches: () => true,
+      findEditor: () => document.getElementById("ed"),
+      captureThread: () => Promise.reject(new TypeError("changed page")),
+    };
+    const result = await captureContext(document, OTHER_SITE, new EditorRegistry(), [failing]);
+    expect(result.ok && result.capture.adapter).toBe("site");
+    expect(result.ok && result.capture.thread.completeness).toBe("visible-text-only");
+    expect(result.ok && result.capture.thread.messages[0]?.body).toBe("Earlier message on the page.");
+  });
+
   it("captures visible page text with the generic adapter, without the draft", async () => {
     document.body.innerHTML = `<main><p>Earlier message on the page.</p><div id="ed" contenteditable="true">my draft</div></main>`;
     const editor = document.getElementById("ed")!;
@@ -1473,6 +1488,29 @@ describe("Gmail adapter", () => {
     expect(!result.ok && result.error.code).toBe("no-editor");
   });
 
+  it("rewrites the selected editor with the visible text when the draft editor no longer has the expected attributes", async () => {
+    document.body.innerHTML = `
+      <div role="main">
+        <div role="listitem"><div class="a3s"><div>First message</div></div></div>
+        <div role="listitem"><div id="reply" contenteditable="true" role="textbox" aria-label="Renamed body">hi ana</div></div>
+      </div>`;
+    const editor = document.getElementById("reply")!;
+    select(editor, 0, 2);
+    const registry = new EditorRegistry(() => "e-1");
+    const result = await captureContext(document, GMAIL, registry, instantGmail().adapters);
+    expect(result.ok && result.capture.adapter).toBe("gmail");
+    expect(result.ok && result.capture.selection.text).toBe("hi");
+    expect(result.ok && result.capture.thread).toEqual({
+      completeness: "visible-text-only",
+      collapsedCount: 0,
+      messages: [{ from: document.location.hostname, body: "First message" }],
+    });
+
+    select(editor, 3, 6);
+    const recapture = await captureContext(document, GMAIL, registry, instantGmail().adapters, "e-1");
+    expect(recapture.ok && recapture.capture.thread.completeness).toBe("visible-text-only");
+  });
+
   it("reports draft-only for a new message outside the conversation", async () => {
     document.body.innerHTML = `
       <div role="main"><div role="list">${expandedRow("Ana", "ana@example.com", "Wed, Oct 7, 2026, 9:12 AM", "Unrelated")}</div></div>
@@ -1674,6 +1712,15 @@ describe("Outlook adapter", () => {
     conversation("2 messages", expanded({ ...KIM, date: "Wed 3:03 PM" }, EDITOR) + expanded({ ...ANA, date: "Wed 10/28/2026" }));
     const result = await capture();
     expect(result.ok && result.capture.thread.messages.map((m) => m.sent)).toEqual([undefined, undefined]);
+  });
+
+  it("rewrites the selected editor with the visible text when the editor hook is gone", async () => {
+    conversation("1 message", expanded(KIM, EDITOR.replace("editorParent_1", "renamedParent")));
+    const result = await capture();
+    expect(result.ok && result.capture.adapter).toBe("outlook");
+    expect(result.ok && result.capture.selection.text).toBe("ana");
+    expect(result.ok && result.capture.thread.completeness).toBe("visible-text-only");
+    expect(result.ok && result.capture.thread.messages[0]?.body).toContain("Third message");
   });
 
   it("falls back to visible text when items remain but the body hook is gone", async () => {
