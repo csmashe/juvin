@@ -80,8 +80,9 @@ if ($MyInvocation.InvocationName -ne '.') {
     if (-not $files.Count) { throw 'No files to verify' }
     foreach ($file in $files) {
         $info = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($file.FullName)
-        if ($info.ProductName -ne 'Juvin' -or $info.CompanyName -ne 'Excel on the Web' -or
-            $info.ProductVersion -cne $ProductVersion) {
+        # Inno reserves version-resource space by padding its generated uninstaller strings.
+        if ($info.ProductName.TrimEnd() -ne 'Juvin' -or $info.CompanyName.TrimEnd() -ne 'Excel on the Web' -or
+            $info.ProductVersion.TrimEnd() -cne $ProductVersion) {
             throw "Unexpected product metadata: $($file.Name)"
         }
         if (-not $MetadataOnly) { Test-JuvinSignature $file.FullName $Thumbprint $Policy }

@@ -8,7 +8,7 @@ if ($SignFile) {
     try {
         Copy-Item -LiteralPath $SignFile -Destination $normalized -Force
         $info = [Diagnostics.FileVersionInfo]::GetVersionInfo($normalized)
-        if ($info.ProductName -ne 'Juvin' -or $info.ProductVersion -ne '1.2.3' -or $info.CompanyName -ne 'Excel on the Web') {
+        if ($info.ProductName.TrimEnd() -ne 'Juvin' -or $info.ProductVersion.TrimEnd() -ne '1.2.3' -or $info.CompanyName.TrimEnd() -ne 'Excel on the Web') {
             throw "Unexpected Inno metadata: product=$($info.ProductName), version=$($info.ProductVersion), company=$($info.CompanyName)"
         }
         $certificate = Get-Item "Cert:\CurrentUser\My\$env:JUVIN_TEST_CERTIFICATE"
