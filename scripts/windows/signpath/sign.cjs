@@ -114,7 +114,7 @@ function sign(kind, target) {
     const tools = process.env.JUVIN_SIGNPATH_TOOLS;
     if (!tools) throw new Error('Missing pinned SignPath action checkout');
     const uploaded = invokeAction(path.join(tools, 'upload/dist/upload/index.js'), {
-      name: `juvin-${kind}-${crypto.randomUUID()}`, path: input,
+      name: `juvin-unsigned-${kind}-${crypto.randomUUID()}`, path: input,
       'if-no-files-found': 'error', 'retention-days': 7, 'compression-level': 0,
       overwrite: false, 'include-hidden-files': false, archive: true,
     }, work);

@@ -150,7 +150,7 @@ jobs:
         run: scripts/smoke-test-windows-installer.ps1 "${{ steps.version.outputs.version }}" dist
 
       - name: Upload installer
-        if: always()
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.version.outputs.artifact }}
