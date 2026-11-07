@@ -18,6 +18,8 @@ public sealed class LogFileTraceListener : TraceListener
 
     private static readonly UTF8Encoding s_utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
 
+    // Trace serializes writes, but Clear comes from the UI thread.
+    private readonly Lock _gate = new();
     private readonly string _path;
     private readonly string _previousPath;
     private readonly long _maxBytes;
@@ -33,6 +35,29 @@ public sealed class LogFileTraceListener : TraceListener
         _writer = OpenAfterRotating();
     }
 
+    /// <summary>
+    ///     Removes the logs in <paramref name="directory" />. A listener open on that directory starts its
+    ///     file again empty, because the open file cannot be deleted on Windows.
+    /// </summary>
+    public static void ClearIn(string directory)
+    {
+        var path = Path.Join(directory, FileName);
+        var open = Trace.Listeners.OfType<LogFileTraceListener>().FirstOrDefault(listener => listener._path == path);
+        if (open is not null)
+        {
+            open.Clear();
+            return;
+        }
+
+        if (!Directory.Exists(directory))
+        {
+            return;
+        }
+
+        File.Delete(path);
+        File.Delete(Path.Join(directory, PreviousFileName));
+    }
+
     public override void Write(string? message)
     {
         Append(message, endLine: false);
@@ -45,13 +70,16 @@ public sealed class LogFileTraceListener : TraceListener
 
     public override void Flush()
     {
-        try
+        lock (_gate)
         {
-            _writer?.Flush();
-        }
-        catch (Exception ex) when (ex is IOException or ObjectDisposedException)
-        {
-            _writer = null;
+            try
+            {
+                _writer?.Flush();
+            }
+            catch (Exception ex) when (ex is IOException or ObjectDisposedException)
+            {
+                _writer = null;
+            }
         }
     }
 
@@ -59,14 +87,37 @@ public sealed class LogFileTraceListener : TraceListener
     {
         if (disposing)
         {
-            _writer?.Dispose();
-            _writer = null;
+            lock (_gate)
+            {
+                _writer?.Dispose();
+                _writer = null;
+            }
         }
 
         base.Dispose(disposing);
     }
 
+    private void Clear()
+    {
+        lock (_gate)
+        {
+            _writer?.Dispose();
+            _writer = null;
+            _atLineStart = true;
+            File.Delete(_previousPath);
+            _writer = Open();
+        }
+    }
+
     private void Append(string? message, bool endLine)
+    {
+        lock (_gate)
+        {
+            AppendLocked(message, endLine);
+        }
+    }
+
+    private void AppendLocked(string? message, bool endLine)
     {
         var writer = _writer;
         if (writer is null)
@@ -104,18 +155,25 @@ public sealed class LogFileTraceListener : TraceListener
 
     private StreamWriter OpenAfterRotating()
     {
-        if (File.Exists(_path))
+        if (!File.Exists(_path))
         {
-            try
-            {
-                File.Move(_path, _previousPath, overwrite: true);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                // The current file is truncated below instead, so the log still stays bounded.
-            }
+            return Open();
         }
 
+        try
+        {
+            File.Move(_path, _previousPath, overwrite: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Open truncates the current file instead, so the log still stays bounded.
+        }
+
+        return Open();
+    }
+
+    private StreamWriter Open()
+    {
         var options = new FileStreamOptions
         {
             Mode = FileMode.Create,

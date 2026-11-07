@@ -68,7 +68,7 @@ public sealed partial class PrivacyAndDataSectionViewModel : ObservableObject
     /// <param name="loginItem">The OS login entry Delete all data removes along with the setting.</param>
     /// <param name="hotkeys">Removes the desktop shortcut on Delete all data.</param>
     /// <param name="crashReporter">Whether this build can send crash reports at all.</param>
-    /// <param name="dataPath">The folder whose secrets Delete all data removes; tests pass a temporary one.</param>
+    /// <param name="dataPath">The folder whose secrets and logs Delete all data removes; tests pass a temporary one.</param>
     public PrivacyAndDataSectionViewModel(
         ISettingsService settings,
         IHistoryService history,
@@ -191,6 +191,7 @@ public sealed partial class PrivacyAndDataSectionViewModel : ObservableObject
             stoppedHotkeys = await _hotkeys.RemoveDesktopShortcutUntilStartAsync(CancellationToken.None);
             _history.Clear();
             JuvinEnvironment.DeleteSecretsIn(DataFolder);
+            JuvinEnvironment.DeleteLogsIn(DataFolder);
             _settings.Reset();
             Trace.WriteLine("[PrivacyAndDataSection] Deleted all data.");
         }
