@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <parameters>
+    <parameter name="version" required="true" />
+  </parameters>
+  <zip-file>
+    <pe-file-set product-name="Juvin" product-version="${version}" company-name="Excel on the Web">
+      <include path="juvin.exe" min-matches="0" />
+      <include path="juvin-host.exe" min-matches="0" />
+      <include path="juvin-cli.exe" min-matches="0" />
+      <include path="juvin.dll" min-matches="0" />
+      <include path="Juvin.*.dll" min-matches="0" max-matches="unbounded" />
+      <include path="uninstaller.exe" min-matches="0" />
+      <include path="setup.exe" min-matches="0" />
+      <for-each><authenticode-sign hash-algorithm="sha256" /></for-each>
+    </pe-file-set>
+  </zip-file>
+</artifact-configuration>

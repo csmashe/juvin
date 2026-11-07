@@ -102,6 +102,10 @@ if ($isccVersion.Major -gt 0 -and $isccVersion -lt [version]'6.3') {
 
 $stage = Join-Path ([System.IO.Path]::GetTempPath()) ('juvin-installer-' + [guid]::NewGuid().ToString('N'))
 $payload = Join-Path $stage 'payload'
+$signing = $env:JUVIN_SIGNPATH_POLICY -and $env:JUVIN_SIGNPATH_POLICY -ne 'none'
+if ($signing -and (-not $env:JUVIN_SIGNPATH_NODE -or -not $env:JUVIN_SIGNPATH_HELPER)) {
+    Fail 'Signed packaging must run through .github/actions/windows-signing'
+}
 try {
     Write-Host '==> Publishing the app'
     if (-not $env:JUVIN_SENTRY_DSN) {
@@ -157,9 +161,22 @@ try {
         }
     }
 
+    $productVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $payload 'juvin.exe')).ProductVersion
+    $compilerArgs = @("/DAppVersion=$version", "/DNumericVersion=$numericVersion", "/DInformationalVersion=$productVersion",
+        "/DLauncherName=$launcherName", "/DPayloadDir=$payload", "/DOutputDir=$outDir", "/DIconFile=$iconFile")
+    if (-not $signing) { $compilerArgs += '/Q' }
+    if ($signing) {
+        $env:JUVIN_SIGNPATH_PRODUCT_VERSION = $productVersion
+        $env:JUVIN_SIGNPATH_INSTALLER = Join-Path $outDir "Juvin-$version-x64-setup.exe"
+        $env:JUVIN_SIGNPATH_UNINSTALLERS = Join-Path $stage 'uninstallers'
+        New-Item -ItemType Directory $env:JUVIN_SIGNPATH_UNINSTALLERS | Out-Null
+        & $env:JUVIN_SIGNPATH_NODE $env:JUVIN_SIGNPATH_HELPER payload $payload
+        if ($LASTEXITCODE -ne 0) { Fail 'Payload signing failed' }
+        $callback = '$q' + $env:JUVIN_SIGNPATH_NODE + '$q $q' + $env:JUVIN_SIGNPATH_HELPER + '$q inno $f'
+        $compilerArgs += @('/DJuvinSignpath', "/DSignedUninstallerDir=$env:JUVIN_SIGNPATH_UNINSTALLERS", "/Ssignpath=$callback")
+    }
     Write-Host '==> Building the installer'
-    & $iscc /Q "/DAppVersion=$version" "/DNumericVersion=$numericVersion" "/DLauncherName=$launcherName" "/DPayloadDir=$payload" `
-        "/DOutputDir=$outDir" "/DIconFile=$iconFile" $issFile
+    & $iscc @compilerArgs $issFile
     if ($LASTEXITCODE -ne 0) {
         Fail "ISCC failed with exit code $LASTEXITCODE"
     }

@@ -27,6 +27,9 @@
 #ifndef IconFile
   #error Pass /DIconFile=<juvin.ico>
 #endif
+#ifndef InformationalVersion
+  #define InformationalVersion AppVersion
+#endif
 
 [Setup]
 AppId={{6E0B71C2-4F3D-4C8E-9A57-2D1B8E4F6A90}
@@ -38,7 +41,13 @@ AppPublisherURL=https://github.com/csmashe/juvin
 AppSupportURL=https://github.com/csmashe/juvin/issues
 VersionInfoVersion={#NumericVersion}
 VersionInfoProductVersion={#NumericVersion}
-VersionInfoProductTextVersion={#AppVersion}
+VersionInfoProductName=Juvin
+VersionInfoProductTextVersion={#InformationalVersion}
+#ifdef JuvinSignpath
+SignTool=signpath
+SignedUninstaller=yes
+SignedUninstallerDir={#SignedUninstallerDir}
+#endif
 DefaultDirName={localappdata}\Programs\Juvin
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
