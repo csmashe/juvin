@@ -86,6 +86,32 @@ public sealed class LogFileTraceListenerTests : IDisposable
     }
 
     [Fact]
+    public void ClearIn_KeepsTheOpenLogWhenThePreviousOneCannotBeDeleted()
+    {
+        // A directory under the previous log's name makes the delete fail on every OS.
+        Directory.CreateDirectory(_temp.File(LogFileTraceListener.PreviousFileName));
+        using (var listener = new LogFileTraceListener(_temp.Path))
+        {
+            listener.WriteLine("before");
+            Trace.Listeners.Add(listener);
+            try
+            {
+                Assert.Throws<UnauthorizedAccessException>(() => LogFileTraceListener.ClearIn(_temp.Path));
+            }
+            finally
+            {
+                Trace.Listeners.Remove(listener);
+            }
+
+            listener.WriteLine("after");
+        }
+
+        var lines = File.ReadAllLines(_temp.File(LogFileTraceListener.FileName));
+        Assert.Contains(lines, line => line.EndsWith(" before", StringComparison.Ordinal));
+        Assert.EndsWith(" after", lines[^1]);
+    }
+
+    [Fact]
     public void ClearIn_DeletesBothLogsWhenNoneIsOpen()
     {
         File.WriteAllText(_temp.File(LogFileTraceListener.FileName), "last launch");

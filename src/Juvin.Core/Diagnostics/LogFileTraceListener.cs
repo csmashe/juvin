@@ -101,10 +101,11 @@ public sealed class LogFileTraceListener : TraceListener
     {
         lock (_gate)
         {
+            // First, so a failed delete leaves the current log open to record the failure.
+            File.Delete(_previousPath);
             _writer?.Dispose();
             _writer = null;
             _atLineStart = true;
-            File.Delete(_previousPath);
             _writer = Open();
         }
     }
