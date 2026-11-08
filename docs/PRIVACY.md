@@ -32,7 +32,7 @@ Juvin's data folder is `~/.local/share/Juvin` on Linux, `~/Library/Application S
 
 Exporting history writes a Markdown or JSON file wherever you choose; that file is yours to keep or delete.
 
-**Clear history** removes every entry and the quarantine copies of the history file. **Delete all data** removes history, the secrets, the launch-at-login entry, and the shortcut registered with your desktop, then resets settings with their copies; setup runs again at the next start.
+**Clear history** removes every entry and the quarantine copies of the history file. **Delete all data** removes history, the secrets, the logs, the launch-at-login entry, and the shortcut registered with your desktop, then resets settings with their copies; setup runs again at the next start.
 
 ## What Juvin writes outside its data folder
 

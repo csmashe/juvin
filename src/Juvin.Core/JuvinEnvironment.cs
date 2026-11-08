@@ -1,3 +1,5 @@
+using Juvin.Core.Diagnostics;
+
 namespace Juvin.Core;
 
 /// <summary>
@@ -87,6 +89,11 @@ public static class JuvinEnvironment
         {
             File.Delete(key);
         }
+    }
+
+    public static void DeleteLogsIn(string dataPath)
+    {
+        LogFileTraceListener.ClearIn(LogsPathIn(dataPath));
     }
 
     /// <summary>

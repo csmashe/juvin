@@ -138,12 +138,16 @@ public sealed class PrivacyAndDataSectionViewModelTests : IDisposable
     }
 
     [Fact]
-    public void DeleteAll_ClearsHistoryResetsSettingsAndRemovesSecrets()
+    public void DeleteAll_ClearsHistoryResetsSettingsAndRemovesSecretsAndLogs()
     {
         var secrets = Path.Join(_dataPath, "Secrets");
         Directory.CreateDirectory(secrets);
         File.WriteAllText(Path.Join(secrets, "codex"), "x");
         File.WriteAllText(Path.Join(_dataPath, "secret.key"), "k");
+        var logs = Path.Join(_dataPath, "Logs");
+        Directory.CreateDirectory(logs);
+        File.WriteAllText(Path.Join(logs, "juvin.log"), "l");
+        File.WriteAllText(Path.Join(logs, "juvin.previous.log"), "p");
         _settings.Update(s => s with { HistoryEnabled = true, HasCompletedOnboarding = true, LocalModel = "llama3" });
         _history.Add(Entry("a", DateTimeOffset.UtcNow));
         var vm = Create();
@@ -159,6 +163,7 @@ public sealed class PrivacyAndDataSectionViewModelTests : IDisposable
         Assert.False(vm.HistoryEnabled);
         Assert.Empty(Directory.EnumerateFileSystemEntries(secrets));
         Assert.False(File.Exists(Path.Join(_dataPath, "secret.key")));
+        Assert.Empty(Directory.EnumerateFileSystemEntries(logs));
         Assert.False(vm.HasError);
     }
 
