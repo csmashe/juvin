@@ -1,5 +1,5 @@
 import type { ThreadMessage } from "../../shared/protocol";
-import { isRendered, readPlainText } from "../plain-text";
+import { isRendered, pointToOffset, readPlainText } from "../plain-text";
 import { editorForSelection, type SiteAdapter, type ThreadSnapshot } from "./adapter";
 import { genericAdapter, normalize, PAGE_TEXT_LIMIT, truncate } from "./generic";
 
@@ -18,7 +18,7 @@ const SELECTORS = {
   actions: '[role="toolbar"]',
   date: '[data-testid="SentReceivedSavedTime"]',
   subject: '[aria-labelledby$="_SUBJECT"]',
-  // The original message a reply or forward quotes, shown read-only under the compose editor.
+  // The original message a reply or forward quotes, shown read-only under the compose editor or moved into it.
   quoteHeader: "#divRplyFwdMsg",
 };
 
@@ -191,8 +191,16 @@ function headerDate(line: string | undefined): string | undefined {
   return Number.isNaN(time) ? undefined : new Date(time).toISOString();
 }
 
-/** The compose editor's container holding the quoted original, searched outward but never past a conversation item. */
+/**
+ * The container holding the quoted original, searched outward from the compose editor but never past a conversation item.
+ * Once the caret enters the quote, Outlook moves it into the editor, after the draft.
+ */
 function quoteRoot(editor: HTMLElement): HTMLElement | null {
+  const inside = editor.querySelector<HTMLElement>(SELECTORS.quoteHeader);
+  if (inside) {
+    return inside.parentElement!;
+  }
+
   for (let element = editor.parentElement; element; element = element.parentElement) {
     const header = element.querySelector<HTMLElement>(SELECTORS.quoteHeader);
     if (header && !editor.contains(header)) {
@@ -213,9 +221,8 @@ function captureQuote(root: HTMLElement, editor: HTMLElement): ThreadSnapshot {
   const header = root.querySelector<HTMLElement>(SELECTORS.quoteHeader)!;
   const headerText = normalize(readPlainText(header).text);
   const lines = headerText.split("\n").filter((line) => line.trim().length > 0);
-  const full = normalize(readPlainText(root, editor).text);
-  const at = full.indexOf(headerText);
-  const text = (at >= 0 ? full.slice(at + headerText.length) : full).trim();
+  const plain = readPlainText(root, editor);
+  const text = normalize(plain.text.slice(pointToOffset(plain, header, header.childNodes.length))).trim();
   const subject = lines.length >= 4 ? headerValue(lines[lines.length - 1]) || undefined : undefined;
   return {
     subject,
