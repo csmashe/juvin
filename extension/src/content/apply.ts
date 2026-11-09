@@ -81,12 +81,29 @@ function hasNewBreakBeforeBlock(editor: Editor, known: ReadonlySet<Element>): bo
   });
 }
 
+/** Returns a function that puts the selection back where it is now. */
+function holdSelection(doc: Document, editor: Editor): () => void {
+  if (isTextArea(editor)) {
+    const { selectionStart, selectionEnd, selectionDirection } = editor;
+    return () => editor.setSelectionRange(selectionStart, selectionEnd, selectionDirection ?? undefined);
+  }
+
+  const selection = doc.getSelection();
+  const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0).cloneRange() : null;
+  return () => {
+    selection?.removeAllRanges();
+    if (range) {
+      selection?.addRange(range);
+    }
+  };
+}
+
 /**
- * Puts back the text the editor changed since `before`, as one edit through the editor's own command over the part that
- * differs, then selects the captured range again.
+ * Puts back the text the editor changed since `before`, through the editor's own command over the part that differs,
+ * then selects the captured range again; when the editor still differs, the selection goes back where it was.
+ * The range comes back as plain text by design: losing a link beats losing the sentence, so do not swap this for an Undo.
  */
 function restoreText(doc: Document, editor: Editor, before: string, offsets: { start: number; end: number }, exec: ExecCommand): void {
-  const now = editorText(editor);
   const select = (start: number, end: number): void => {
     if (isTextArea(editor)) {
       editor.setSelectionRange(start, end);
@@ -97,6 +114,7 @@ function restoreText(doc: Document, editor: Editor, before: string, offsets: { s
     }
   };
 
+  const now = editorText(editor);
   if (now !== before) {
     let prefix = 0;
     while (prefix < now.length && prefix < before.length && now[prefix] === before[prefix]) {
@@ -108,10 +126,23 @@ function restoreText(doc: Document, editor: Editor, before: string, offsets: { s
       suffix++;
     }
 
+    const restoreSelection = holdSelection(doc, editor);
     const missing = before.slice(prefix, before.length - suffix);
-    select(prefix, now.length - suffix);
-    exec(doc, missing.length > 0 ? "insertText" : "delete", missing);
+    // Trailing line breaks go in after the words, so the editor shapes them like the line they end, as Firefox's
+    // padding <br> does; the block the editor left there may already draw them.
+    const words = missing.replace(/\n+$/, "");
+    if (words.length > 0 || prefix < now.length - suffix) {
+      select(prefix, now.length - suffix);
+      exec(doc, words.length > 0 ? "insertText" : "delete", words);
+    }
+
+    if (words !== missing && editorText(editor) !== before) {
+      select(prefix + words.length, prefix + words.length);
+      exec(doc, "insertText", missing.slice(words.length));
+    }
+
     if (editorText(editor) !== before) {
+      restoreSelection();
       return;
     }
   }

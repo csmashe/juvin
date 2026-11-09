@@ -587,6 +587,28 @@ describe("applyReplacement", () => {
       expect(readPlainText(editor).text.startsWith("line ONE")).toBe(true);
     });
 
+    it("puts the draft back when neither Undo nor Redo returns to a known state", async () => {
+      const { editor, registry, request } = await capturedLine(0, 8, "the rewritten first line", false);
+      const commands: string[] = [];
+      const chrome = chromeExec(editor, commands);
+      let lost = false;
+      const exec: ExecCommand = (doc, command, value) => {
+        if (command === "undo" || command === "redo") {
+          commands.push(command);
+          editor.innerHTML = `<div dir="ltr">neither<div>line two</div></div>`;
+          lost = true;
+          return true;
+        }
+
+        return lost ? (commands.push(command), fakeExec(doc, command, value)) : chrome(doc, command, value);
+      };
+      const result = await applyReplacement(document, registry, request, exec);
+      expect(result).toMatchObject({ ok: false, error: { code: "internal" } });
+      expect(commands).toEqual(["insertText", "undo", "redo", "insertText"]);
+      expect(readPlainText(editor).text).toBe("line one\nline two");
+      expect(document.getSelection()!.toString()).toBe("line one");
+    });
+
     it("redoes the edit when Undo left the draft in between", async () => {
       const { editor, registry, request } = await capturedLine(0, 8, "the rewritten first line", false);
       const commands: string[] = [];
@@ -1841,15 +1863,47 @@ describe("Outlook adapter", () => {
     expect(document.getSelection()!.toString()).toBe("ana");
   });
 
-  it("puts the line back when the key press reshapes it around the placeholder", async () => {
-    // The layout from typing at offset 0 of the editor: the line is bare text, then an empty line before the signature.
+  /** How the browser's insertText draws a line break: Chrome starts a new line; Firefox inserts a <br>, padded when it ends the line. */
+  type LineBreaks = "chrome" | "firefox" | "firefox-unpadded";
+
+  function breakingExec(breaks: LineBreaks, commands: string[]): ExecCommand {
+    return (doc, command, value) => {
+      commands.push(command);
+      const [first, ...rest] = (value ?? "").split("\n");
+      fakeExec(doc, command, first);
+      const range = doc.getSelection()!.getRangeAt(0);
+      if (breaks === "chrome") {
+        let line = range.startContainer.parentElement!;
+        for (const text of rest) {
+          const next = doc.createElement("div");
+          next.append(text || doc.createElement("br"));
+          line.after(next);
+          line = next;
+        }
+      } else {
+        let at: Node = range.startContainer.parentNode!.lastChild!;
+        for (const text of rest) {
+          const br = doc.createElement("br");
+          (at as ChildNode).after(br, text);
+          at = br.nextSibling!;
+        }
+
+        if (breaks === "firefox" && rest.length > 0 && rest.at(-1) === "" && at.nextSibling === null) {
+          at.parentNode!.append(doc.createElement("br"));
+        }
+      }
+
+      return true;
+    };
+  }
+
+  /** The layout from typing at offset 0 of the editor: the line is bare text, then an empty line before the signature. */
+  async function reshapedLine(): Promise<{ editor: HTMLElement; registry: EditorRegistry; hash: string; before: string; reshape: () => void }> {
     document.body.innerHTML = `<div id="editorParent_1"><div id="reply" contenteditable="true" role="textbox">thanks, see you then<div><br></div><div id="Signature"><div>Sam</div></div><div><br></div></div></div>`;
     const editor = document.getElementById("reply")!;
     const registry = new EditorRegistry(() => "e-1");
     select(editor, 0, 20);
     const capture = await captureContext(document, OUTLOOK, registry, [outlookAdapter]);
-    const hash = capture.ok ? capture.capture.editor.hash : "";
-    const before = readPlainText(editor).text;
     // Outlook's editor wraps the placeholder in a line of its own and drops the empty line after it.
     const reshape = (): void => {
       editor.firstChild!.remove();
@@ -1859,28 +1913,45 @@ describe("Outlook adapter", () => {
       editor.prepend(line);
       document.getSelection()!.selectAllChildren(line);
     };
-    const commands: string[] = [];
-    // As in Chrome, each line break in the inserted text starts a new line after the current one.
-    const exec: ExecCommand = (doc, command, value) => {
-      commands.push(command);
-      const [first, ...rest] = (value ?? "").split("\n");
-      fakeExec(doc, command, first);
-      let line = doc.getSelection()!.getRangeAt(0).startContainer.parentElement!;
-      for (const text of rest) {
-        const next = document.createElement("div");
-        next.append(text || document.createElement("br"));
-        line.after(next);
-        line = next;
-      }
+    return { editor, registry, hash: capture.ok ? capture.capture.editor.hash : "", before: readPlainText(editor).text, reshape };
+  }
 
-      return true;
-    };
+  for (const breaks of ["chrome", "firefox"] as const) {
+    it(`puts the line back when the key press reshapes it around the placeholder (${breaks})`, async () => {
+      const { editor, registry, hash, before, reshape } = await reshapedLine();
+      const commands: string[] = [];
+      const request = { editorId: "e-1", expectedHash: hash, start: 0, end: 20, text: "Thanks, see you then." };
+      const result = await applyReplacement(document, registry, request, breakingExec(breaks, commands), reshape);
+      expect(result).toMatchObject({ ok: false, error: { code: "internal" } });
+      expect(readPlainText(editor).text).toBe(before);
+      expect(document.getSelection()!.toString()).toBe("thanks, see you then");
+      expect(commands).toEqual(["insertText", "insertText"]);
+    });
+  }
 
-    const result = await applyReplacement(document, registry, { editorId: "e-1", expectedHash: hash, start: 0, end: 20, text: "Thanks, see you then." }, exec, reshape);
+  it("puts the words back when the editor cannot draw the dropped empty line", async () => {
+    const { editor, registry, hash, reshape } = await reshapedLine();
+    const request = { editorId: "e-1", expectedHash: hash, start: 0, end: 20, text: "Thanks, see you then." };
+    const result = await applyReplacement(document, registry, request, breakingExec("firefox-unpadded", []), reshape);
     expect(result).toMatchObject({ ok: false, error: { code: "internal" } });
-    expect(readPlainText(editor).text).toBe(before);
-    expect(document.getSelection()!.toString()).toBe("thanks, see you then");
-    expect(commands).toEqual(["insertText"]);
+    expect(readPlainText(editor).text).toBe("thanks, see you then\nSam\n");
+  });
+
+  it("leaves the editor and the selection alone when it cannot put the text back", async () => {
+    document.body.innerHTML = EDITOR;
+    const editor = document.getElementById("reply")!;
+    const { registry, hash } = await captured();
+    const typed = (target: HTMLElement): void => {
+      target.firstElementChild!.append("a");
+    };
+    const commands: string[] = [];
+    const rejectAll: ExecCommand = (_doc, command) => (commands.push(command), false);
+
+    const result = await applyReplacement(document, registry, { editorId: "e-1", expectedHash: hash, start: 3, end: 6, text: "Ana" }, rejectAll, typed);
+    expect(result).toMatchObject({ ok: false, error: { code: "internal" } });
+    expect(commands).toEqual(["delete"]);
+    expect(editor.innerHTML).toBe("<div>hi anaa</div><div>sounds good</div>");
+    expect(document.getSelection()!.toString()).toBe("ana");
   });
 
   it("makes exactly one edit when the placeholder is as expected", async () => {
