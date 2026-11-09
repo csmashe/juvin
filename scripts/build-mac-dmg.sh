@@ -46,7 +46,7 @@ REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 mkdir -p "${2:-$REPO_ROOT/dist}"
 OUT=$(cd "${2:-$REPO_ROOT/dist}" && pwd)
 
-# Must match the label in Juvin.Platform.Mac.Launcher.LaunchAgentLoginItem.
+# Must match BundleIdentifier in Juvin.Platform.Mac.Launcher.MacAppRelauncher.
 BUNDLE_ID=com.juvin.app
 ENTITLEMENTS=$REPO_ROOT/scripts/mac/entitlements.plist
 HOST_LEFTOVERS="juvin-host.dll juvin-host.deps.json juvin-host.runtimeconfig.json juvin-host.pdb"

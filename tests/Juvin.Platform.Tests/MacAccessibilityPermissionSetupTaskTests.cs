@@ -1,5 +1,7 @@
+using System.ComponentModel;
 using System.Runtime.Versioning;
 using Juvin.Core.Localization;
+using Juvin.Core.Providers;
 using Juvin.Platform.Mac.Launcher;
 using Juvin.Platform.Mac.Setup;
 using Juvin.Platform.Setup;
@@ -257,6 +259,132 @@ public sealed class MacAccessibilityPermissionSetupTaskTests
         _trust.Trusted = true;
         await task.EvaluateAsync(CancellationToken.None);
         Assert.Equal(1, restarts);
+    }
+
+    private const string BundleId = "com.juvin.app";
+
+    private AccessibilityPermissionSetupTask CreateBundledTask(TimeSpan? resetTimeout = null) =>
+        new(new Localizer(), _runner, _trust, _ => Task.CompletedTask, () => false, _relauncher, () => true, BundleId, resetTimeout);
+
+    [Fact]
+    public async Task Action_resets_the_own_entry_before_prompting_while_untrusted()
+    {
+        var promptsAtReset = -1;
+        _runner.Handler = (fileName, _) =>
+        {
+            if (fileName == AccessibilityPermissionSetupTask.TccUtil)
+            {
+                promptsAtReset = _trust.Prompts;
+            }
+
+            return new ProcessResult(0, "", "");
+        };
+
+        var outcome = await CreateBundledTask().RunActionAsync(CancellationToken.None);
+
+        Assert.True(outcome.Success);
+        Assert.Equal(2, _runner.Calls.Count);
+        Assert.Equal(AccessibilityPermissionSetupTask.TccUtil, _runner.Calls[0].FileName);
+        Assert.Equal(["reset", "Accessibility", BundleId], _runner.Calls[0].Arguments);
+        Assert.Equal(0, promptsAtReset);
+        Assert.Equal(1, _trust.Prompts);
+        Assert.Equal("open", _runner.Calls[1].FileName);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Action_never_resets_while_trusted(bool listening)
+    {
+        _trust.Trusted = true;
+        _relauncher.CanRelaunch = true;
+        var task = new AccessibilityPermissionSetupTask(new Localizer(), _runner, _trust, _ => Task.CompletedTask, () => listening, _relauncher, () => true, BundleId);
+
+        await task.RunActionAsync(CancellationToken.None);
+
+        Assert.DoesNotContain(_runner.Calls, call => call.FileName == AccessibilityPermissionSetupTask.TccUtil);
+    }
+
+    [Fact]
+    public async Task Action_does_not_reset_outside_a_bundle()
+    {
+        await CreateTask().RunActionAsync(CancellationToken.None);
+
+        Assert.DoesNotContain(_runner.Calls, call => call.FileName == AccessibilityPermissionSetupTask.TccUtil);
+    }
+
+    [Fact]
+    public async Task A_failed_reset_still_prompts_and_opens_settings()
+    {
+        _runner.Handler = (fileName, _) => new ProcessResult(fileName == AccessibilityPermissionSetupTask.TccUtil ? 1 : 0, "", "");
+
+        var outcome = await CreateBundledTask().RunActionAsync(CancellationToken.None);
+
+        Assert.True(outcome.Success);
+        Assert.Equal(1, _trust.Prompts);
+        Assert.Equal("open", _runner.Calls[^1].FileName);
+    }
+
+    [Fact]
+    public async Task A_reset_that_cannot_start_still_prompts_and_opens_settings()
+    {
+        _runner.Handler = (fileName, _) => fileName == AccessibilityPermissionSetupTask.TccUtil ? throw new Win32Exception(2) : new ProcessResult(0, "", "");
+
+        var outcome = await CreateBundledTask().RunActionAsync(CancellationToken.None);
+
+        Assert.True(outcome.Success);
+        Assert.Equal(1, _trust.Prompts);
+        Assert.Equal("open", _runner.Calls[^1].FileName);
+    }
+
+    [Fact]
+    public async Task A_reset_that_times_out_still_prompts_and_opens_settings()
+    {
+        var runner = new HangingFirstCallRunner(_runner);
+        var task = new AccessibilityPermissionSetupTask(
+            new Localizer(),
+            runner,
+            _trust,
+            _ => Task.CompletedTask,
+            () => false,
+            _relauncher,
+            () => true,
+            BundleId,
+            TimeSpan.FromMilliseconds(50)
+        );
+
+        var outcome = await task.RunActionAsync(CancellationToken.None);
+
+        Assert.True(outcome.Success);
+        Assert.Equal(1, _trust.Prompts);
+        Assert.Equal("open", Assert.Single(_runner.Calls).FileName);
+    }
+
+    [Fact]
+    public async Task Cancelling_during_the_reset_stops_the_action()
+    {
+        _runner.NeverCompletes = true;
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => CreateBundledTask(TimeSpan.FromMinutes(1)).RunActionAsync(cts.Token));
+        Assert.Equal(0, _trust.Prompts);
+    }
+
+    private sealed class HangingFirstCallRunner(FakeProcessRunner inner) : IProcessRunner
+    {
+        private bool _hung;
+
+        public async Task<ProcessResult> RunAsync(string fileName, IReadOnlyList<string> arguments, string? standardInput, string? workingDirectory, CancellationToken ct)
+        {
+            if (_hung)
+            {
+                return await inner.RunAsync(fileName, arguments, standardInput, workingDirectory, ct);
+            }
+
+            _hung = true;
+            await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+            throw new InvalidOperationException("An infinite delay ended without cancellation.");
+        }
     }
 
     private sealed class FakeTrust : IAccessibilityTrust
