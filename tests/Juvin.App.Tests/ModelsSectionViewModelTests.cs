@@ -272,6 +272,26 @@ public sealed class ModelsSectionViewModelTests
     }
 
     [Fact]
+    public async Task CheckCodex_FillsTheFailedCommandIntoTheStatus()
+    {
+        _providers.Codex = new ProviderStatus(
+            ProviderStatusKind.Unreachable,
+            "Provider.Status.CodexCommandFailed",
+            [],
+            "codex-cli 0.164.0",
+            ["features list", 1]
+        );
+        var vm = Create();
+
+        await vm.CheckCodexCommand.ExecuteAsync(null);
+
+        Assert.Equal(
+            "The Codex CLI could not run codex features list (exit code 1). Run that command in a terminal to see why.",
+            vm.CodexStatus
+        );
+    }
+
+    [Fact]
     public async Task CheckCodex_OffersInstallHelpOnlyWhileTheCliIsMissing()
     {
         var vm = Create();

@@ -312,6 +312,8 @@
   "Provider.Status.CodexMcpServerName": "An MCP server in the Codex configuration has a name Juvin cannot disable. Rename it or remove it.",
   "Provider.Status.NotSignedIn": "The Codex CLI is not signed in. Run codex login in a terminal, sign in with ChatGPT, and check again.",
   "Provider.Status.CodexNotResponding": "The Codex CLI did not respond.",
+  "Provider.Status.CodexCommandFailed": "The Codex CLI could not run codex {0} (exit code {1}). Run that command in a terminal to see why.",
+  "Provider.Status.CodexCommandUnreadable": "The Codex CLI ran codex {0} but printed nothing Juvin can read. Run that command in a terminal to see why.",
   "Common.Check": "Check",
   "Common.Copy": "Copy",
   "Common.Refresh": "Refresh",

@@ -160,7 +160,9 @@ public sealed class ModelProbeService
     public string DescribeCodex(ProviderStatus status) =>
         status.Kind == ProviderStatusKind.Ready
             ? _localizer.Format("Models.Status.CodexReady", CodexName(status))
-            : _localizer[status.MessageKey];
+            : status.MessageArgs is { } args
+                ? _localizer.Format(status.MessageKey, [.. args])
+                : _localizer[status.MessageKey];
 
     private IModelProvider LocalProvider(AppSettings settings, string url) =>
         _providers.Select(settings with { ProcessingMode = ProcessingMode.Local, LocalServerUrl = url });

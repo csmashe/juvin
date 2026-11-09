@@ -50,9 +50,11 @@ public sealed record ModelInfo(
 
 /// <param name="MessageKey">String table key describing the status to the user.</param>
 /// <param name="Version">The server or CLI version, when the provider reports one.</param>
+/// <param name="MessageArgs">Values for the placeholders in the message, if it has any.</param>
 public sealed record ProviderStatus(
     ProviderStatusKind Kind,
     string MessageKey,
     IReadOnlyList<ModelInfo> Models,
-    string? Version = null
+    string? Version = null,
+    IReadOnlyList<object>? MessageArgs = null
 );

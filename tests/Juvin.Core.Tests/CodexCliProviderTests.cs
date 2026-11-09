@@ -301,6 +301,18 @@ public sealed class CodexCliProviderTests : IDisposable
     }
 
     [Fact]
+    public async Task Complete_WithAConfiguredPathThatIsMissing_PointsAtTheLocation()
+    {
+        var settings = new AppSettings { CodexBinaryPath = "/nowhere/codex" };
+        var provider = new CodexCliProvider(settings, new FakeProcessRunner(_ => throw new InvalidOperationException()), null, TimeSpan.FromMinutes(1));
+
+        var ex = await Assert.ThrowsAsync<ProviderException>(() => provider.CompleteAsync(s_request, null, CancellationToken.None));
+
+        Assert.Equal(ProviderFailureKind.Configuration, ex.Kind);
+        Assert.StartsWith("No Codex CLI at the location set in Models.", ex.Message);
+    }
+
+    [Fact]
     public void ResolveBinary_SearchesPathAndPrefersAConfiguredFile()
     {
         var first = Directory.CreateDirectory(_temp.File("a")).FullName;
@@ -427,22 +439,11 @@ public sealed class CodexCliProviderTests : IDisposable
     }
 
     [Theory]
-    [InlineData(1, FeaturesList)]
-    [InlineData(0, "")]
-    [InlineData(0, "unified_exec  stable  true\nbrowser_use  stable  true\n")]
-    public async Task AFeatureListThatFailsOrLacksTheShellTool_MeansCodexIsTooOld(int exitCode, string features)
+    [InlineData(0, "unified_exec  stable  true\nbrowser_use  stable  true\n", "")]
+    [InlineData(2, "", "error: unrecognized subcommand 'features'")]
+    public async Task AFeatureListWithoutTheShellTool_MeansCodexIsTooOld(int exitCode, string features, string error)
     {
-        var runner = Codex(
-            args =>
-                args[0] switch
-                {
-                    "--version" => new ProcessResult(0, "codex-cli 0.120.0\n", ""),
-                    "exec" when args[1] == "--help" => new ProcessResult(0, ExecHelp, ""),
-                    "exec" => new ProcessResult(0, s_fixture, ""),
-                    _ => new ProcessResult(0, "", "Logged in using ChatGPT"),
-                },
-            new ProcessResult(exitCode, features, "")
-        );
+        var runner = CurrentCodex(features: new ProcessResult(exitCode, features, error));
 
         var ex = await Assert.ThrowsAsync<ProviderException>(() =>
             Provider(runner).CompleteAsync(s_request, null, CancellationToken.None)
@@ -453,6 +454,80 @@ public sealed class CodexCliProviderTests : IDisposable
         Assert.Equal(ProviderStatusKind.Incompatible, status.Kind);
         Assert.Equal("Provider.Status.CodexNeedsUpdate", status.MessageKey);
         Assert.DoesNotContain(runner.Calls, call => call.Arguments is ["exec", "--json", ..]);
+    }
+
+    [Fact]
+    public async Task AFeatureListThatFails_ReportsTheExitCodeInsteadOfTooOld()
+    {
+        var runner = CurrentCodex(features: new ProcessResult(1, "", "cd: /Volumes/share: Permission denied"));
+
+        var ex = await Assert.ThrowsAsync<ProviderException>(() =>
+            Provider(runner).CompleteAsync(s_request, null, CancellationToken.None)
+        );
+        var status = await Provider(runner).ProbeAsync(CancellationToken.None);
+
+        Assert.Equal(ProviderFailureKind.ProcessFailed, ex.Kind);
+        Assert.Equal(
+            "The Codex CLI could not run codex features list (exit code 1). Run that command in a terminal to see why.",
+            ex.Message
+        );
+        Assert.Equal(ProviderStatusKind.Unreachable, status.Kind);
+        Assert.Equal("Provider.Status.CodexCommandFailed", status.MessageKey);
+        Assert.Equal(["features list", 1], status.MessageArgs);
+        Assert.Equal("codex-cli 0.164.0", status.Version);
+        Assert.DoesNotContain(runner.Calls, call => call.Arguments is ["exec", "--json", ..]);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("\n  \n")]
+    public async Task AnEmptyFeatureList_SaysCodexDidNotReportItInsteadOfTooOld(string features)
+    {
+        var runner = CurrentCodex(features: new ProcessResult(0, features, ""));
+
+        var ex = await Assert.ThrowsAsync<ProviderException>(() =>
+            Provider(runner).CompleteAsync(s_request, null, CancellationToken.None)
+        );
+        var status = await Provider(runner).ProbeAsync(CancellationToken.None);
+
+        Assert.Equal(ProviderFailureKind.Protocol, ex.Kind);
+        Assert.Equal(ProviderStatusKind.Unreachable, status.Kind);
+        Assert.Equal("Provider.Status.CodexCommandUnreadable", status.MessageKey);
+        Assert.Equal(["features list"], status.MessageArgs);
+    }
+
+    [Fact]
+    public async Task AnExecHelpThatFails_ReportsTheExitCodeInsteadOfTooOld()
+    {
+        var runner = new FakeProcessRunner(args =>
+            args is ["exec", "--help"] ? new ProcessResult(1, "", "") : new ProcessResult(0, "codex-cli 0.164.0\n", "")
+        );
+
+        var status = await Provider(runner).ProbeAsync(CancellationToken.None);
+
+        Assert.Equal("Provider.Status.CodexCommandFailed", status.MessageKey);
+        Assert.Equal(["exec --help", 1], status.MessageArgs);
+    }
+
+    [Fact]
+    public async Task Probe_ACurrentSignedInCodexIsReady()
+    {
+        var status = await Provider(CurrentCodex()).ProbeAsync(CancellationToken.None);
+
+        Assert.Equal(ProviderStatusKind.Ready, status.Kind);
+        Assert.Equal("Provider.Status.Ready", status.MessageKey);
+        Assert.Null(status.MessageArgs);
+    }
+
+    [Theory]
+    [InlineData(1, "Not logged in", "Provider.Status.NotSignedIn")]
+    [InlineData(0, "", "Provider.Status.NotSignedIn")]
+    [InlineData(1, "", "Provider.Status.CodexCommandFailed")]
+    public async Task Probe_ALoginStatusThatFailsForAnotherReasonIsNotReportedAsSignedOut(int exitCode, string error, string key)
+    {
+        var status = await Provider(CurrentCodex(login: new ProcessResult(exitCode, "", error))).ProbeAsync(CancellationToken.None);
+
+        Assert.Equal(key, status.MessageKey);
     }
 
     [Fact]
@@ -480,31 +555,20 @@ public sealed class CodexCliProviderTests : IDisposable
     }
 
     [Theory]
-    [InlineData(1, McpList)]
-    [InlineData(0, "not json")]
-    [InlineData(0, "{}")]
-    public async Task AnMcpListThatFails_MeansCodexIsTooOld(int exitCode, string mcp)
+    [InlineData(1, McpList, "", "Provider.Status.CodexCommandFailed")]
+    [InlineData(0, "not json", "", "Provider.Status.CodexCommandUnreadable")]
+    [InlineData(0, "{}", "", "Provider.Status.CodexCommandUnreadable")]
+    [InlineData(0, """[{"enabled":true}]""", "", "Provider.Status.CodexCommandUnreadable")]
+    [InlineData(2, "", "error: unexpected argument '--json' found", "Provider.Status.CodexNeedsUpdate")]
+    public async Task AnMcpListThatFails_SaysWhatHappened(int exitCode, string mcp, string error, string key)
     {
-        var runner = Codex(
-            args =>
-                args[0] switch
-                {
-                    "--version" => new ProcessResult(0, "codex-cli 0.120.0\n", ""),
-                    "exec" when args[1] == "--help" => new ProcessResult(0, ExecHelp, ""),
-                    "exec" => new ProcessResult(0, s_fixture, ""),
-                    _ => new ProcessResult(0, "", "Logged in using ChatGPT"),
-                },
-            mcp: new ProcessResult(exitCode, mcp, "")
-        );
+        var runner = CurrentCodex(mcp: new ProcessResult(exitCode, mcp, error));
 
-        var ex = await Assert.ThrowsAsync<ProviderException>(() =>
-            Provider(runner).CompleteAsync(s_request, null, CancellationToken.None)
-        );
+        await Assert.ThrowsAsync<ProviderException>(() => Provider(runner).CompleteAsync(s_request, null, CancellationToken.None));
         var status = await Provider(runner).ProbeAsync(CancellationToken.None);
 
-        Assert.Equal(ProviderFailureKind.Incompatible, ex.Kind);
-        Assert.Equal(ProviderStatusKind.Incompatible, status.Kind);
-        Assert.Equal("Provider.Status.CodexNeedsUpdate", status.MessageKey);
+        Assert.Equal(key, status.MessageKey);
+        Assert.DoesNotContain(runner.Calls, call => call.Arguments is ["exec", "--json", ..]);
     }
 
     [Theory]
@@ -550,6 +614,21 @@ public sealed class CodexCliProviderTests : IDisposable
                 "mcp" => mcp ?? new ProcessResult(0, McpList, ""),
                 _ => respond(args),
             }
+        );
+
+    /// <summary>A current, signed-in Codex unless given other results.</summary>
+    private static FakeProcessRunner CurrentCodex(ProcessResult? features = null, ProcessResult? mcp = null, ProcessResult? login = null) =>
+        Codex(
+            args =>
+                args[0] switch
+                {
+                    "--version" => new ProcessResult(0, "codex-cli 0.164.0\n", ""),
+                    "exec" when args[1] == "--help" => new ProcessResult(0, ExecHelp, ""),
+                    "exec" => new ProcessResult(0, s_fixture, ""),
+                    _ => login ?? new ProcessResult(0, "", "Logged in using ChatGPT"),
+                },
+            features,
+            mcp
         );
 
     private static CodexCliProvider Provider(FakeProcessRunner runner) =>
