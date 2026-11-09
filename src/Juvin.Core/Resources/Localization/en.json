@@ -346,6 +346,7 @@
   "Models.Status.Connected": "Connected to {0}, {1}.",
   "Models.Status.CodexReady": "{0}, signed in.",
   "Models.Status.InvalidUrl": "Enter an http or https address on this machine or your local network, for example http://localhost:11434.",
+  "Models.Status.UnreachableLocalNetworkMac": "The model server could not be reached. If macOS asked whether Juvin may find devices on your local network, choose Allow and check again. Or turn on Juvin in System Settings, Privacy and Security, Local Network.",
   "Models.Status.CheckFailed": "The check failed unexpectedly. Try again.",
   "Wizard.Mode.Title": "Choose where rewrites run",
   "Wizard.Mode.Body": "Local keeps your email on this computer or your own network. Codex uses your ChatGPT subscription through the Codex CLI. You can change this later in Models.",

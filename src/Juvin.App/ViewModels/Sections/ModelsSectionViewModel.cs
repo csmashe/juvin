@@ -124,7 +124,7 @@ public sealed partial class ModelsSectionViewModel : ObservableObject
         Save(s => s with { LocalModel = value.Id });
         if (_probedStatus is not null && _probedUrl is not null && ModelProbeService.IsSameServer(_probedUrl, _settings.Current.LocalServerUrl))
         {
-            LocalStatus = _probes.DescribeLocal(ModelProbeService.WithSelectedModel(_probedStatus, _settings.Current.LocalModel));
+            LocalStatus = _probes.DescribeLocal(ModelProbeService.WithSelectedModel(_probedStatus, _settings.Current.LocalModel), _probedUrl);
         }
     }
 
@@ -189,7 +189,7 @@ public sealed partial class ModelsSectionViewModel : ObservableObject
         // The address or model may have changed while the check ran.
         if (ModelProbeService.IsThisDevice(LocalServerUrl.Trim()) is not null && ModelProbeService.IsSameServer(url, _settings.Current.LocalServerUrl))
         {
-            LocalStatus = _probes.DescribeLocal(ModelProbeService.WithSelectedModel(status, _settings.Current.LocalModel));
+            LocalStatus = _probes.DescribeLocal(ModelProbeService.WithSelectedModel(status, _settings.Current.LocalModel), url);
         }
     }
 
@@ -244,9 +244,9 @@ public sealed partial class ModelsSectionViewModel : ObservableObject
             {
                 LocalStatus = null;
             }
-            else if (_probedStatus is not null && LocalStatus is not null)
+            else if (_probedStatus is not null && _probedUrl is not null && LocalStatus is not null)
             {
-                LocalStatus = _probes.DescribeLocal(ModelProbeService.WithSelectedModel(_probedStatus, settings.LocalModel));
+                LocalStatus = _probes.DescribeLocal(ModelProbeService.WithSelectedModel(_probedStatus, settings.LocalModel), _probedUrl);
             }
 
             // ReSharper disable once InvertIf -- reads as one of the sibling staleness checks above

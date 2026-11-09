@@ -916,6 +916,20 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task AnUnreachableLanAddressOnMac_SaysToAllowTheLocalNetwork()
+    {
+        const string lan = "http://10.0.3.20:11434";
+        _providers.IsMac = true;
+        var vm = await CreateOnModeStepAsync();
+
+        vm.ServerUrl = lan;
+        await WaitUntilAsync(() => vm.Detections.All(row => !row.IsBusy) && vm.Detections.Any(row => row.Url == lan));
+
+        Assert.Equal(_localizer["Models.Status.UnreachableLocalNetworkMac"], vm.Detections.Single(row => row.Url == lan).Summary);
+        Assert.Equal(_localizer.Format("Wizard.Mode.NotRunning", _localizer["Wizard.Mode.Ollama"]), vm.Detections[0].Summary);
+    }
+
+    [Fact]
     public async Task TheCodexRow_OffersInstallHelpOnlyWhileTheCliIsMissing()
     {
         var vm = await CreateOnModeStepAsync();
