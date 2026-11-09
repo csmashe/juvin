@@ -107,7 +107,7 @@ public sealed class CodexCliProvider : IModelProvider
             var help = Checked(await _runner.RunAsync(_binary, ["exec", "--help"], null, null, timeout.Token), "exec --help");
             if (s_requiredExecFlags.Any(flag => !help.StandardOutput.Contains(flag, StringComparison.Ordinal)))
             {
-                throw CheckFailure.TooOld();
+                throw CheckFailure.NeedsUpdate();
             }
 
             await FeaturesAsync(_binary, timeout.Token);
@@ -337,7 +337,7 @@ public sealed class CodexCliProvider : IModelProvider
 
         if (!names.Contains("shell_tool"))
         {
-            throw CheckFailure.TooOld();
+            throw CheckFailure.NeedsUpdate();
         }
 
         _features = names;
@@ -366,6 +366,7 @@ public sealed class CodexCliProvider : IModelProvider
             }
 
             List<string> names = [];
+            // ReSharper disable once ForeachCanBeConvertedToQueryUsingAnotherGetEnumerator -- a throw inside a LINQ selector reads worse than the loop
             foreach (var server in document.RootElement.EnumerateArray())
             {
                 names.Add(GetString(server, "name") ?? throw CheckFailure.Unreadable(command, result));
@@ -396,7 +397,7 @@ public sealed class CodexCliProvider : IModelProvider
             || result.StandardError.Contains("unexpected argument", StringComparison.Ordinal)
         )
         {
-            throw CheckFailure.TooOld();
+            throw CheckFailure.NeedsUpdate();
         }
 
         throw CheckFailure.Failed(command, result);
@@ -431,7 +432,7 @@ public sealed class CodexCliProvider : IModelProvider
         public string MessageKey { get; }
         public IReadOnlyList<object>? MessageArgs { get; }
 
-        public static CheckFailure TooOld() =>
+        public static CheckFailure NeedsUpdate() =>
             new(
                 ProviderStatusKind.Incompatible,
                 ProviderFailureKind.Incompatible,
