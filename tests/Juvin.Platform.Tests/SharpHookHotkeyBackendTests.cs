@@ -52,7 +52,7 @@ public sealed class SharpHookHotkeyBackendTests
     [Fact]
     public async Task Start_RefusesWhileAnOldHookIsStillEnding()
     {
-        var provider = new FakeGlobalHookProvider { TeardownDelay = TimeSpan.FromMilliseconds(3500) };
+        var provider = new FakeGlobalHookProvider { TeardownDelay = TimeSpan.FromMilliseconds(6000) };
         var backend = new SharpHookHotkeyBackend(new Localizer(), provider);
 
         await backend.StartAsync(Chord("Ctrl+Shift+F"), CancellationToken.None);
