@@ -301,6 +301,18 @@ public sealed class CodexCliProviderTests : IDisposable
     }
 
     [Fact]
+    public async Task Complete_WithAConfiguredPathThatIsMissing_PointsAtTheLocation()
+    {
+        var settings = new AppSettings { CodexBinaryPath = "/nowhere/codex" };
+        var provider = new CodexCliProvider(settings, new FakeProcessRunner(_ => throw new InvalidOperationException()), null, TimeSpan.FromMinutes(1));
+
+        var ex = await Assert.ThrowsAsync<ProviderException>(() => provider.CompleteAsync(s_request, null, CancellationToken.None));
+
+        Assert.Equal(ProviderFailureKind.Configuration, ex.Kind);
+        Assert.StartsWith("No Codex CLI at the location set in Models.", ex.Message);
+    }
+
+    [Fact]
     public void ResolveBinary_SearchesPathAndPrefersAConfiguredFile()
     {
         var first = Directory.CreateDirectory(_temp.File("a")).FullName;

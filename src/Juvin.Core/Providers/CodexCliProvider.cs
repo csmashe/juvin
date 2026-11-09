@@ -166,7 +166,9 @@ public sealed class CodexCliProvider : IModelProvider
             _binary
             ?? throw new ProviderException(
                 ProviderFailureKind.Configuration,
-                "The Codex CLI was not found. Install it or set its path in Models."
+                _binaryConfigured
+                    ? "No Codex CLI at the location set in Models. Fix the location, or clear it to find codex on your PATH."
+                    : "The Codex CLI was not found. Install it or set its path in Models."
             );
         var model = request.Model ?? _model;
         var arguments = await ExecArgumentsAsync(binary, model, ct);
