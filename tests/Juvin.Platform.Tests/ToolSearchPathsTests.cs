@@ -10,22 +10,47 @@ namespace Juvin.Platform.Tests;
 public sealed class ToolSearchPathsTests
 {
     [UnixFact]
-    [SupportedOSPlatform("macos")]
-    public void Mac_SearchesHomebrewThenThePerUserDirectories()
+    public void CodexStandaloneInstall_IsUnderCodexHomeWhenSetElseUnderDotCodex()
     {
+        Assert.Equal("/Users/ada/.codex/packages/standalone/current/bin", CodexStandaloneInstall.BinDirectory("/Users/ada", null));
+        Assert.Equal("/Users/ada/.codex/packages/standalone/current/bin", CodexStandaloneInstall.BinDirectory("/Users/ada", " "));
+        Assert.Equal("/opt/codex/packages/standalone/current/bin", CodexStandaloneInstall.BinDirectory("/Users/ada", "/opt/codex"));
+        Assert.Equal("/opt/codex/packages/standalone/current/bin", CodexStandaloneInstall.BinDirectory("", "/opt/codex"));
+        Assert.Null(CodexStandaloneInstall.BinDirectory("", null));
+    }
+
+    [UnixFact]
+    [SupportedOSPlatform("macos")]
+    public void Mac_SearchesTheCodexInstallerThenHomebrewThenThePerUserDirectories()
+    {
+        const string codexBin = "/Users/ada/.codex/packages/standalone/current/bin";
         Assert.Equal(
-            ["/opt/homebrew/bin", "/usr/local/bin", "/Users/ada/.npm-global/bin", "/Users/ada/.bun/bin", "/Users/ada/.local/bin"],
-            MacToolSearchPaths.For("/Users/ada")
+            [codexBin, "/opt/homebrew/bin", "/usr/local/bin", "/Users/ada/.npm-global/bin", "/Users/ada/.bun/bin", "/Users/ada/.local/bin"],
+            MacToolSearchPaths.For("/Users/ada", codexBin)
         );
-        Assert.Equal(["/opt/homebrew/bin", "/usr/local/bin"], MacToolSearchPaths.For(""));
+        Assert.Equal(["/opt/codex/bin", "/opt/homebrew/bin", "/usr/local/bin"], MacToolSearchPaths.For("", "/opt/codex/bin"));
+        Assert.Equal(["/opt/homebrew/bin", "/usr/local/bin"], MacToolSearchPaths.For("", null));
     }
 
     [UnixFact]
     [SupportedOSPlatform("linux")]
-    public void Linux_SearchesThePerUserDirectories()
+    public void Linux_SearchesTheCodexInstallerThenThePerUserDirectories()
     {
-        Assert.Equal(["/home/ada/.local/bin", "/home/ada/.npm-global/bin", "/home/ada/.bun/bin"], LinuxToolSearchPaths.For("/home/ada"));
-        Assert.Empty(LinuxToolSearchPaths.For(""));
+        const string codexBin = "/home/ada/.codex/packages/standalone/current/bin";
+        Assert.Equal(
+            [codexBin, "/home/ada/.local/bin", "/home/ada/.npm-global/bin", "/home/ada/.bun/bin"],
+            LinuxToolSearchPaths.For("/home/ada", codexBin)
+        );
+        Assert.Equal(["/opt/codex/bin"], LinuxToolSearchPaths.For("", "/opt/codex/bin"));
+        Assert.Empty(LinuxToolSearchPaths.For("", null));
+    }
+
+    [WindowsFact]
+    [SupportedOSPlatform("windows")]
+    public void Windows_CodexStandaloneInstallIsUnderCodexHomeWhenSetElseUnderTheProfile()
+    {
+        Assert.Equal(@"C:\Users\ada\.codex\packages\standalone\current\bin", CodexStandaloneInstall.BinDirectory(@"C:\Users\ada", null));
+        Assert.Equal(@"D:\Codex\packages\standalone\current\bin", CodexStandaloneInstall.BinDirectory(@"C:\Users\ada", @"D:\Codex"));
     }
 
     [WindowsFact]
@@ -53,8 +78,8 @@ public sealed class ToolSearchPathsTests
                 key.SetValue("Path", @"C:\Machine;%SystemRoot%\Tools", RegistryValueKind.ExpandString);
             }
 
-            var paths = new WindowsToolSearchPaths(machine, user, @"C:\Local", @"C:\Roaming");
-            Assert.Equal([@"C:\Machine", Environment.ExpandEnvironmentVariables(@"%SystemRoot%\Tools"), @"C:\Local\Programs\OpenAI\Codex\bin", @"C:\Roaming\npm"], paths.GetDirectories());
+            var paths = new WindowsToolSearchPaths(machine, user, @"C:\Local", @"C:\Roaming", @"C:\Codex\bin");
+            Assert.Equal([@"C:\Codex\bin", @"C:\Machine", Environment.ExpandEnvironmentVariables(@"%SystemRoot%\Tools"), @"C:\Local\Programs\OpenAI\Codex\bin", @"C:\Roaming\npm"], paths.GetDirectories());
 
             using (var key = user.CreateSubKey("Environment"))
             {
@@ -62,7 +87,7 @@ public sealed class ToolSearchPathsTests
             }
 
             Assert.Equal(
-                [@"C:\Machine", Environment.ExpandEnvironmentVariables(@"%SystemRoot%\Tools"), @"C:\Users\ada\Codex", @"C:\User", @"C:\Local\Programs\OpenAI\Codex\bin", @"C:\Roaming\npm"],
+                [@"C:\Codex\bin", @"C:\Machine", Environment.ExpandEnvironmentVariables(@"%SystemRoot%\Tools"), @"C:\Users\ada\Codex", @"C:\User", @"C:\Local\Programs\OpenAI\Codex\bin", @"C:\Roaming\npm"],
                 paths.GetDirectories()
             );
         }
