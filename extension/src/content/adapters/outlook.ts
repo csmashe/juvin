@@ -18,7 +18,7 @@ const SELECTORS = {
   actions: '[role="toolbar"]',
   date: '[data-testid="SentReceivedSavedTime"]',
   subject: '[aria-labelledby$="_SUBJECT"]',
-  // The original message a reply or forward quotes, shown read-only under the compose editor.
+  // The original message a reply or forward quotes, shown read-only under the compose editor or moved into it.
   quoteHeader: "#divRplyFwdMsg",
 };
 
@@ -191,8 +191,15 @@ function headerDate(line: string | undefined): string | undefined {
   return Number.isNaN(time) ? undefined : new Date(time).toISOString();
 }
 
-/** The compose editor's container holding the quoted original, searched outward but never past a conversation item. */
+/**
+ * The container holding the quoted original, searched outward from the compose editor but never past a conversation item.
+ * Once the caret enters the quote, Outlook moves it into the editor, after the draft, and the editor is that container.
+ */
 function quoteRoot(editor: HTMLElement): HTMLElement | null {
+  if (editor.querySelector(`:scope > ${SELECTORS.quoteHeader}`)) {
+    return editor;
+  }
+
   for (let element = editor.parentElement; element; element = element.parentElement) {
     const header = element.querySelector<HTMLElement>(SELECTORS.quoteHeader);
     if (header && !editor.contains(header)) {

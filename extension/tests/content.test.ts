@@ -1756,6 +1756,57 @@ describe("Outlook adapter", () => {
     ]);
   });
 
+  // The quoted original of a reply, in the order Outlook draws it: a hidden marker, a spacer, an anchor, the rule, the
+  // header, the reply it quotes, and the older history with its own header under a prefixed id.
+  const QUOTE = `
+    <div id="appendonsend"></div><div><br></div><a></a><hr>
+    <div id="divRplyFwdMsg"><div><b>From:</b> Ana Lopez &lt;ana@example.com&gt;<br><b>Sent:</b> Wednesday, October 28, 2026 3:00 PM<br><b>To:</b> Me &lt;me@example.com&gt;<br><b>Subject:</b> Venue for the offsite</div><div>&nbsp;</div></div>
+    <div>Shall we book the hall?</div><div><br></div>
+    <blockquote><div id="x_m_-1m_-2appendonsend"></div><hr><div id="x_m_-1m_-2divRplyFwdMsg"><div><b>From:</b> Sam</div></div><div>Any venue ideas?</div></blockquote>`;
+  const DRAFT = `<div class="elementToProof">hi ana, sounds good</div><div id="Signature"><div><br></div><p>Me</p></div>`;
+
+  /** A reply composed outside the conversation, with the quote under the editor or, once the caret entered it, inside. */
+  function quotedReply(inside: boolean): HTMLElement {
+    const editor = `<div id="reply" contenteditable="true" role="textbox" aria-label="Message body">${DRAFT}${inside ? QUOTE : '<div class="_Entity _EType_OWA_VirtualEdit_Placeholder"><br></div>'}</div>`;
+    document.body.innerHTML = `<div role="main"><div><div id="editorParent_1">${editor}</div>${inside ? "" : `<div>${QUOTE}</div>`}</div></div>`;
+    return document.getElementById("reply")!;
+  }
+
+  it.each([
+    ["under the editor", false],
+    ["moved into the editor", true],
+  ])("reads the quoted original %s as one message", async (_, inside) => {
+    quotedReply(inside);
+    const result = await capture();
+
+    expect(result.ok && result.capture).toMatchObject({
+      subject: "Venue for the offsite",
+      selection: { text: "ana" },
+      thread: { completeness: "loaded-messages-only", collapsedCount: 0 },
+    });
+    expect(result.ok && result.capture.thread.messages).toEqual([
+      {
+        from: "Ana Lopez <ana@example.com>",
+        sent: new Date(2026, 9, 28, 15, 0).toISOString(),
+        body: "Shall we book the hall?\n\nFrom: Sam\nAny venue ideas?",
+      },
+    ]);
+  });
+
+  it("applies a rewrite into the draft line, leaving a quote moved into the editor alone", async () => {
+    const editor = quotedReply(true);
+    const quote = Array.from(editor.children).slice(2).map((element) => element.outerHTML).join("");
+    const { registry, hash } = await captured();
+    expect(hash).toBe(await hashText(readPlainText(editor).text));
+
+    document.getSelection()!.removeAllRanges();
+    const result = await applyReplacement(document, registry, { editorId: "e-1", expectedHash: hash, start: 3, end: 6, text: "Ana" }, fakeExec);
+
+    expect(result).toEqual({ ok: true });
+    expect(editor.firstElementChild!.textContent).toBe("hi Ana, sounds good");
+    expect(Array.from(editor.children).slice(2).map((element) => element.outerHTML).join("")).toBe(quote);
+  });
+
   it("captures the draft alone in a new message", async () => {
     document.body.innerHTML = `<div role="main"><div id="To" contenteditable="true" aria-label="To">ana@example.com</div>${EDITOR}</div>`;
     const result = await capture();
