@@ -1,5 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Xml;
+using System.Xml.Linq;
 using Juvin.Core.Localization;
 using Juvin.Core.Providers;
 using Juvin.Platform.Mac.Launcher;
@@ -11,10 +13,13 @@ namespace Juvin.Platform.Mac.Setup;
 ///     Asks for the Accessibility permission the global shortcut hook needs on macOS. The hook checks
 ///     the permission through a CoreGraphics preflight that can keep its first answer for the life of
 ///     the process, so a permission granted while Juvin runs needs a restart, which the row offers.
+///     The ad-hoc signature changes with every build, so after an update the Accessibility entry can
+///     show as on while macOS no longer trusts the app; the action resets Juvin's own entry first.
 /// </summary>
 public sealed class AccessibilityPermissionSetupTask : ISetupTask
 {
     internal const string SettingsUrl = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";
+    internal const string TccUtil = "/usr/bin/tccutil";
 
     private readonly Localizer _localizer;
     private readonly IProcessRunner _runner;
@@ -23,10 +28,12 @@ public sealed class AccessibilityPermissionSetupTask : ISetupTask
     private readonly Func<bool> _hotkeyListening;
     private readonly Func<bool> _hotkeyNeedsPermission;
     private readonly IAppRelauncher _relauncher;
+    private readonly string? _bundleIdentifier;
+    private readonly TimeSpan _resetTimeout;
     private readonly SemaphoreSlim _restartGate = new(1, 1);
 
     /// <param name="localizer">Supplies the row text.</param>
-    /// <param name="runner">Opens System Settings at the Accessibility pane.</param>
+    /// <param name="runner">Resets Juvin's Accessibility entry and opens System Settings at the Accessibility pane.</param>
     /// <param name="hotkeyRestart">Called while the permission is granted and the shortcut is not listening, so a hook that failed without it starts.</param>
     /// <param name="hotkeyListening">Whether the shortcut is already listening, in which case no restart is needed.</param>
     /// <param name="hotkeyNeedsPermission">Whether the shortcut last failed because macOS refused the permission; only then can a restart help.</param>
@@ -39,7 +46,16 @@ public sealed class AccessibilityPermissionSetupTask : ISetupTask
         Func<bool> hotkeyNeedsPermission,
         Action requestExit
     )
-        : this(localizer, runner, new AccessibilityTrust(), hotkeyRestart, hotkeyListening, new MacAppRelauncher(requestExit), hotkeyNeedsPermission)
+        : this(
+            localizer,
+            runner,
+            new AccessibilityTrust(),
+            hotkeyRestart,
+            hotkeyListening,
+            new MacAppRelauncher(requestExit),
+            hotkeyNeedsPermission,
+            BundleIdentifier(MacAppRelauncher.BundlePath(Environment.ProcessPath))
+        )
     {
     }
 
@@ -50,7 +66,9 @@ public sealed class AccessibilityPermissionSetupTask : ISetupTask
         Func<CancellationToken, Task> hotkeyRestart,
         Func<bool> hotkeyListening,
         IAppRelauncher relauncher,
-        Func<bool>? hotkeyNeedsPermission = null
+        Func<bool>? hotkeyNeedsPermission = null,
+        string? bundleIdentifier = null,
+        TimeSpan? resetTimeout = null
     )
     {
         _localizer = localizer;
@@ -60,6 +78,8 @@ public sealed class AccessibilityPermissionSetupTask : ISetupTask
         _hotkeyListening = hotkeyListening;
         _hotkeyNeedsPermission = hotkeyNeedsPermission ?? (() => true);
         _relauncher = relauncher;
+        _bundleIdentifier = bundleIdentifier;
+        _resetTimeout = resetTimeout ?? TimeSpan.FromSeconds(5);
     }
 
     public string Id => "accessibility";
@@ -150,6 +170,11 @@ public sealed class AccessibilityPermissionSetupTask : ISetupTask
                 : new SetupActionOutcome(false, _localizer["Setup.Accessibility.RestartFailed"]);
         }
 
+        if (!_trust.IsTrusted())
+        {
+            await ResetEntryAsync(ct).ConfigureAwait(false);
+        }
+
         _trust.Prompt();
         try
         {
@@ -161,6 +186,59 @@ public sealed class AccessibilityPermissionSetupTask : ISetupTask
         catch (Win32Exception)
         {
             return new SetupActionOutcome(false, _localizer["Setup.Accessibility.OpenFailed"]);
+        }
+    }
+
+    /// <summary>
+    ///     Removes Juvin's own Accessibility entry so the prompt that follows adds it again for this build.
+    ///     Without a bundle, as under <c>dotnet run</c>, the permission belongs to the terminal, so nothing is reset.
+    /// </summary>
+    private async Task ResetEntryAsync(CancellationToken ct)
+    {
+        if (_bundleIdentifier is null)
+        {
+            return;
+        }
+
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(_resetTimeout);
+        try
+        {
+            var result = await _runner.RunAsync(TccUtil, ["reset", "Accessibility", _bundleIdentifier], null, null, timeout.Token).ConfigureAwait(false);
+            Trace.WriteLine($"[AccessibilityPermissionSetupTask] tccutil reset exited with {result.ExitCode}.");
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            Trace.WriteLine("[AccessibilityPermissionSetupTask] tccutil reset timed out.");
+        }
+        catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or IOException)
+        {
+            Trace.WriteLine($"[AccessibilityPermissionSetupTask] tccutil reset failed ({ex.GetType().Name}).");
+        }
+    }
+
+    /// <summary>The <c>CFBundleIdentifier</c> in the bundle's <c>Info.plist</c>, or null without a bundle or a readable identifier.</summary>
+    internal static string? BundleIdentifier(string? bundlePath)
+    {
+        if (bundlePath is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            using var reader = XmlReader.Create(Path.Join(bundlePath, "Contents", "Info.plist"), new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore });
+            var identifier = XDocument.Load(reader)
+                .Root?.Element("dict")
+                ?.Elements("key")
+                .FirstOrDefault(key => key.Value == "CFBundleIdentifier")
+                ?.ElementsAfterSelf()
+                .FirstOrDefault();
+            return identifier?.Name == "string" && !string.IsNullOrWhiteSpace(identifier.Value) ? identifier.Value.Trim() : null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or XmlException)
+        {
+            return null;
         }
     }
 }
