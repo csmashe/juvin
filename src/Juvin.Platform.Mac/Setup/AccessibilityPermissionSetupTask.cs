@@ -209,7 +209,7 @@ public sealed class AccessibilityPermissionSetupTask : ISetupTask
         {
             Trace.WriteLine("[AccessibilityPermissionSetupTask] tccutil reset timed out.");
         }
-        catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or IOException)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Trace.WriteLine($"[AccessibilityPermissionSetupTask] tccutil reset failed ({ex.GetType().Name}).");
         }
