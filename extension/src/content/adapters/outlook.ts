@@ -1,5 +1,5 @@
 import type { ThreadMessage } from "../../shared/protocol";
-import { isRendered, readPlainText } from "../plain-text";
+import { isRendered, pointToOffset, readPlainText } from "../plain-text";
 import { editorForSelection, type SiteAdapter, type ThreadSnapshot } from "./adapter";
 import { genericAdapter, normalize, PAGE_TEXT_LIMIT, truncate } from "./generic";
 
@@ -193,11 +193,12 @@ function headerDate(line: string | undefined): string | undefined {
 
 /**
  * The container holding the quoted original, searched outward from the compose editor but never past a conversation item.
- * Once the caret enters the quote, Outlook moves it into the editor, after the draft, and the editor is that container.
+ * Once the caret enters the quote, Outlook moves it into the editor, after the draft.
  */
 function quoteRoot(editor: HTMLElement): HTMLElement | null {
-  if (editor.querySelector(`:scope > ${SELECTORS.quoteHeader}`)) {
-    return editor;
+  const inside = editor.querySelector<HTMLElement>(SELECTORS.quoteHeader);
+  if (inside) {
+    return inside.parentElement!;
   }
 
   for (let element = editor.parentElement; element; element = element.parentElement) {
@@ -220,9 +221,8 @@ function captureQuote(root: HTMLElement, editor: HTMLElement): ThreadSnapshot {
   const header = root.querySelector<HTMLElement>(SELECTORS.quoteHeader)!;
   const headerText = normalize(readPlainText(header).text);
   const lines = headerText.split("\n").filter((line) => line.trim().length > 0);
-  const full = normalize(readPlainText(root, editor).text);
-  const at = full.indexOf(headerText);
-  const text = (at >= 0 ? full.slice(at + headerText.length) : full).trim();
+  const plain = readPlainText(root, editor);
+  const text = normalize(plain.text.slice(pointToOffset(plain, header, header.childNodes.length))).trim();
   const subject = lines.length >= 4 ? headerValue(lines[lines.length - 1]) || undefined : undefined;
   return {
     subject,
