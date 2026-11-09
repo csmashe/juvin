@@ -109,8 +109,8 @@ function removeProfile(profile) {
   }
 }
 
-function launch(binary, argv, outFile) {
-  const child = spawn(binary, argv, { stdio: ["ignore", "pipe", "pipe"] });
+function launch(binary, argv, outFile, env = process.env) {
+  const child = spawn(binary, argv, { stdio: ["ignore", "pipe", "pipe"], env });
   const chunks = [];
   child.stdout.on("data", (data) => chunks.push(data));
   child.stderr.on("data", (data) => chunks.push(data));
@@ -367,6 +367,8 @@ async function firefox(appLog) {
     args.binary,
     ["-marionette", "-remote-allow-system-access", "-no-remote", "-profile", profile, "about:blank"],
     join(args.out, "firefox-output.log"),
+    // Firefox 159 refuses Marionette's chrome context unless this is set too.
+    { ...process.env, MOZ_REMOTE_ALLOW_SYSTEM_ACCESS: "1" },
   );
   try {
     const client = await Marionette.open(port, 60000);
