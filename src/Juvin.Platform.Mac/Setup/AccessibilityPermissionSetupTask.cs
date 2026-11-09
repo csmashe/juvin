@@ -1,7 +1,5 @@
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Xml;
-using System.Xml.Linq;
 using Juvin.Core.Localization;
 using Juvin.Core.Providers;
 using Juvin.Platform.Mac.Launcher;
@@ -54,7 +52,7 @@ public sealed class AccessibilityPermissionSetupTask : ISetupTask
             hotkeyListening,
             new MacAppRelauncher(requestExit),
             hotkeyNeedsPermission,
-            BundleIdentifier(MacAppRelauncher.BundlePath(Environment.ProcessPath))
+            MacAppRelauncher.BundlePath(Environment.ProcessPath) is null ? null : MacAppRelauncher.BundleIdentifier
         )
     {
     }
@@ -214,31 +212,6 @@ public sealed class AccessibilityPermissionSetupTask : ISetupTask
         catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or IOException)
         {
             Trace.WriteLine($"[AccessibilityPermissionSetupTask] tccutil reset failed ({ex.GetType().Name}).");
-        }
-    }
-
-    /// <summary>The <c>CFBundleIdentifier</c> in the bundle's <c>Info.plist</c>, or null without a bundle or a readable identifier.</summary>
-    internal static string? BundleIdentifier(string? bundlePath)
-    {
-        if (bundlePath is null)
-        {
-            return null;
-        }
-
-        try
-        {
-            using var reader = XmlReader.Create(Path.Join(bundlePath, "Contents", "Info.plist"), new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore });
-            var identifier = XDocument.Load(reader)
-                .Root?.Element("dict")
-                ?.Elements("key")
-                .FirstOrDefault(key => key.Value == "CFBundleIdentifier")
-                ?.ElementsAfterSelf()
-                .FirstOrDefault();
-            return identifier?.Name == "string" && !string.IsNullOrWhiteSpace(identifier.Value) ? identifier.Value.Trim() : null;
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or XmlException)
-        {
-            return null;
         }
     }
 }

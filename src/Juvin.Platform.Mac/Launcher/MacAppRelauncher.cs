@@ -17,6 +17,9 @@ internal interface IAppRelauncher
 /// <summary>Reopens <c>Juvin.app</c> through LaunchServices after this process exits.</summary>
 internal sealed class MacAppRelauncher : IAppRelauncher
 {
+    /// <summary>The <c>CFBundleIdentifier</c> that <c>scripts/build-mac-dmg.sh</c> writes into <c>Juvin.app</c>.</summary>
+    internal const string BundleIdentifier = "com.juvin.app";
+
     // A copy opened while this one still holds the single-instance lock would only hand over to it, so
     // the shell waits up to a minute for this process to end and opens nothing if it is still running.
     // The wait runs as a job in its own process group, because launchd ends the group of a Juvin it

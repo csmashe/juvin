@@ -370,51 +370,6 @@ public sealed class MacAccessibilityPermissionSetupTaskTests
         Assert.Equal(0, _trust.Prompts);
     }
 
-    [Fact]
-    public void BundleIdentifier_reads_the_info_plist()
-    {
-        using var temp = new TempDirectory();
-        var bundle = temp.File("Juvin.app");
-        Directory.CreateDirectory(Path.Join(bundle, "Contents"));
-        File.WriteAllText(
-            Path.Join(bundle, "Contents", "Info.plist"),
-            """
-            <?xml version="1.0" encoding="UTF-8"?>
-            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-            <plist version="1.0">
-            <dict>
-                <key>CFBundleExecutable</key>
-                <string>juvin</string>
-                <key>CFBundleIdentifier</key>
-                <string>com.juvin.app</string>
-            </dict>
-            </plist>
-            """
-        );
-
-        Assert.Equal(BundleId, AccessibilityPermissionSetupTask.BundleIdentifier(bundle));
-    }
-
-    [Theory]
-    [InlineData(null)]
-    [InlineData("<plist><dict><key>CFBundleName</key><string>Juvin</string></dict></plist>")]
-    [InlineData("<plist><dict><key>CFBundleIdentifier</key><true/></dict></plist>")]
-    [InlineData("<plist><dict><key>CFBundleIdentifier</key><string> </string></dict></plist>")]
-    [InlineData("not xml")]
-    public void BundleIdentifier_is_null_without_a_readable_identifier(string? plist)
-    {
-        using var temp = new TempDirectory();
-        var bundle = temp.File("Juvin.app");
-        Directory.CreateDirectory(Path.Join(bundle, "Contents"));
-        if (plist is not null)
-        {
-            File.WriteAllText(Path.Join(bundle, "Contents", "Info.plist"), plist);
-        }
-
-        Assert.Null(AccessibilityPermissionSetupTask.BundleIdentifier(bundle));
-        Assert.Null(AccessibilityPermissionSetupTask.BundleIdentifier(null));
-    }
-
     private sealed class HangingFirstCallRunner(FakeProcessRunner inner) : IProcessRunner
     {
         private bool _hung;
