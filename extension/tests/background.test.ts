@@ -17,6 +17,7 @@ class FakeEvent<T extends Listener> {
 }
 
 interface FakePort {
+  error?: { message: string };
   posted: unknown[];
   postMessage: (message: unknown) => void;
   disconnect: () => void;
@@ -47,6 +48,9 @@ interface Harness {
   registered: string[];
   permissionsAdded: FakeEvent<() => void>;
   permissionsRemoved: FakeEvent<() => void>;
+  alarms: Map<string, { name: string; scheduledTime: number; periodInMinutes?: number }>;
+  alarmFired: FakeEvent<(alarm: { name: string; scheduledTime: number; periodInMinutes?: number }) => void>;
+  tabActivated: FakeEvent<() => void>;
 }
 
 const TAB = 5;
@@ -130,9 +134,12 @@ function fakeBrowser(h: Harness): unknown {
       },
       onRemoved: noop,
       onUpdated: h.tabUpdated,
+      onActivated: h.tabActivated,
     },
     commands: { onCommand: noop },
     windows: {
+      WINDOW_ID_NONE: -1,
+      onFocusChanged: noop,
       getLastFocused: () => Promise.resolve({ focused: true }),
       update: (windowId: number, info: { focused?: boolean }) => {
         if (info.focused) {
@@ -141,6 +148,15 @@ function fakeBrowser(h: Harness): unknown {
 
         return Promise.resolve({ id: windowId });
       },
+    },
+    alarms: {
+      create: (name: string, info: { periodInMinutes?: number }) => {
+        h.alarms.set(name, { name, scheduledTime: 0, periodInMinutes: info.periodInMinutes });
+        return Promise.resolve();
+      },
+      get: (name: string) => Promise.resolve(h.alarms.get(name)),
+      clear: (name: string) => Promise.resolve(h.alarms.delete(name)),
+      onAlarm: h.alarmFired,
     },
     permissions: { contains: () => Promise.resolve(h.allSites), onAdded: h.permissionsAdded, onRemoved: h.permissionsRemoved },
     scripting: {
@@ -179,6 +195,9 @@ function newHarness(): Harness {
     registered: [],
     permissionsAdded: new FakeEvent(),
     permissionsRemoved: new FakeEvent(),
+    alarms: new Map(),
+    alarmFired: new FakeEvent(),
+    tabActivated: new FakeEvent(),
   };
   vi.doMock("webextension-polyfill", () => ({ default: fakeBrowser(h) }));
   return h;
@@ -411,6 +430,54 @@ describe("background", () => {
 
     expect(h.content.some((r) => r.kind === "juvin.menu.show")).toBe(false);
   });
+
+  it("retries on an alarm after a drop and stops once connected", async () => {
+    await connect(h);
+    h.port().onDisconnect.fire(h.port());
+    await settle();
+    expect(h.alarms.get("juvin.reconnect")?.periodInMinutes).toBe(0.5);
+
+    h.alarmFired.fire(h.alarms.get("juvin.reconnect")!);
+    await settle();
+    expect(h.ports).toHaveLength(2);
+    expect(h.alarms.get("juvin.reconnect")?.periodInMinutes).toBe(1);
+
+    h.port().onMessage.fire(CONFIG);
+    await settle();
+    expect(h.alarms.size).toBe(0);
+  });
+
+  it("opens one port for a burst of browser activity after a drop", async () => {
+    await connect(h);
+    h.port().onDisconnect.fire(h.port());
+    await settle();
+
+    h.tabActivated.fire();
+    h.tabUpdated.fire(TAB, { status: "complete" });
+    h.runtimeMessage({ kind: "juvin.activity" });
+    h.alarmFired.fire(h.alarms.get("juvin.reconnect")!);
+    await settle();
+
+    expect(h.ports).toHaveLength(2);
+  });
+
+  it("does not retry when the native host is not registered", async () => {
+    const connecting = h.runtimeMessage({ kind: "juvin.connect" }, {});
+    await settle();
+    const port = h.port();
+    port.error = { message: "Specified native messaging host not found." };
+    port.onDisconnect.fire(port);
+    expect(await connecting).toMatchObject({ connected: false, lastError: "Specified native messaging host not found." });
+    await settle();
+
+    h.tabActivated.fire();
+    await settle();
+    expect(h.alarms.size).toBe(0);
+    expect(h.ports).toHaveLength(1);
+
+    void h.runtimeMessage({ kind: "juvin.connect" }, {});
+    expect(h.ports).toHaveLength(2);
+  });
 });
 
 describe("Connection", () => {
@@ -453,6 +520,35 @@ describe("Connection", () => {
 
     h.port().onDisconnect.fire(h.port());
     expect(dropped).toHaveBeenCalledOnce();
+  });
+
+  it("closes a port that never got config before the retry opens the next one", async () => {
+    vi.useFakeTimers();
+    try {
+      const h = newHarness();
+      const { Connection } = await import("../src/background/connection");
+      const { Reconnector } = await import("../src/background/reconnect");
+      const disconnected = vi.fn();
+      const connection = new Connection(() => undefined, undefined, undefined, (reason) => void reconnector.failed(reason));
+      const reconnector = new Reconnector(connection);
+      const connecting = connection.ensureConnected().catch((e: Error) => e.message);
+      await vi.advanceTimersByTimeAsync(0);
+      h.port().disconnect = disconnected;
+
+      reconnector.activity("tab");
+      expect(h.ports).toHaveLength(1);
+
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(await connecting).toBe("Juvin did not answer. Is the Juvin app running?");
+      expect(disconnected).toHaveBeenCalledOnce();
+      expect(h.alarms.get("juvin.reconnect")?.periodInMinutes).toBe(0.5);
+
+      reconnector.alarm(h.alarms.get("juvin.reconnect")!);
+      expect(h.ports).toHaveLength(2);
+      expect(connection.status().connecting).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

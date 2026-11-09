@@ -29,8 +29,8 @@ async function browserIdentity(): Promise<BrowserIdentity> {
 }
 
 /**
- * The one native messaging port to the app. Connects on demand with no retry loop; a drop sets the badge
- * and the next user action reconnects. The received config lives in memory only.
+ * The one native messaging port to the app. Connects on demand; a failure sets the badge and is reported to
+ * onFailed, which schedules the quiet retries. The received config lives in memory only.
  */
 export class Connection {
   private port?: Runtime.Port;
@@ -45,6 +45,7 @@ export class Connection {
     private readonly onRequest: RequestHandler,
     private readonly onDropped: () => void = () => undefined,
     private readonly onConfig: () => void = () => undefined,
+    private readonly onFailed: (reason: string) => void = () => undefined,
   ) {}
 
   status(): Status {
@@ -215,5 +216,6 @@ export class Connection {
     const waiters = this.waiters;
     this.waiters = [];
     waiters.forEach((w) => w.reject(new Error(reason)));
+    this.onFailed(reason);
   }
 }

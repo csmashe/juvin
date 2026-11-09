@@ -20,6 +20,7 @@ import {
   type TestPageRequestMessage,
 } from "../shared/protocol";
 import {
+  isActivityNotice,
   isMenuNotice,
   isPopupRequest,
   type ApplyResult,
@@ -34,12 +35,23 @@ import {
 } from "../shared/runtime-messages";
 import { Connection, type IsLive, type Reply } from "./connection";
 import { EditorTabs } from "./editor-tabs";
+import { Reconnector } from "./reconnect";
 import { ShortcutTabs } from "./shortcut-tabs";
 import { buildTrimmedContextResponse } from "./trim";
 
 const CONTENT_SCRIPT = "content.js";
 
-const connection = new Connection(onAppRequest, onDisconnected, () => void sendShortcut());
+const connection = new Connection(
+  onAppRequest,
+  onDisconnected,
+  () => {
+    reconnector.connected();
+    void sendShortcut();
+  },
+  (reason) => void reconnector.failed(reason),
+);
+
+const reconnector = new Reconnector(connection);
 
 const editorTabs = new EditorTabs((tabId) => browser.tabs.get(tabId));
 
@@ -480,6 +492,15 @@ browser.permissions.onRemoved.addListener(() => void syncAllSitesScript());
 
 browser.runtime.onStartup.addListener(() => connectQuietly("startup"));
 browser.runtime.onInstalled.addListener(() => connectQuietly("installed"));
+browser.alarms.onAlarm.addListener((alarm) => reconnector.alarm(alarm));
+
+// A desktop shortcut never reaches the browser, so browser activity is what tells it the user is back after the app restarted.
+browser.tabs.onActivated.addListener(() => reconnector.activity("tab"));
+browser.windows.onFocusChanged.addListener((windowId: number) => {
+  if (windowId !== browser.windows.WINDOW_ID_NONE) {
+    reconnector.activity("window");
+  }
+});
 
 browser.commands.onCommand.addListener((command: string, commandTab: Tabs.Tab | undefined) => {
   if (command !== "rewrite") {
@@ -505,6 +526,10 @@ browser.runtime.onMessage.addListener((message: unknown, sender: Runtime.Message
     return onMenuNotice(message, sender);
   }
 
+  if (isActivityNotice(message)) {
+    reconnector.activity("editor");
+  }
+
   return undefined;
 });
 
@@ -517,6 +542,10 @@ browser.tabs.onRemoved.addListener((tabId: number) => {
 
 // A same-document navigation (Gmail changes the URL as a draft saves) keeps the menu, so ask the page rather than assume a reload.
 browser.tabs.onUpdated.addListener((tabId: number, changeInfo: Tabs.OnUpdatedChangeInfoType) => {
+  if (changeInfo.status === "complete") {
+    reconnector.activity("tab-loaded");
+  }
+
   const menu = openMenu;
   if (changeInfo.status !== "complete" || menu?.tabId !== tabId) {
     return;
