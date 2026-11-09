@@ -153,6 +153,7 @@ public class App : Application
         commands.TriggerRequested += hotkeys.HandleTrigger;
         _ = StartControlSocketAsync(services.GetRequiredService<ILocalSocketServer>(), commands);
 
+        _ = Task.Run(() => RefreshHostCopies(services.GetRequiredService<INativeHostRegistrar>()));
         var connector = services.GetRequiredService<ConnectorService>();
         _ = StartConnectorAsync(connector);
 
@@ -285,6 +286,18 @@ public class App : Application
         catch (ArgumentException ex)
         {
             Trace.WriteLine($"[App] Browser connector did not start: {ex.GetType().Name}");
+        }
+    }
+
+    private static void RefreshHostCopies(INativeHostRegistrar registrar)
+    {
+        try
+        {
+            registrar.RefreshStaleHostCopies();
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[App] Could not refresh the browser connector copies: {ex.GetType().Name}");
         }
     }
 

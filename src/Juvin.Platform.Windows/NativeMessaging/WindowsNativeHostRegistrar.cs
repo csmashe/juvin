@@ -46,6 +46,11 @@ public sealed class WindowsNativeHostRegistrar : INativeHostRegistrar
 
     public IReadOnlyList<SandboxEndpoint> SandboxEndpoints => [];
 
+    /// <summary>Not needed: every manifest points at the installed host, never at a copy.</summary>
+    public void RefreshStaleHostCopies()
+    {
+    }
+
     public IReadOnlyList<BrowserTarget> DetectBrowsers()
     {
         return [.. s_browsers.Where(b => HasAppPath(_userRoot, b.Executable) || HasAppPath(_machineRoot, b.Executable)).Select(b => b.Target)];
