@@ -82,6 +82,44 @@ function hasNewBreakBeforeBlock(editor: Editor, known: ReadonlySet<Element>): bo
 }
 
 /**
+ * Puts back the text the editor changed since `before`, as one edit through the editor's own command over the part that
+ * differs, then selects the captured range again.
+ */
+function restoreText(doc: Document, editor: Editor, before: string, offsets: { start: number; end: number }, exec: ExecCommand): void {
+  const now = editorText(editor);
+  const select = (start: number, end: number): void => {
+    if (isTextArea(editor)) {
+      editor.setSelectionRange(start, end);
+    } else {
+      const selection = doc.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(offsetsToRange(editor, readPlainText(editor), start, end));
+    }
+  };
+
+  if (now !== before) {
+    let prefix = 0;
+    while (prefix < now.length && prefix < before.length && now[prefix] === before[prefix]) {
+      prefix++;
+    }
+
+    let suffix = 0;
+    while (suffix < now.length - prefix && suffix < before.length - prefix && now[now.length - 1 - suffix] === before[before.length - 1 - suffix]) {
+      suffix++;
+    }
+
+    const missing = before.slice(prefix, before.length - suffix);
+    select(prefix, now.length - suffix);
+    exec(doc, missing.length > 0 ? "insertText" : "delete", missing);
+    if (editorText(editor) !== before) {
+      return;
+    }
+  }
+
+  select(offsets.start, offsets.end);
+}
+
+/**
  * Replaces the captured selection with `text`, only when the editor still holds the draft that was captured.
  * Goes through the editor's own editing command so Undo keeps working; never writes innerHTML or textContent.
  */
@@ -120,8 +158,6 @@ export async function applyReplacement(
   }
 
   const insertion = insertionFor(doc, editor, text, request.format === "markdown");
-  // Set when the editor swapped the selection for a placeholder: a failed edit then has to put the text back itself.
-  let restoreSelection = (): void => {};
   let accepted: boolean;
   let usedFallback = false;
   editor.focus();
@@ -132,6 +168,12 @@ export async function applyReplacement(
   if (editorText(editor) !== before || (signature !== undefined && formatSignature(editor, offsets.start, offsets.end) !== signature)) {
     return failure("draft-changed", "The draft changed since it was captured.");
   }
+
+  // From here on Apply may have changed the editor, so every refusal first puts the draft back as it was.
+  const refuse = (message: string): ApplyResult => {
+    restoreText(doc, editor, before, offsets, exec);
+    return failure("internal", message);
+  };
 
   // Text alone cannot show whether an HTML edit kept its formatting, as in turning "hello" into "**hello**".
   const html = insertion.command === "insertHTML";
@@ -167,15 +209,7 @@ export async function applyReplacement(
       if (now === before) {
         select();
       } else if (selection.toString() !== "\u200b" || now !== placeholder) {
-        return failure("internal", "The editor did not change as expected before the edit command.");
-      } else {
-        restoreSelection = () => {
-          if (editorText(editor) === placeholder) {
-            selection.removeAllRanges();
-            selection.addRange(offsetsToRange(editor, readPlainText(editor), offsets.start, offsets.start + 1));
-            exec(doc, "insertText", before.slice(offsets.start, offsets.end));
-          }
-        };
+        return refuse("The editor did not change as expected before the edit command.");
       }
     }
 
@@ -197,15 +231,14 @@ export async function applyReplacement(
         // The Undo did not exactly reverse the edit; put the edit back rather than leave the draft in between.
         exec(doc, "redo");
         if (editorText(editor) !== edited) {
-          return failure("internal", "The editor did not change as expected after the edit command.");
+          return refuse("The editor did not change as expected after the edit command.");
         }
       }
     }
   }
 
   if (!accepted) {
-    restoreSelection();
-    return failure("internal", "The editor rejected the edit command.");
+    return refuse("The editor rejected the edit command.");
   }
 
   const expected = before.slice(0, offsets.start) + insertion.rendered + before.slice(offsets.end);
@@ -217,11 +250,10 @@ export async function applyReplacement(
         editor.value = before;
       } else {
         exec(doc, "undo");
-        restoreSelection();
       }
     }
 
-    return failure("internal", "The editor did not change as expected after the edit command.");
+    return refuse("The editor did not change as expected after the edit command.");
   }
 
   return { ok: true };

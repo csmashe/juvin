@@ -477,6 +477,15 @@ describe("applyReplacement", () => {
     expect(editor.innerHTML).toBe(original);
   });
 
+  it("puts the text back itself when the Undo after a wrong edit changes nothing", async () => {
+    const { editor, registry, hash } = await captured();
+    const exec: ExecCommand = (doc, command, value) => command !== "undo" && fakeExec(doc, command, value === "Robin" ? "Rob" : value);
+    const result = await applyReplacement(document, registry, { editorId: "e-1", expectedHash: hash, start: 4, end: 9, text: "Robin" }, exec);
+    expect(!result.ok && result.error.code).toBe("internal");
+    expect(readPlainText(editor).text).toBe("hey robin\napril works");
+    expect(document.getSelection()!.toString()).toBe("robin");
+  });
+
   it("reports editor-gone for an unknown or removed editor", async () => {
     const { editor, registry, hash } = await captured();
     expect((await applyReplacement(document, registry, { editorId: "e-x", expectedHash: hash, start: 4, end: 9, text: "a" }, fakeExec)).ok).toBe(false);
@@ -1818,7 +1827,7 @@ describe("Outlook adapter", () => {
     expect(readPlainText(editor).text).toBe("hi Ana\nsounds good");
   });
 
-  it("stops before the edit when the key press changes the draft some other way", async () => {
+  it("stops before the edit and puts the draft back when the key press changes the draft some other way", async () => {
     document.body.innerHTML = EDITOR;
     const editor = document.getElementById("reply")!;
     const { registry, hash } = await captured();
@@ -1828,7 +1837,66 @@ describe("Outlook adapter", () => {
 
     const result = await applyReplacement(document, registry, { editorId: "e-1", expectedHash: hash, start: 3, end: 6, text: "Ana" }, fakeExec, typed);
     expect(result).toMatchObject({ ok: false, error: { code: "internal" } });
-    expect(readPlainText(editor).text).toBe("hi anaa\nsounds good");
+    expect(readPlainText(editor).text).toBe("hi ana\nsounds good");
+    expect(document.getSelection()!.toString()).toBe("ana");
+  });
+
+  it("puts the line back when the key press reshapes it around the placeholder", async () => {
+    // The layout from typing at offset 0 of the editor: the line is bare text, then an empty line before the signature.
+    document.body.innerHTML = `<div id="editorParent_1"><div id="reply" contenteditable="true" role="textbox">thanks, see you then<div><br></div><div id="Signature"><div>Sam</div></div><div><br></div></div></div>`;
+    const editor = document.getElementById("reply")!;
+    const registry = new EditorRegistry(() => "e-1");
+    select(editor, 0, 20);
+    const capture = await captureContext(document, OUTLOOK, registry, [outlookAdapter]);
+    const hash = capture.ok ? capture.capture.editor.hash : "";
+    const before = readPlainText(editor).text;
+    // Outlook's editor wraps the placeholder in a line of its own and drops the empty line after it.
+    const reshape = (): void => {
+      editor.firstChild!.remove();
+      editor.firstElementChild!.remove();
+      const line = document.createElement("div");
+      line.append("\u200b");
+      editor.prepend(line);
+      document.getSelection()!.selectAllChildren(line);
+    };
+    const commands: string[] = [];
+    // As in Chrome, each line break in the inserted text starts a new line after the current one.
+    const exec: ExecCommand = (doc, command, value) => {
+      commands.push(command);
+      const [first, ...rest] = (value ?? "").split("\n");
+      fakeExec(doc, command, first);
+      let line = doc.getSelection()!.getRangeAt(0).startContainer.parentElement!;
+      for (const text of rest) {
+        const next = document.createElement("div");
+        next.append(text || document.createElement("br"));
+        line.after(next);
+        line = next;
+      }
+
+      return true;
+    };
+
+    const result = await applyReplacement(document, registry, { editorId: "e-1", expectedHash: hash, start: 0, end: 20, text: "Thanks, see you then." }, exec, reshape);
+    expect(result).toMatchObject({ ok: false, error: { code: "internal" } });
+    expect(readPlainText(editor).text).toBe(before);
+    expect(document.getSelection()!.toString()).toBe("thanks, see you then");
+    expect(commands).toEqual(["insertText"]);
+  });
+
+  it("makes exactly one edit when the placeholder is as expected", async () => {
+    document.body.innerHTML = EDITOR;
+    const editor = document.getElementById("reply")!;
+    const { registry, hash } = await captured();
+    const commands: string[] = [];
+    const exec: ExecCommand = (doc, command, value) => {
+      commands.push(`${command} ${value}`);
+      return fakeExec(doc, command, value);
+    };
+
+    const result = await applyReplacement(document, registry, { editorId: "e-1", expectedHash: hash, start: 3, end: 6, text: "Ana" }, exec, outlookKeyPress);
+    expect(result).toEqual({ ok: true });
+    expect(commands).toEqual(["insertText Ana"]);
+    expect(readPlainText(editor).text).toBe("hi Ana\nsounds good");
   });
 
   it("makes the editor record an undo point with a key press over the selection", () => {
