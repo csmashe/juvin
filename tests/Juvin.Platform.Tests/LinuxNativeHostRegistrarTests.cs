@@ -533,6 +533,48 @@ public sealed class LinuxNativeHostRegistrarTests : IDisposable
     }
 
     [LinuxFact]
+    public async Task RefreshStaleHostCopies_RestoresTheExecuteBitOfAnOtherwiseCurrentCopy()
+    {
+        var registrar = CreateRegistrar();
+        await registrar.RegisterAsync(FlatpakFirefox, CancellationToken.None);
+        File.SetUnixFileMode(FlatpakCopy, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        Assert.Equal(HostRegistration.Stale, registrar.CheckRegistration(FlatpakFirefox));
+
+        registrar.RefreshStaleHostCopies();
+
+        Assert.Equal(Executable, File.GetUnixFileMode(FlatpakCopy));
+        Assert.Equal(HostRegistration.Registered, registrar.CheckRegistration(FlatpakFirefox));
+    }
+
+    [LinuxFact]
+    public async Task RefreshStaleHostCopies_ContinuesPastACopyThatCannotBeWritten()
+    {
+        CreateExecutable("flatpak");
+        var zen = new BrowserTarget("zen-flatpak", "Zen", BrowserFamily.Firefox, BrowserPackaging.Flatpak);
+        var zenCopy = Path.Join(Home, ".var/app/app.zen_browser.zen/data/juvin/juvin-host");
+        var registrar = CreateRegistrar();
+        await registrar.RegisterAsync(FlatpakFirefox, CancellationToken.None);
+        await registrar.RegisterAsync(zen, CancellationToken.None);
+        await File.WriteAllTextAsync(HostPath, "a newer self-contained host");
+        var lockedDirectory = Path.GetDirectoryName(FlatpakCopy)!;
+        var originalMode = File.GetUnixFileMode(lockedDirectory);
+        File.SetUnixFileMode(lockedDirectory, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        try
+        {
+            registrar.RefreshStaleHostCopies();
+
+            Assert.Equal("self-contained host", await File.ReadAllTextAsync(FlatpakCopy));
+            Assert.Equal([FlatpakCopy], Directory.GetFiles(lockedDirectory));
+            Assert.Equal("a newer self-contained host", await File.ReadAllTextAsync(zenCopy));
+            Assert.Equal(HostRegistration.Registered, registrar.CheckRegistration(zen));
+        }
+        finally
+        {
+            File.SetUnixFileMode(lockedDirectory, originalMode);
+        }
+    }
+
+    [LinuxFact]
     public async Task RefreshStaleHostCopies_LeavesAnotherInstallationsManifestAndItsCopy()
     {
         var registrar = CreateRegistrar();

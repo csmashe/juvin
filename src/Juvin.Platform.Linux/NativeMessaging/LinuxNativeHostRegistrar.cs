@@ -214,6 +214,7 @@ public sealed class LinuxNativeHostRegistrar : INativeHostRegistrar
             return;
         }
 
+        var frameworkDependent = IsFrameworkDependent(hostPath);
         var refreshed = new List<string>();
         foreach (var browser in _browsers)
         {
@@ -222,7 +223,7 @@ public sealed class LinuxNativeHostRegistrar : INativeHostRegistrar
                 || !File.Exists(copy)
                 || NativeHostManifest.Check(ManifestPath(browser), browser.Family, copy) != HostRegistration.Registered
                 || (IsCurrentCopy(copy, hostPath) && UnixFileAccess.CanExecute(copy))
-                || (browser.FlatpakId is not null && IsFrameworkDependent(hostPath))
+                || (browser.FlatpakId is not null && frameworkDependent)
             )
             {
                 continue;
@@ -241,7 +242,7 @@ public sealed class LinuxNativeHostRegistrar : INativeHostRegistrar
 
         if (refreshed.Count > 0)
         {
-            Trace.WriteLine($"[LinuxNativeHostRegistrar] Refreshed {refreshed.Count} host copies: {string.Join(", ", refreshed)}.");
+            Trace.WriteLine($"[LinuxNativeHostRegistrar] Refreshed the host copy for: {string.Join(", ", refreshed)}.");
         }
     }
 
