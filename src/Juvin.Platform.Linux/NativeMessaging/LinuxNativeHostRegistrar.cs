@@ -201,6 +201,50 @@ public sealed class LinuxNativeHostRegistrar : INativeHostRegistrar
         Trace.WriteLine($"[LinuxNativeHostRegistrar] Registered {definition.Id}.");
     }
 
+    /// <remarks>
+    ///     Only an existing copy that this installation's own manifest points at is replaced, the way
+    ///     <see cref="RegisterAsync" /> writes it. A sandbox copy is left alone when the installed host
+    ///     is framework-dependent, as registration refuses that host.
+    /// </remarks>
+    public void RefreshStaleHostCopies()
+    {
+        var hostPath = _locateHost();
+        if (hostPath is null || !File.Exists(hostPath))
+        {
+            return;
+        }
+
+        var refreshed = new List<string>();
+        foreach (var browser in _browsers)
+        {
+            if (
+                HostCopyPath(browser) is not { } copy
+                || !File.Exists(copy)
+                || NativeHostManifest.Check(ManifestPath(browser), browser.Family, copy) != HostRegistration.Registered
+                || (IsCurrentCopy(copy, hostPath) && UnixFileAccess.CanExecute(copy))
+                || (browser.FlatpakId is not null && IsFrameworkDependent(hostPath))
+            )
+            {
+                continue;
+            }
+
+            try
+            {
+                CopyHost(hostPath, copy);
+                refreshed.Add(browser.Id);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Trace.WriteLine($"[LinuxNativeHostRegistrar] Could not refresh the host copy for {browser.Id} ({ex.GetType().Name}).");
+            }
+        }
+
+        if (refreshed.Count > 0)
+        {
+            Trace.WriteLine($"[LinuxNativeHostRegistrar] Refreshed {refreshed.Count} host copies: {string.Join(", ", refreshed)}.");
+        }
+    }
+
     /// <remarks>A manifest that names another installation's host is left in place, and so is anything it uses.</remarks>
     public Task UnregisterAsync(BrowserTarget browser, CancellationToken ct)
     {

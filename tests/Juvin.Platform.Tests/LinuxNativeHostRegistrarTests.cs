@@ -44,11 +44,21 @@ public sealed class LinuxNativeHostRegistrarTests : IDisposable
 
     private string StableHost => Path.Join(DataPath, "juvin-host");
 
-    private LinuxNativeHostRegistrar CreateRegistrar(string? hostPath = null, string? runtimeDirectory = null, TimeSpan? commandTimeout = null)
+    private static BrowserTarget FlatpakFirefox { get; } =
+        new("firefox-flatpak", "Firefox", BrowserFamily.Firefox, BrowserPackaging.Flatpak);
+
+    private string FlatpakCopy => Path.Join(Home, ".var/app/org.mozilla.firefox/data/juvin/juvin-host");
+
+    private string FlatpakManifest => Path.Join(Home, ".var/app/org.mozilla.firefox/.mozilla/native-messaging-hosts", NativeHostManifest.FileName);
+
+    private LinuxNativeHostRegistrar CreateRegistrar(string? hostPath = null, string? runtimeDirectory = null, TimeSpan? commandTimeout = null) =>
+        CreateRegistrar(() => hostPath ?? HostPath, runtimeDirectory, commandTimeout);
+
+    private LinuxNativeHostRegistrar CreateRegistrar(Func<string?> locateHost, string? runtimeDirectory = null, TimeSpan? commandTimeout = null)
     {
         var paths = new LinuxBrowserPaths(Home, Path.Join(Home, ".config"), runtimeDirectory, [Bin, SnapBin], [FlatpakApps], Snap);
         return new LinuxNativeHostRegistrar(
-            () => hostPath ?? HostPath,
+            locateHost,
             new Localizer(),
             paths,
             _runner,
@@ -487,6 +497,138 @@ public sealed class LinuxNativeHostRegistrarTests : IDisposable
 
         Assert.True(File.Exists(manifestPath));
         Assert.True(File.Exists(Path.Join(Home, ".var/app/org.mozilla.firefox/data/juvin/juvin-host")));
+    }
+
+    [LinuxFact]
+    public async Task RefreshStaleHostCopies_ReplacesAStaleSandboxCopyAndKeepsTheManifest()
+    {
+        var registrar = CreateRegistrar();
+        await registrar.RegisterAsync(FlatpakFirefox, CancellationToken.None);
+        var manifest = await File.ReadAllTextAsync(FlatpakManifest);
+        await File.WriteAllTextAsync(HostPath, "a newer self-contained host");
+        Assert.Equal(HostRegistration.Stale, registrar.CheckRegistration(FlatpakFirefox));
+
+        registrar.RefreshStaleHostCopies();
+
+        Assert.Equal(HostRegistration.Registered, registrar.CheckRegistration(FlatpakFirefox));
+        Assert.Equal("a newer self-contained host", await File.ReadAllTextAsync(FlatpakCopy));
+        Assert.Equal(Executable, File.GetUnixFileMode(FlatpakCopy));
+        Assert.Equal(manifest, await File.ReadAllTextAsync(FlatpakManifest));
+        Assert.Equal([FlatpakCopy], Directory.GetFiles(Path.GetDirectoryName(FlatpakCopy)!));
+        Assert.Empty(_runner.Calls);
+    }
+
+    [LinuxFact]
+    public async Task RefreshStaleHostCopies_LeavesACurrentCopyAlone()
+    {
+        var registrar = CreateRegistrar();
+        await registrar.RegisterAsync(FlatpakFirefox, CancellationToken.None);
+        const UnixFileMode marked = Executable | UnixFileMode.GroupRead;
+        File.SetUnixFileMode(FlatpakCopy, marked);
+
+        registrar.RefreshStaleHostCopies();
+
+        Assert.Equal(marked, File.GetUnixFileMode(FlatpakCopy));
+        Assert.Equal(HostRegistration.Registered, registrar.CheckRegistration(FlatpakFirefox));
+    }
+
+    [LinuxFact]
+    public async Task RefreshStaleHostCopies_LeavesAnotherInstallationsManifestAndItsCopy()
+    {
+        var registrar = CreateRegistrar();
+        await registrar.RegisterAsync(FlatpakFirefox, CancellationToken.None);
+        var foreign = NativeHostManifest.Render(BrowserFamily.Firefox, "/elsewhere/juvin-host");
+        await File.WriteAllTextAsync(FlatpakManifest, foreign);
+        await File.WriteAllTextAsync(HostPath, "a newer self-contained host");
+
+        registrar.RefreshStaleHostCopies();
+
+        Assert.Equal("self-contained host", await File.ReadAllTextAsync(FlatpakCopy));
+        Assert.Equal(foreign, await File.ReadAllTextAsync(FlatpakManifest));
+    }
+
+    [LinuxFact]
+    public async Task RefreshStaleHostCopies_CreatesNothingWithoutARegistration()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(FlatpakCopy)!);
+        await File.WriteAllTextAsync(FlatpakCopy, "a leftover host");
+        InstallFlatpak("app.zen_browser.zen");
+        var registrar = CreateRegistrar();
+
+        registrar.RefreshStaleHostCopies();
+
+        Assert.Equal("a leftover host", await File.ReadAllTextAsync(FlatpakCopy));
+        Assert.False(File.Exists(FlatpakManifest));
+        Assert.False(Directory.Exists(Path.Join(Home, ".var/app/app.zen_browser.zen")));
+        Assert.False(File.Exists(StableHost));
+    }
+
+    [LinuxFact]
+    public async Task RefreshStaleHostCopies_DoesNotRestoreAMissingCopy()
+    {
+        var registrar = CreateRegistrar();
+        await registrar.RegisterAsync(FlatpakFirefox, CancellationToken.None);
+        File.Delete(FlatpakCopy);
+
+        registrar.RefreshStaleHostCopies();
+
+        Assert.False(File.Exists(FlatpakCopy));
+    }
+
+    [LinuxFact]
+    public async Task RefreshStaleHostCopies_DoesNothingWhenTheInstalledHostIsMissing()
+    {
+        await CreateRegistrar().RegisterAsync(FlatpakFirefox, CancellationToken.None);
+
+        CreateRegistrar(_temp.File("missing/juvin-host")).RefreshStaleHostCopies();
+        CreateRegistrar(() => null).RefreshStaleHostCopies();
+
+        Assert.Equal("self-contained host", await File.ReadAllTextAsync(FlatpakCopy));
+    }
+
+    [LinuxFact]
+    public async Task RefreshStaleHostCopies_LeavesTheSandboxCopyForAFrameworkDependentHost()
+    {
+        await CreateRegistrar().RegisterAsync(FlatpakFirefox, CancellationToken.None);
+        await File.WriteAllTextAsync(Path.Join(Path.GetDirectoryName(HostPath)!, "juvin-host.dll"), "");
+        await File.WriteAllTextAsync(HostPath, "a framework-dependent host");
+
+        CreateRegistrar().RefreshStaleHostCopies();
+
+        Assert.Equal("self-contained host", await File.ReadAllTextAsync(FlatpakCopy));
+    }
+
+    [LinuxFact]
+    public async Task RefreshStaleHostCopies_FromANewAppImageReplacesTheSharedCopy()
+    {
+        _runsFromAppImage = true;
+        var chrome = new BrowserTarget("chrome", "Google Chrome", BrowserFamily.Chromium, BrowserPackaging.Native);
+        var firefox = new BrowserTarget("firefox", "Firefox", BrowserFamily.Firefox, BrowserPackaging.Native);
+        var registrar = CreateRegistrar();
+        await registrar.RegisterAsync(chrome, CancellationToken.None);
+        await registrar.RegisterAsync(firefox, CancellationToken.None);
+        await File.WriteAllTextAsync(HostPath, "a newer self-contained host");
+
+        registrar.RefreshStaleHostCopies();
+
+        Assert.Equal("a newer self-contained host", await File.ReadAllTextAsync(StableHost));
+        Assert.Equal(Executable, File.GetUnixFileMode(StableHost));
+        Assert.Equal(HostRegistration.Registered, registrar.CheckRegistration(chrome));
+        Assert.Equal(HostRegistration.Registered, registrar.CheckRegistration(firefox));
+    }
+
+    [LinuxFact]
+    public async Task RefreshStaleHostCopies_LeavesTheAppImageCopyWhenNotRunFromAnAppImage()
+    {
+        _runsFromAppImage = true;
+        var chrome = new BrowserTarget("chrome", "Google Chrome", BrowserFamily.Chromium, BrowserPackaging.Native);
+        await CreateRegistrar().RegisterAsync(chrome, CancellationToken.None);
+        _runsFromAppImage = false;
+        await File.WriteAllTextAsync(HostPath, "a newer self-contained host");
+
+        CreateRegistrar().RefreshStaleHostCopies();
+
+        Assert.Equal("self-contained host", await File.ReadAllTextAsync(StableHost));
     }
 
     [LinuxFact]

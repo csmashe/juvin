@@ -153,6 +153,7 @@ public class App : Application
         commands.TriggerRequested += hotkeys.HandleTrigger;
         _ = StartControlSocketAsync(services.GetRequiredService<ILocalSocketServer>(), commands);
 
+        _ = Task.Run(services.GetRequiredService<INativeHostRegistrar>().RefreshStaleHostCopies);
         var connector = services.GetRequiredService<ConnectorService>();
         _ = StartConnectorAsync(connector);
 
