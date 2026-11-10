@@ -53,7 +53,7 @@ async function writeStatic(outdir, target) {
   }
 }
 
-function options(outdir) {
+function options(outdir, target) {
   return {
     absWorkingDir: root,
     entryPoints,
@@ -61,6 +61,7 @@ function options(outdir) {
     bundle: true,
     format: "iife",
     target: ["chrome120", "firefox142"],
+    define: { JUVIN_GECKO: String(target === "firefox") },
     logLevel: "warning",
   };
 }
@@ -71,10 +72,10 @@ for (const target of Object.keys(targets)) {
   await mkdir(outdir, { recursive: true });
   await writeStatic(outdir, target);
   if (watch) {
-    const ctx = await context(options(outdir));
+    const ctx = await context(options(outdir, target));
     await ctx.watch();
   } else {
-    await build(options(outdir));
+    await build(options(outdir, target));
   }
 }
 
