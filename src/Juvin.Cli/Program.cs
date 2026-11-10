@@ -83,7 +83,11 @@ public static class Program
         }
 
         using var http = ModelHttpClient.Create(TimeSpan.FromMinutes(5));
-        var selector = ProviderSelector.CreateDefault(http, new ProcessRunner());
+        var selector = ProviderSelector.CreateDefault(
+            http,
+            new ProcessRunner(),
+            () => CodexStandaloneInstall.CurrentBinDirectory() is { } codexBin ? [codexBin] : []
+        );
         try
         {
             // Reports a misconfigured mode before the user pipes in the draft.
