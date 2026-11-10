@@ -1929,6 +1929,21 @@ describe("Outlook adapter", () => {
     });
   }
 
+  it("adds no line break when the editor rejects putting the words back", async () => {
+    const { editor, registry, hash, reshape } = await reshapedLine();
+    const commands: string[] = [];
+    const rejectAll: ExecCommand = (_doc, command) => (commands.push(command), false);
+    const request = { editorId: "e-1", expectedHash: hash, start: 0, end: 20, text: "Thanks, see you then." };
+    let reshaped = "";
+    const result = await applyReplacement(document, registry, request, rejectAll, (target) => {
+      reshape();
+      reshaped = target.innerHTML;
+    });
+    expect(result).toMatchObject({ ok: false, error: { code: "internal" } });
+    expect(commands).toEqual(["insertText"]);
+    expect(editor.innerHTML).toBe(reshaped);
+  });
+
   it("puts the words back when the editor cannot draw the dropped empty line", async () => {
     const { editor, registry, hash, reshape } = await reshapedLine();
     const request = { editorId: "e-1", expectedHash: hash, start: 0, end: 20, text: "Thanks, see you then." };

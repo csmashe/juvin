@@ -131,12 +131,13 @@ function restoreText(doc: Document, editor: Editor, before: string, offsets: { s
     // Trailing line breaks go in after the words, so the editor shapes them like the line they end, as Firefox's
     // padding <br> does; the block the editor left there may already draw them.
     const words = missing.replace(/\n+$/, "");
+    let replaced = true;
     if (words.length > 0 || prefix < now.length - suffix) {
       select(prefix, now.length - suffix);
-      exec(doc, words.length > 0 ? "insertText" : "delete", words);
+      replaced = exec(doc, words.length > 0 ? "insertText" : "delete", words);
     }
 
-    if (words !== missing && editorText(editor) !== before) {
+    if (replaced && words !== missing && editorText(editor) !== before) {
       select(prefix + words.length, prefix + words.length);
       exec(doc, "insertText", missing.slice(words.length));
     }
