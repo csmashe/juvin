@@ -160,8 +160,10 @@ function holdSelection(doc: Document, editor: Editor): () => void {
  * Puts back the text the editor changed since `before`, through the editor's own command over the part that differs,
  * then selects the captured range again; when the editor still differs, the selection goes back where it was.
  * The range comes back as plain text by design: losing a link beats losing the sentence, so do not swap this for an Undo.
+ * Spaces the edit took beside the range go back with the words as escaped HTML, since Gecko's insertText turns them
+ * into no-break spaces; not when a space borders the part, which insertHTML would turn instead.
  */
-function restoreText(doc: Document, editor: Editor, before: string, offsets: { start: number; end: number }, exec: ExecCommand): void {
+function restoreText(doc: Document, editor: Editor, before: string, offsets: Offsets, exec: ExecCommand, target: Offsets = offsets): void {
   const select = (start: number, end: number): void => {
     if (isTextArea(editor)) {
       editor.setSelectionRange(start, end);
@@ -184,6 +186,12 @@ function restoreText(doc: Document, editor: Editor, before: string, offsets: { s
       suffix++;
     }
 
+    const widened = target.start < offsets.start || target.end > offsets.end;
+    if (widened) {
+      prefix = Math.min(prefix, target.start);
+      suffix = Math.min(suffix, before.length - target.end);
+    }
+
     const restoreSelection = holdSelection(doc, editor);
     const missing = before.slice(prefix, before.length - suffix);
     // Trailing line breaks go in after the words, so the editor shapes them like the line they end, as Firefox's
@@ -192,7 +200,16 @@ function restoreText(doc: Document, editor: Editor, before: string, offsets: { s
     let replaced = true;
     if (words.length > 0 || prefix < now.length - suffix) {
       select(prefix, now.length - suffix);
-      replaced = exec(doc, words.length > 0 ? "insertText" : "delete", words);
+      const spaced = widened && words.length > 0 && !words.includes("\n") && now[prefix - 1] !== " " && now[now.length - suffix] !== " ";
+      if (spaced) {
+        const escaped = doc.createElement("div");
+        escaped.textContent = words;
+        replaced = exec(doc, "insertHTML", escaped.innerHTML) || editorText(editor) !== now;
+      }
+
+      if (!spaced || !replaced) {
+        replaced = exec(doc, words.length > 0 ? "insertText" : "delete", words);
+      }
     }
 
     if (replaced && words !== missing && editorText(editor) !== before) {
@@ -260,9 +277,10 @@ export async function applyReplacement(
     return failure("draft-changed", "The draft changed since it was captured.");
   }
 
+  const target = editTarget(editor, before, offsets, insertion, gecko);
   // From here on Apply may have changed the editor, so every refusal first puts the draft back as it was.
   const refuse = (message: string): ApplyResult => {
-    restoreText(doc, editor, before, offsets, exec);
+    restoreText(doc, editor, before, offsets, exec, target);
     return failure("internal", message);
   };
 
@@ -287,7 +305,6 @@ export async function applyReplacement(
       return failure("internal", "The page has no selection object.");
     }
 
-    const target = editTarget(editor, before, offsets, insertion, gecko);
     const select = (): void => {
       selection.removeAllRanges();
       selection.addRange(offsetsToRange(editor, readPlainText(editor), target.start, target.end));
