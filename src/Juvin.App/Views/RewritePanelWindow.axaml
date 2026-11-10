@@ -12,8 +12,11 @@
         WindowDecorations="None"
         Topmost="True"
         ShowInTaskbar="False"
-        CanResize="False">
+        CanResize="False"
+        Focusable="True"
+        KeyboardNavigation.IsTabStop="False">
 
+    <!-- Focusable so activation takes keyboard focus even when no control here had it; otherwise keys go to the element last focused in another Juvin window. -->
     <Window.KeyBindings>
         <KeyBinding Gesture="Escape" Command="{Binding CloseCommand}" />
     </Window.KeyBindings>
