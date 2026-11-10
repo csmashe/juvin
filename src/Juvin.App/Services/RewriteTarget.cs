@@ -25,18 +25,18 @@ public sealed class ConnectorRewriteTarget : IRewriteTarget
 
     private static readonly TimeSpan s_timeout = TimeSpan.FromSeconds(10);
 
-    private readonly ConnectorSession _session;
-
     public ConnectorRewriteTarget(ConnectorSession session)
     {
-        _session = session;
+        Session = session;
     }
+
+    internal ConnectorSession Session { get; }
 
     public async Task<ContextResult> RecaptureAsync(string? editorId, CancellationToken ct)
     {
         try
         {
-            return await _session.RequestContextAsync(editorId, s_timeout, ct);
+            return await Session.RequestContextAsync(editorId, s_timeout, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -49,7 +49,7 @@ public sealed class ConnectorRewriteTarget : IRewriteTarget
     {
         try
         {
-            return await _session.ApplyAsync(
+            return await Session.ApplyAsync(
                 capture.EditorId,
                 capture.EditorHash,
                 capture.SelectionStart,

@@ -433,6 +433,56 @@ public sealed class ConnectorServiceTests : IAsyncDisposable
         Assert.Equal(ConnectorService.BrowserNotFocusedCode, (await completed.Task.WaitAsync(s_timeout)).Error?.Code);
     }
 
+    [Fact]
+    public async Task TriggerCapture_WhileThePanelHasFocus_CapturesFromThePanelsBrowserWithoutRequiringFocus()
+    {
+        await _service.StartAsync(CancellationToken.None);
+        var completed = new TaskCompletionSource<(ConnectorSession Session, ContextResult Result)>();
+        _service.CaptureCompleted += (client, _, outcome) => completed.TrySetResult((client, outcome));
+        await using var panelBrowser = await ConnectAndSayHelloAsync();
+        await using var other = await ConnectAndSayHelloAsync();
+        _service.SetFocusedPanelSession(_service.Clients[0]);
+
+        var trigger = _service.TriggerCaptureAsync();
+        var request = await ReadAsync(panelBrowser);
+        Assert.False(request.TryGetProperty("requireFocus", out _));
+        await WriteAsync(panelBrowser, CaptureResponse(request.GetProperty("id").GetString()!, "Draft"));
+
+        var (session, result) = await completed.Task.WaitAsync(s_timeout);
+        Assert.Same(_service.Clients[0], session);
+        Assert.Equal("Draft", result.Capture?.Context.Draft);
+        await trigger.WaitAsync(s_timeout);
+        await AssertNoRequestPendingAsync(other);
+    }
+
+    [Fact]
+    public async Task TriggerCapture_AfterThePanelsBrowserDisconnects_AsksEveryBrowserForFocus()
+    {
+        await _service.StartAsync(CancellationToken.None);
+        var gone = await ConnectAndSayHelloAsync();
+        await using var remaining = await ConnectAndSayHelloAsync();
+        _service.SetFocusedPanelSession(_service.Clients[0]);
+        await gone.DisposeAsync();
+        await WaitUntilAsync(() => _service.Clients.Count == 1);
+
+        _ = _service.TriggerCaptureAsync();
+
+        Assert.True((await ReadAsync(remaining)).GetProperty("requireFocus").GetBoolean());
+    }
+
+    [Fact]
+    public async Task TriggerCapture_OnceThePanelLosesFocus_AsksEveryBrowserForFocusAgain()
+    {
+        await _service.StartAsync(CancellationToken.None);
+        await using var stream = await ConnectAndSayHelloAsync();
+        _service.SetFocusedPanelSession(_service.Clients[0]);
+        _service.SetFocusedPanelSession(null);
+
+        _ = _service.TriggerCaptureAsync();
+
+        Assert.True((await ReadAsync(stream)).GetProperty("requireFocus").GetBoolean());
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]

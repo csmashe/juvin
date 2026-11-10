@@ -81,6 +81,7 @@ public static class ServiceRegistrations
         services.AddSingleton(sp => new RewritePanelService(
             sp.GetRequiredService<RewritePanelViewModel>(),
             sp.GetRequiredService<RewritePanelWindow>(),
+            sp.GetRequiredService<ConnectorService>(),
             action => Dispatcher.UIThread.Post(action)
         ));
         services.AddSingleton(sp => new ActionMenuService(
