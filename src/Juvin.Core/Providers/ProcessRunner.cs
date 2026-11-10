@@ -30,6 +30,9 @@ public sealed class ProcessRunner : IProcessRunner
     private static readonly UTF8Encoding s_utf8 = new(encoderShouldEmitUTF8Identifier: false);
 
     private readonly Func<IReadOnlyList<string>> _extraPathDirectories;
+    private readonly Lock _gate = new();
+    private readonly HashSet<Process> _running = [];
+    private bool _shutDown;
 
     public ProcessRunner()
         : this(() => [])
@@ -72,7 +75,16 @@ public sealed class ProcessRunner : IProcessRunner
 
         using var process = new Process();
         process.StartInfo = startInfo;
-        process.Start();
+        lock (_gate)
+        {
+            if (_shutDown)
+            {
+                throw new OperationCanceledException("The process runner has shut down.");
+            }
+
+            process.Start();
+            _running.Add(process);
+        }
 
         // Both pipes drain from the start so a chatty child cannot block on a full buffer.
         var stdout = process.StandardOutput.ReadToEndAsync(CancellationToken.None);
@@ -88,6 +100,29 @@ public sealed class ProcessRunner : IProcessRunner
         {
             Kill(process);
             throw;
+        }
+        finally
+        {
+            lock (_gate)
+            {
+                _running.Remove(process);
+            }
+        }
+    }
+
+    /// <summary>
+    ///     Kills every running child's process tree, without waiting, and refuses new ones. For app exit:
+    ///     children outlive the app, and a cancelled run kills its child on a continuation that may never run.
+    /// </summary>
+    public void Shutdown()
+    {
+        lock (_gate)
+        {
+            _shutDown = true;
+            foreach (var process in _running)
+            {
+                Kill(process);
+            }
         }
     }
 
