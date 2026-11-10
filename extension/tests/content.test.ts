@@ -1182,6 +1182,81 @@ describe("applyReplacement", () => {
         expect(result).toEqual({ ok: true });
         expect(calls).toEqual([["insertText", "bbb", "XYZ"]]);
       });
+
+      describe("when Apply refuses after a widened edit", () => {
+        /** Makes the edit come out wrong and Undo do nothing, so Apply puts the words back itself. */
+        function wrongEdit(edit: (doc: Document, value?: string) => void = (doc, value) => fakeExec(doc, "insertHTML", value?.replace("X", "Q"))): {
+          exec: ExecCommand;
+          commands: string[];
+        } {
+          const commands: string[] = [];
+          const exec: ExecCommand = (doc, command, value) => {
+            commands.push(`${command} ${value}`);
+            if (commands.length === 1) {
+              edit(doc, value);
+              return true;
+            }
+
+            return command !== "undo" && fakeExec(doc, command, value);
+          };
+          return { exec, commands };
+        }
+
+        it("inserts the words as escaped HTML", async () => {
+          const { editor, registry, request } = await richCapture("aaa a&lt;b ccc", 4, 7);
+          const { exec, commands } = wrongEdit();
+          const result = await applyReplacement(document, registry, { ...request, text: "XYZ" }, exec, undefined, true);
+          expect(result).toMatchObject({ ok: false, error: { code: "internal" } });
+          expect(commands).toEqual(["insertHTML  XYZ ", "undo undefined", "insertHTML  a&lt;b "]);
+          expect(editor.innerHTML).toBe("aaa a&lt;b ccc");
+        });
+
+        it.each([
+          ["a space before the part", "aaa  bbb ccc", 5, 8, "bbb "],
+          ["a space after the part", "aaa bbb  ccc", 4, 7, " bbb"],
+        ])("inserts plain text when %s would border the escaped HTML", async (_, html, start, end, words) => {
+          const { editor, registry, request } = await richCapture(html, start, end);
+          const { exec, commands } = wrongEdit();
+          const result = await applyReplacement(document, registry, { ...request, text: "XYZ" }, exec, undefined, true);
+          expect(result).toMatchObject({ ok: false, error: { code: "internal" } });
+          expect(commands.slice(1)).toEqual(["undo undefined", `insertText ${words}`]);
+          expect(readPlainText(editor).text).toBe(html);
+        });
+
+        it("keeps the escaped HTML when the editor reports it failed but changed the text", async () => {
+          const { editor, registry, request } = await richCapture("aaa bbb ccc", 4, 7);
+          const { exec: wrong, commands } = wrongEdit();
+          const exec: ExecCommand = (doc, command, value) => (wrong(doc, command, value), false);
+          const result = await applyReplacement(document, registry, { ...request, text: "XYZ" }, exec, undefined, true);
+          expect(result).toMatchObject({ ok: false, error: { code: "internal" } });
+          expect(commands).toEqual(["insertHTML  XYZ ", "insertHTML  bbb "]);
+          expect(editor.innerHTML).toBe("aaa bbb ccc");
+        });
+
+        it("inserts plain text when the words span a line break", async () => {
+          const { registry, request } = await richCapture("<div>aaa bbb ccc</div><div>ddd</div>", 4, 7);
+          const { exec, commands } = wrongEdit((doc) => {
+            const range = doc.getSelection()!.getRangeAt(0);
+            range.setEndAfter(doc.getElementById("ed")!.lastChild!);
+            fakeExec(doc, "insertText", "Q");
+          });
+          await applyReplacement(document, registry, { ...request, text: "XYZ" }, exec, undefined, true);
+          expect(commands.at(-1)).toBe("insertText  bbb ccc\nddd");
+        });
+
+        it.each([
+          ["in a bold", "<div><b>aaa bbb ccc</b></div>"],
+          ["in a styled span", `<div><span style="font-size:12pt">aaa bbb ccc</span></div>`],
+          ["ending in a bold", "<div>aaa b<b>bb ccc</b></div>"],
+        ])("inserts plain text for words %s, so they keep its formatting", async (_, html) => {
+          const { editor, registry, request } = await richCapture(html, 4, 7);
+          const { exec, commands } = wrongEdit();
+          const result = await applyReplacement(document, registry, { ...request, text: "XYZ" }, exec, undefined, true);
+          expect(result).toMatchObject({ ok: false, error: { code: "internal" } });
+          expect(commands).toEqual(["insertHTML  XYZ ", "undo undefined", "insertText  bbb "]);
+          expect(readPlainText(editor).text).toBe("aaa bbb ccc");
+        });
+      });
     });
 
     it("checks the hash and the draft before editing", async () => {
