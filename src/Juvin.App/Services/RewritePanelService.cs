@@ -11,31 +11,51 @@ namespace Juvin.App.Services;
 /// </summary>
 public sealed class RewritePanelService
 {
+    private readonly Action<ConnectorSession?> _aimHotkey;
     private readonly Action _hidePanel;
     private readonly Action<Action> _post;
     private readonly Action _showPanel;
     private readonly RewritePanelViewModel _viewModel;
 
     // Read and written on the UI thread only.
+    private bool _active;
     private long _shownCapture;
+    private ConnectorSession? _shownSession;
 
     /// <param name="viewModel">The panel's state.</param>
     /// <param name="window">The panel window to show and hide.</param>
+    /// <param name="connector">Told which browser the desktop hotkey is aimed at while the panel has focus.</param>
     /// <param name="post">Runs an action on the UI thread.</param>
-    public RewritePanelService(RewritePanelViewModel viewModel, RewritePanelWindow window, Action<Action> post)
-        : this(viewModel, window.ShowPanel, window.HidePanel, post)
+    public RewritePanelService(RewritePanelViewModel viewModel, RewritePanelWindow window, ConnectorService connector, Action<Action> post)
+        : this(viewModel, window.ShowPanel, window.HidePanel, post, connector.SetFocusedPanelSession)
     {
+        window.Activated += (_, _) => SetActive(true);
+        window.Deactivated += (_, _) => SetActive(false);
     }
 
-    internal RewritePanelService(RewritePanelViewModel viewModel, Action showPanel, Action hidePanel, Action<Action> post)
+    internal RewritePanelService(
+        RewritePanelViewModel viewModel,
+        Action showPanel,
+        Action hidePanel,
+        Action<Action> post,
+        Action<ConnectorSession?>? aimHotkey = null
+    )
     {
         _viewModel = viewModel;
         _showPanel = showPanel;
         _hidePanel = hidePanel;
         _post = post;
+        _aimHotkey = aimHotkey ?? (_ => { });
     }
 
-    public void Start() => _viewModel.HideRequested += _hidePanel;
+    public void Start() => _viewModel.HideRequested += OnHideRequested;
+
+    /// <summary>Called on the UI thread when the panel window gains or loses keyboard focus.</summary>
+    internal void SetActive(bool active)
+    {
+        _active = active;
+        AimHotkey();
+    }
 
     /// <summary>Cancels a running rewrite so a Codex child process does not outlive the app.</summary>
     public void Stop() => _viewModel.CloseCommand.Execute(null);
@@ -57,6 +77,8 @@ public sealed class RewritePanelService
             }
 
             _shownCapture = number;
+            _shownSession = (target as ConnectorRewriteTarget)?.Session;
+            AimHotkey();
             _showPanel();
             _ = _viewModel.LoadAsync(target, result);
         });
@@ -74,7 +96,20 @@ public sealed class RewritePanelService
             }
 
             _shownCapture = number;
+            _shownSession = null;
+            AimHotkey();
             _showPanel();
             _viewModel.ShowResult(capture, session, action, result);
         });
+
+    // Focus stays as the window reports it: a panel shown again still active gets no new Activated.
+    private void OnHideRequested()
+    {
+        _shownSession = null;
+        AimHotkey();
+        _hidePanel();
+    }
+
+    // A capture no browser answered (none focused or connected, or a timeout) has no target, so nothing to aim at.
+    private void AimHotkey() => _aimHotkey(_active ? _shownSession : null);
 }

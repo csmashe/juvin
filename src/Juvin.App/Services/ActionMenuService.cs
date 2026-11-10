@@ -107,7 +107,8 @@ public sealed class ActionMenuService
     }
 
     // Two captures can post in either order, so the UI thread checks the order again. Recapture never
-    // checks focus, so a target comes only from a focused browser's own answer.
+    // checks focus, so a target comes only from a focused browser's own answer, or from a press while the
+    // panel showing that browser's answer had focus.
     internal void OnCaptureCompleted(ConnectorSession session, long number, ContextResult result) =>
         _post(() =>
         {
