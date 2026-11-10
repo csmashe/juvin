@@ -283,7 +283,7 @@
   "About.License": "License",
   "About.LicenseHint": "Juvin is free software under the GNU General Public License, version 3.",
   "About.Diagnostics": "Diagnostics",
-  "About.DiagnosticsHint": "Juvin keeps a diagnostic log, Logs/juvin.log in its data folder, plus the one from the run before. It holds lengths, identifiers, and error types, never your email. Delete all data removes it.",
+  "About.DiagnosticsHint": "Juvin keeps a diagnostic log, Logs/juvin.log in its data folder, plus the log before it. It holds lengths, identifiers, and error types, never your email. Delete all data removes it.",
   "About.Backup": "Settings backup",
   "About.BackupHint": "Save or restore your settings.",
   "Wizard.StepText": "Step {0} of {1}",
