@@ -99,14 +99,20 @@ function sameFormatting(plain: PlainText, space: number, edge: number): boolean 
 
 const isVisible = (char: string | undefined): boolean => char !== undefined && /[^\s\u200b]/.test(char);
 
+interface EditTarget extends Offsets {
+  value: string;
+  /** True when both ends of the range sit directly in a block, with no inline formatting to keep on a restore. */
+  bare: boolean;
+}
+
 /**
  * The range to select and the value to insert. Gecko turns a space next to where insertHTML splits a text node
  * into a no-break space, so there inline HTML also replaces a single space beside the range and inserts it again.
  * Chrome would drop such a space at the edge of a line, so it gets the range as captured.
  */
-function editTarget(editor: Editor, before: string, offsets: Offsets, insertion: Insertion, gecko: boolean): Offsets & { value: string } {
+function editTarget(editor: Editor, before: string, offsets: Offsets, insertion: Insertion, gecko: boolean): EditTarget {
   if (!gecko || !insertion.inline) {
-    return { ...offsets, value: insertion.value };
+    return { ...offsets, value: insertion.value, bare: false };
   }
 
   const { start, end } = offsets;
@@ -117,7 +123,11 @@ function editTarget(editor: Editor, before: string, offsets: Offsets, insertion:
   const trail =
     before[end] === " " && isVisible(before[end + 1]) && !/\s$/.test(insertion.rendered) &&
     sameFormatting(plain, end, end - 1) && embeddedContent(editor, start, end + 1).length === 0;
-  return { start: lead ? start - 1 : start, end: trail ? end + 1 : end, value: (lead ? " " : "") + insertion.value + (trail ? " " : "") };
+  const bare = [start, end - 1].every((offset) => {
+    const parent = textNodeAt(plain, offset)?.parentElement;
+    return !!parent && (parent === editor || isBlock(parent));
+  });
+  return { start: lead ? start - 1 : start, end: trail ? end + 1 : end, value: (lead ? " " : "") + insertion.value + (trail ? " " : ""), bare };
 }
 
 /**
@@ -161,9 +171,10 @@ function holdSelection(doc: Document, editor: Editor): () => void {
  * then selects the captured range again; when the editor still differs, the selection goes back where it was.
  * The range comes back as plain text by design: losing a link beats losing the sentence, so do not swap this for an Undo.
  * Spaces the edit took beside the range go back with the words as escaped HTML, since Gecko's insertText turns them
- * into no-break spaces; not when a space borders the part, which insertHTML would turn instead.
+ * into no-break spaces; not when a space borders the part, which insertHTML would turn instead, nor in inline
+ * formatting, which insertHTML would leave out while insertText keeps it.
  */
-function restoreText(doc: Document, editor: Editor, before: string, offsets: Offsets, exec: ExecCommand, target: Offsets = offsets): void {
+function restoreText(doc: Document, editor: Editor, before: string, offsets: Offsets, exec: ExecCommand, target: EditTarget): void {
   const select = (start: number, end: number): void => {
     if (isTextArea(editor)) {
       editor.setSelectionRange(start, end);
@@ -200,11 +211,12 @@ function restoreText(doc: Document, editor: Editor, before: string, offsets: Off
     let replaced = true;
     if (words.length > 0 || prefix < now.length - suffix) {
       select(prefix, now.length - suffix);
-      const spaced = widened && words.length > 0 && !words.includes("\n") && now[prefix - 1] !== " " && now[now.length - suffix] !== " ";
+      const spaced = widened && target.bare && words.length > 0 && !words.includes("\n") && now[prefix - 1] !== " " && now[now.length - suffix] !== " ";
       if (spaced) {
         const escaped = doc.createElement("div");
         escaped.textContent = words;
-        replaced = exec(doc, "insertHTML", escaped.innerHTML) || editorText(editor) !== now;
+        exec(doc, "insertHTML", escaped.innerHTML);
+        replaced = editorText(editor) !== now;
       }
 
       if (!spaced || !replaced) {
