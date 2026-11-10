@@ -97,8 +97,10 @@ public sealed class RewritePanelServiceTests
         service.SetActive(false);
         service.SetActive(true);
         _viewModel.CloseCommand.Execute(null);
+        service.Show(new ConnectorRewriteTarget(session), 2, Declined("no-selection"));
+        service.SetActive(true);
 
-        Assert.Equal([null, session, null, session, null], aims);
+        Assert.Equal([null, session, null, session, null, null, session], aims);
     }
 
     [Fact]

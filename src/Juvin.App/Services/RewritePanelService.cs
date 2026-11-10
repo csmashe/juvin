@@ -104,6 +104,8 @@ public sealed class RewritePanelService
 
     private void OnHideRequested()
     {
+        // A hidden window cannot have focus; if Avalonia ever missed the Deactivated, the next show must not aim.
+        _active = false;
         _shownSession = null;
         AimHotkey();
         _hidePanel();
