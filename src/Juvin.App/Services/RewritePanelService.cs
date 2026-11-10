@@ -102,10 +102,9 @@ public sealed class RewritePanelService
             _viewModel.ShowResult(capture, session, action, result);
         });
 
+    // Focus stays as the window reports it: a panel shown again still active gets no new Activated.
     private void OnHideRequested()
     {
-        // A hidden window cannot have focus; if Avalonia ever missed the Deactivated, the next show must not aim.
-        _active = false;
         _shownSession = null;
         AimHotkey();
         _hidePanel();

@@ -97,10 +97,44 @@ public sealed class RewritePanelServiceTests
         service.SetActive(false);
         service.SetActive(true);
         _viewModel.CloseCommand.Execute(null);
+
+        Assert.Equal([null, session, null, session, null], aims);
+    }
+
+    [Fact]
+    public async Task TheHotkey_IsAimedAgainWhenThePanelIsShownAgainStillReportingFocus()
+    {
+        await using var session = new ConnectorSession(new StreamConnectorChannel(new MemoryStream()), () => throw new InvalidOperationException());
+        ConnectorSession? aim = null;
+        var service = new RewritePanelService(_viewModel, () => { }, () => { }, action => action(), aimed => aim = aimed);
+        service.Start();
+        service.Show(new ConnectorRewriteTarget(session), 1, Declined("no-selection"));
+        service.SetActive(true);
+        _viewModel.CloseCommand.Execute(null);
+
         service.Show(new ConnectorRewriteTarget(session), 2, Declined("no-selection"));
+
+        Assert.Same(session, aim);
+    }
+
+    [Fact]
+    public async Task TheHotkey_IsNotAimedWhenThePanelIsShownAgainAfterLosingFocus()
+    {
+        await using var session = new ConnectorSession(new StreamConnectorChannel(new MemoryStream()), () => throw new InvalidOperationException());
+        var aims = new List<ConnectorSession?>();
+        var service = new RewritePanelService(_viewModel, () => { }, () => { }, action => action(), aims.Add);
+        service.Start();
+        service.Show(new ConnectorRewriteTarget(session), 1, Declined("no-selection"));
+        service.SetActive(true);
+        _viewModel.CloseCommand.Execute(null);
+        service.SetActive(false);
+
+        service.Show(new ConnectorRewriteTarget(session), 2, Declined("no-selection"));
+        var aimedOnShow = aims[^1];
         service.SetActive(true);
 
-        Assert.Equal([null, session, null, session, null, null, session], aims);
+        Assert.Null(aimedOnShow);
+        Assert.Same(session, aims[^1]);
     }
 
     [Fact]
