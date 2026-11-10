@@ -2064,9 +2064,20 @@ describe("Outlook adapter", () => {
     }
 
     const commands: string[] = [];
-    const rejectHtml: ExecCommand = (doc, command, value) => (commands.push(`${command} ${value}`), command !== "insertHTML" && fakeExec(doc, command, value));
+    const rejectHtml: ExecCommand = (doc, command, value) => {
+      commands.push(`${command} ${value}`);
+      if (command === "insertHTML") {
+        if (commands.length === 1) {
+          fakeExec(doc, command, value);
+        }
+
+        return false;
+      }
+
+      return fakeExec(doc, command, value);
+    };
     const request = { editorId: "e-1", expectedHash: captured.capture.editor.hash, start: 3, end: 6, text: "Ana", format: "markdown" as const, expectedFormatHash: captured.capture.selection.formatHash! };
-    const result = await applyReplacement(document, registry, request, rejectHtml, outlookKeyPress, true);
+    const result = await applyReplacement(document, registry, request, rejectHtml, undefined, true);
     expect(result).toMatchObject({ ok: false, error: { code: "internal" } });
     expect(commands).toEqual(["insertHTML  Ana", "insertHTML  ana", "insertText  ana"]);
     expect(readPlainText(editor).text).toBe("hi ana\nsounds good");
@@ -2235,7 +2246,7 @@ describe("Outlook adapter", () => {
     expect(readPlainText(editor).text).toBe("hi ana ok\nsounds good");
   });
 
-  it("puts the text back with the spaces beside it as escaped HTML when the editor rejects an edit that took them in Gecko", async () => {
+  it("puts the text back with the spaces beside it as escaped HTML when the editor rejects an edit it made that took them in Gecko", async () => {
     document.body.innerHTML = EDITOR.replace("hi ana", "hi ana ok");
     const editor = document.getElementById("reply")!;
     const registry = new EditorRegistry(() => "e-1");
@@ -2245,9 +2256,9 @@ describe("Outlook adapter", () => {
     }
 
     const commands: string[] = [];
-    const rejectRewrite: ExecCommand = (doc, command, value) => (commands.push(`${command} ${value}`), commands.length > 1 && fakeExec(doc, command, value));
+    const rejectRewrite: ExecCommand = (doc, command, value) => (commands.push(`${command} ${value}`), fakeExec(doc, command, value) && commands.length > 1);
     const request = { editorId: "e-1", expectedHash: captured.capture.editor.hash, start: 3, end: 6, text: "Ana", format: "markdown" as const, expectedFormatHash: captured.capture.selection.formatHash! };
-    const result = await applyReplacement(document, registry, request, rejectRewrite, outlookKeyPress, true);
+    const result = await applyReplacement(document, registry, request, rejectRewrite, undefined, true);
     expect(result).toMatchObject({ ok: false, error: { code: "internal" } });
     expect(commands).toEqual(["insertHTML  Ana ", "insertHTML  ana "]);
     expect(readPlainText(editor).text).toBe("hi ana ok\nsounds good");
@@ -2271,6 +2282,30 @@ describe("Outlook adapter", () => {
     expect(commands).toEqual(["insertHTML  Ana ", "undo undefined", "insertHTML  a&amp;b "]);
     expect(readPlainText(editor).text).toBe("hi a&b ok\nsounds good");
     expect(document.getSelection()!.toString()).toBe("a&b");
+  });
+
+  it("keeps the captured range and value in Gecko when the editor records an undo point", async () => {
+    document.body.innerHTML = EDITOR.replace("hi ana", "hi ana ok");
+    const editor = document.getElementById("reply")!;
+    const registry = new EditorRegistry(() => "e-1");
+    const captured = await capture(registry);
+    if (!captured.ok) {
+      throw new Error("capture failed");
+    }
+
+    const selected: string[] = [];
+    const record = (): void => {
+      selected.push(document.getSelection()!.toString());
+      outlookKeyPress();
+    };
+    const commands: string[] = [];
+    const exec: ExecCommand = (doc, command, value) => (commands.push(`${command} ${value}`), fakeExec(doc, command, value));
+    const request = { editorId: "e-1", expectedHash: captured.capture.editor.hash, start: 3, end: 6, text: "**Ana**", format: "markdown" as const, expectedFormatHash: captured.capture.selection.formatHash! };
+    const result = await applyReplacement(document, registry, request, exec, record, true);
+    expect(result).toEqual({ ok: true });
+    expect(selected).toEqual(["ana"]);
+    expect(commands).toEqual(["insertHTML <b>Ana</b>"]);
+    expect(readPlainText(editor).text).toBe("hi Ana ok\nsounds good");
   });
 
   it("makes the editor record an undo point with a key press over the selection", () => {

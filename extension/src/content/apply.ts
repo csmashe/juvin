@@ -289,7 +289,8 @@ export async function applyReplacement(
     return failure("draft-changed", "The draft changed since it was captured.");
   }
 
-  const target = editTarget(editor, before, offsets, insertion, gecko);
+  // Outlook's undo-point key press does not leave the expected placeholder over a widened range, so it keeps the captured one.
+  const target = editTarget(editor, before, offsets, insertion, gecko && !recordUndoPoint);
   // From here on Apply may have changed the editor, so every refusal first puts the draft back as it was.
   const refuse = (message: string): ApplyResult => {
     restoreText(doc, editor, before, offsets, exec, target);
