@@ -66,8 +66,7 @@ public sealed class SwayPanelWindowSupport : IPanelWindowSupport
                 // ReSharper disable once InvertIf -- a found panel stays the positive case; the retry delay ends the loop body
                 if (FindPanel(tree.StandardOutput, title) is { } panel)
                 {
-                    var command = string.Create(CultureInfo.InvariantCulture, $"[con_id={panel.Id}] move container to output \"{panel.Output}\", sticky enable, move absolute position {panel.X} {panel.Y}");
-                    var result = await DesktopSession.RunAsync(_runner, "swaymsg", [command], CancellationToken.None).ConfigureAwait(false);
+                    var result = await DesktopSession.RunAsync(_runner, "swaymsg", [PlacementCommand(panel)], CancellationToken.None).ConfigureAwait(false);
                     Trace.WriteLine(
                         result.ExitCode == 0
                             ? "[SwayPanelWindowSupport] Placed the panel."
@@ -88,28 +87,41 @@ public sealed class SwayPanelWindowSupport : IPanelWindowSupport
     }
 
     /// <summary>
+    ///     Sway fails a move to the output a sticky window is already on, so a panel shown there
+    ///     before is only positioned.
+    /// </summary>
+    internal static string PlacementCommand(SwayPanel panel) =>
+        panel.IsStickyOnOutput
+            ? string.Create(CultureInfo.InvariantCulture, $"[con_id={panel.Id}] move absolute position {panel.X} {panel.Y}")
+            : string.Create(CultureInfo.InvariantCulture, $"[con_id={panel.Id}] move container to output \"{panel.Output}\", sticky enable, move absolute position {panel.X} {panel.Y}");
+
+    /// <summary>
     ///     The panel's container id, the focused output, and the top-right position within that
     ///     output's current workspace, which excludes the bar. Sway's <c>focus</c> arrays list the
     ///     most recently focused child first.
     /// </summary>
-    internal static (long Id, string Output, int X, int Y)? FindPanel(string treeJson, string title)
+    internal static SwayPanel? FindPanel(string treeJson, string title)
     {
         using var document = JsonDocument.Parse(treeJson);
         var root = document.RootElement;
-        if (FindWindow(root, title) is not { } panel || FocusedChild(root) is not { } output || FocusedChild(output) is not { } workspace)
+        if (FindWindow(root, title, null) is not var (panel, panelOutput) || FocusedChild(root) is not { } output || FocusedChild(output) is not { } workspace)
         {
             return null;
         }
 
         var area = workspace.GetProperty("rect");
         var width = panel.GetProperty("rect").GetProperty("width").GetInt32();
-        return (
+        var outputName = output.GetProperty("name").GetString() ?? "";
+        return new SwayPanel(
             panel.GetProperty("id").GetInt64(),
-            output.GetProperty("name").GetString() ?? "",
+            outputName,
             area.GetProperty("x").GetInt32() + area.GetProperty("width").GetInt32() - width - ScreenMargin,
-            area.GetProperty("y").GetInt32() + ScreenMargin
+            area.GetProperty("y").GetInt32() + ScreenMargin,
+            panelOutput == outputName && panel.TryGetProperty("sticky", out var sticky) && sticky.ValueKind == JsonValueKind.True
         );
     }
+
+    internal sealed record SwayPanel(long Id, string Output, int X, int Y, bool IsStickyOnOutput);
 
     private static JsonElement? FocusedChild(JsonElement node)
     {
@@ -137,11 +149,16 @@ public sealed class SwayPanelWindowSupport : IPanelWindowSupport
         return null;
     }
 
-    private static JsonElement? FindWindow(JsonElement node, string title)
+    private static (JsonElement Window, string? Output)? FindWindow(JsonElement node, string title, string? output)
     {
         if (node.ValueKind != JsonValueKind.Object)
         {
             return null;
+        }
+
+        if (node.TryGetProperty("type", out var type) && type.GetString() == "output" && node.TryGetProperty("name", out var outputName))
+        {
+            output = outputName.GetString();
         }
 
         if (
@@ -152,7 +169,7 @@ public sealed class SwayPanelWindowSupport : IPanelWindowSupport
             && cls.GetString() == WindowClass
         )
         {
-            return node;
+            return (node, output);
         }
 
         foreach (var key in s_childKeys)
@@ -164,7 +181,7 @@ public sealed class SwayPanelWindowSupport : IPanelWindowSupport
 
             foreach (var child in children.EnumerateArray())
             {
-                if (FindWindow(child, title) is { } found)
+                if (FindWindow(child, title, output) is { } found)
                 {
                     return found;
                 }

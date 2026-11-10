@@ -122,12 +122,9 @@ public class App : Application
             };
         }
 
-        tray.ExitRequested += (_, _) =>
-        {
-            _exiting = true;
-            desktop.Shutdown();
-        };
-        services.GetRequiredService<AppExitService>().ExitRequested += () =>
+        var appExit = services.GetRequiredService<AppExitService>();
+        tray.ExitRequested += (_, _) => appExit.RequestExit();
+        appExit.ExitRequested += () =>
             Dispatcher.UIThread.Post(() =>
             {
                 _exiting = true;

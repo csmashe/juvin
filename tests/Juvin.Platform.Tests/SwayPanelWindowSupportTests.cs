@@ -74,14 +74,36 @@ public sealed class SwayPanelWindowSupportTests : IDisposable
     {
         Assert.Null(SwayPanelWindowSupport.FindPanel("[]", Title));
         Assert.Null(SwayPanelWindowSupport.FindPanel(Tree, "Set up Juvin"));
-        Assert.Equal((8L, "Virtual-1", 804, 39), SwayPanelWindowSupport.FindPanel(Tree, Title));
+        Assert.Equal(new SwayPanelWindowSupport.SwayPanel(8, "Virtual-1", 804, 39, false), SwayPanelWindowSupport.FindPanel(Tree, Title));
     }
 
     [LinuxFact]
     public void FindPanel_PlacesThePanelOnTheFocusedOutput()
     {
-        Assert.Equal((8L, "Virtual-2", 2724, 39), SwayPanelWindowSupport.FindPanel(TwoOutputs, Title));
+        Assert.Equal(new SwayPanelWindowSupport.SwayPanel(8, "Virtual-2", 2724, 39, false), SwayPanelWindowSupport.FindPanel(TwoOutputs, Title));
     }
+
+    [LinuxFact]
+    public async Task AStickyPanelOnTheFocusedOutput_IsOnlyPositioned()
+    {
+        _runner.Handler = (_, args) => args[0] == "-t" ? Ok(Sticky(Tree)) : Ok("[{\"success\":true}]");
+
+        await Support().PlaceAsync(Title);
+
+        Assert.Equal(["[con_id=8] move absolute position 804 39"], _runner.Calls[1].Arguments);
+    }
+
+    [LinuxFact]
+    public void AStickyPanelOnAnotherOutput_IsStillMoved()
+    {
+        var panel = SwayPanelWindowSupport.FindPanel(Sticky(TwoOutputs), Title);
+
+        Assert.NotNull(panel);
+        Assert.False(panel.IsStickyOnOutput);
+        Assert.StartsWith("[con_id=8] move container to output \"Virtual-2\", sticky enable,", SwayPanelWindowSupport.PlacementCommand(panel));
+    }
+
+    private static string Sticky(string tree) => tree.Replace("\"type\":\"floating_con\",", "\"type\":\"floating_con\",\"sticky\":true,");
 
     private SwayPanelWindowSupport Support()
     {

@@ -10,6 +10,18 @@ public sealed class GeneralSectionViewModelTests
 {
     private readonly FakeSettingsService _settings = new();
     private readonly FakeLoginItem _loginItem = new();
+    private readonly AppExitService _appExit = new();
+
+    [Fact]
+    public void Quit_RequestsTheAppExit()
+    {
+        var requests = 0;
+        _appExit.ExitRequested += () => requests++;
+
+        Create().QuitCommand.Execute(null);
+
+        Assert.Equal(1, requests);
+    }
 
     [Fact]
     public void CommittingASenderName_SavesItTrimmed()
@@ -179,7 +191,7 @@ public sealed class GeneralSectionViewModelTests
     }
 
     private GeneralSectionViewModel Create() =>
-        new(_settings, new TrayIconService(new Localizer(), new NoTrayHost()), _loginItem, new Localizer());
+        new(_settings, new TrayIconService(new Localizer(), new NoTrayHost()), _loginItem, _appExit, new Localizer());
 
     private sealed class NoTrayHost : ITrayHostProbe
     {
