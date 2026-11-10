@@ -20,6 +20,7 @@ import {
   type TestPageRequestMessage,
 } from "../shared/protocol";
 import {
+  isActivityNotice,
   isMenuNotice,
   isPopupRequest,
   type ApplyResult,
@@ -34,12 +35,23 @@ import {
 } from "../shared/runtime-messages";
 import { Connection, type IsLive, type Reply } from "./connection";
 import { EditorTabs } from "./editor-tabs";
+import { Reconnector } from "./reconnect";
 import { ShortcutTabs } from "./shortcut-tabs";
 import { buildTrimmedContextResponse } from "./trim";
 
 const CONTENT_SCRIPT = "content.js";
 
-const connection = new Connection(onAppRequest, onDisconnected, () => void sendShortcut());
+const connection = new Connection(
+  onAppRequest,
+  onDisconnected,
+  () => {
+    reconnector.connected();
+    void sendShortcut();
+  },
+  (reason) => void reconnector.failed(reason),
+);
+
+const reconnector = new Reconnector(connection);
 
 const editorTabs = new EditorTabs((tabId) => browser.tabs.get(tabId));
 
@@ -67,10 +79,6 @@ const shortcutTabs = new ShortcutTabs({
   // Chrome can stay connected with no window at all; getLastFocused then rejects, which is "not focused".
   isFocused: () => browser.windows.getLastFocused().then((w) => w.focused === true, () => false),
 });
-
-function connectQuietly(trigger: string): void {
-  connection.ensureConnected().catch(() => log("connect.failed", { trigger }));
-}
 
 function errorName(e: unknown): string {
   return e instanceof Error ? e.name : "unknown";
@@ -437,7 +445,7 @@ async function onPopupRequest(request: PopupRequest): Promise<Status | PingResul
     case "juvin.status":
       return connection.status();
     case "juvin.connect":
-      await connection.ensureConnected().catch(() => undefined);
+      await reconnector.connect("popup").catch(() => undefined);
       return connection.status();
     case "juvin.ping":
       try {
@@ -478,8 +486,17 @@ void syncAllSitesScript();
 browser.permissions.onAdded.addListener(() => void syncAllSitesScript());
 browser.permissions.onRemoved.addListener(() => void syncAllSitesScript());
 
-browser.runtime.onStartup.addListener(() => connectQuietly("startup"));
-browser.runtime.onInstalled.addListener(() => connectQuietly("installed"));
+browser.runtime.onStartup.addListener(() => void reconnector.connect("startup").catch(() => undefined));
+browser.runtime.onInstalled.addListener(() => void reconnector.connect("installed").catch(() => undefined));
+browser.alarms.onAlarm.addListener((alarm) => reconnector.alarm(alarm));
+
+// A desktop shortcut never reaches the browser, so browser activity is what tells it the user is back after the app restarted.
+browser.tabs.onActivated.addListener(() => reconnector.activity("tab"));
+browser.windows.onFocusChanged.addListener((windowId: number) => {
+  if (windowId !== browser.windows.WINDOW_ID_NONE) {
+    reconnector.activity("window");
+  }
+});
 
 browser.commands.onCommand.addListener((command: string, commandTab: Tabs.Tab | undefined) => {
   if (command !== "rewrite") {
@@ -489,7 +506,7 @@ browser.commands.onCommand.addListener((command: string, commandTab: Tabs.Tab | 
   // Use the tab the command event supplies; otherwise ask before focus can change.
   (commandTab ? Promise.resolve(commandTab) : activeTab())
     .then(async (tab) => {
-      await connection.ensureConnected();
+      await reconnector.connect("command");
       shortcutTabs.push(connection.generation, tab?.id);
       connection.send(shortcutPressed());
     })
@@ -503,6 +520,10 @@ browser.runtime.onMessage.addListener((message: unknown, sender: Runtime.Message
 
   if (isMenuNotice(message)) {
     return onMenuNotice(message, sender);
+  }
+
+  if (isActivityNotice(message)) {
+    reconnector.activity("editor");
   }
 
   return undefined;

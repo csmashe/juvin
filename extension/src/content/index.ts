@@ -1,10 +1,10 @@
 import browser from "webextension-polyfill";
-import { isContentRequest, type ApplyResult, type CaptureResult, type ContentRequest, type MenuDeliveryResult, type MenuNotice, type MenuShowResult, type PopupRequest, type Status } from "../shared/runtime-messages";
+import { isContentRequest, type ActivityNotice, type ApplyResult, type CaptureResult, type ContentRequest, type MenuDeliveryResult, type MenuNotice, type MenuShowResult, type PopupRequest, type Status } from "../shared/runtime-messages";
 import { isMacShortcut } from "../shared/shortcut-format";
 import { selectAdapter } from "./adapters/registry";
 import { applyReplacement } from "./apply";
 import { captureContext } from "./capture";
-import { EditorRegistry } from "./editor-registry";
+import { EditorRegistry, isEditableHost } from "./editor-registry";
 import { MenuRenderer } from "./menu";
 
 declare global {
@@ -96,6 +96,17 @@ function start(): void {
   if (browser.tabs?.getCurrent) {
     void browser.tabs.getCurrent().then((tab) => (ownTabId = tab?.id));
   }
+
+  document.addEventListener(
+    "focusin",
+    (event) => {
+      const target = event.target;
+      if (target instanceof Element && (target.tagName === "TEXTAREA" || isEditableHost(target))) {
+        browser.runtime.sendMessage({ kind: "juvin.activity" } satisfies ActivityNotice).catch(() => undefined);
+      }
+    },
+    { capture: true },
+  );
 
   browser.runtime.onMessage.addListener((message: unknown) => {
     if (!isContentRequest(message) || (message.tabId !== undefined && message.tabId !== ownTabId)) {

@@ -9,7 +9,7 @@
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
   },
-  "permissions": ["nativeMessaging", "activeTab", "scripting"],
+  "permissions": ["nativeMessaging", "activeTab", "scripting", "alarms"],
   "host_permissions": [
     "https://mail.google.com/*",
     "https://outlook.live.com/*",

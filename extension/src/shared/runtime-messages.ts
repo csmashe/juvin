@@ -92,6 +92,11 @@ export interface MenuClosedNotice {
 
 export type MenuNotice = MenuChosenNotice | MenuClosedNotice;
 
+/** From the content script: the user focused an editable field, so a lost connection is worth trying again. */
+export interface ActivityNotice {
+  kind: "juvin.activity";
+}
+
 export type CaptureResult = { ok: true; capture: Capture } | { ok: false; error: ErrorPayload<ContextErrorCode> };
 
 export type ApplyResult = { ok: true } | { ok: false; error: ErrorPayload<ApplyErrorCode> };
@@ -140,6 +145,10 @@ export function isMenuNotice(value: unknown): value is MenuNotice {
   }
 
   return notice.kind === "juvin.menu.choose" && typeof notice.action === "string" && (notice.instruction === undefined || typeof notice.instruction === "string");
+}
+
+export function isActivityNotice(value: unknown): value is ActivityNotice {
+  return (value as { kind?: unknown } | null)?.kind === "juvin.activity";
 }
 
 export function isPopupRequest(value: unknown): value is PopupRequest {
