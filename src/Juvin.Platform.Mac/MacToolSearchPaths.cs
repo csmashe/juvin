@@ -1,3 +1,5 @@
+using Juvin.Core.Providers;
+
 namespace Juvin.Platform.Mac;
 
 /// <summary>

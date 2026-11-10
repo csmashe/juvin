@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Security;
+using Juvin.Core.Providers;
 using Microsoft.Win32;
 
 namespace Juvin.Platform.Windows;

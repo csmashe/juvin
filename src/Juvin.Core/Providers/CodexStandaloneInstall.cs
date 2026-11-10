@@ -1,4 +1,4 @@
-namespace Juvin.Platform;
+namespace Juvin.Core.Providers;
 
 /// <summary>
 ///     Codex's standalone installer keeps the real binary in <c>packages/standalone/current/bin</c> under

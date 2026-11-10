@@ -1,4 +1,5 @@
 using System.Runtime.Versioning;
+using Juvin.Core.Providers;
 using Juvin.Platform.Linux;
 using Juvin.Platform.Mac;
 using Juvin.Platform.Windows;
