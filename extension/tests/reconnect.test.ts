@@ -211,6 +211,16 @@ describe("Reconnector", () => {
     expect(connection.attempts).toBe(1);
   });
 
+  it("stops the alarm when a portal refuses the host, and still tries on activity", async () => {
+    await reconnector.failed("Native host has exited.");
+    await reconnector.failed("An unexpected error occurred");
+    expect(alarms.size).toBe(0);
+
+    now += ACTIVITY_THROTTLE_MS;
+    reconnector.activity("window");
+    expect(connection.attempts).toBe(1);
+  });
+
   it("tells a missing or forbidden host from one that could not reach the app", () => {
     for (const reason of [
       "Specified native messaging host not found.",

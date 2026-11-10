@@ -18,6 +18,14 @@ export function isHostMissing(reason: string | undefined): boolean {
   return reason !== undefined && HOST_MISSING.test(reason);
 }
 
+// Firefox's sanitized message when a Snap or Flatpak portal refuses the native host, for example after the user
+// answered its consent dialog with Don't allow. A timed retry would only fail the same way.
+const PORTAL_REFUSED = /^An unexpected error occurred\.?$/;
+
+function stopsAlarm(reason: string): boolean {
+  return isHostMissing(reason) || reason === VERSION_REJECTED || PORTAL_REFUSED.test(reason);
+}
+
 export interface Reconnectable {
   status(): Status;
   ensureConnected(): Promise<void>;
@@ -26,7 +34,7 @@ export interface Reconnectable {
 /**
  * Reconnects after the app restarts while nothing in the browser would: an alarm that backs off from 30 seconds to
  * every 5 minutes, and browser activity at most once per throttle window since the last attempt from any source. A
- * missing host or a rejected protocol version stops the alarm, since only a registration or an update can fix those.
+ * missing host, a rejected protocol version, or a portal refusal stops the alarm, since only the user can fix those.
  * The backoff step lives in the alarm's period, so it survives the background being unloaded while idle.
  */
 export class Reconnector {
@@ -51,7 +59,7 @@ export class Reconnector {
   /** Starts the backoff unless it is already running. */
   async failed(reason: string): Promise<void> {
     this.lastAttempt = this.now();
-    if (isHostMissing(reason) || reason === VERSION_REJECTED) {
+    if (stopsAlarm(reason)) {
       await browser.alarms.clear(RECONNECT_ALARM);
       return;
     }
