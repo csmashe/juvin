@@ -198,5 +198,10 @@ public sealed class ProcessRunner : IProcessRunner
         {
             // Already exited.
         }
+        catch (AggregateException ex)
+        {
+            // Part of the tree could not be signalled, for example a pkexec child now running as root; shutdown goes on.
+            Trace.WriteLine($"[ProcessRunner] Could not kill the whole process tree ({ex.InnerExceptions.Count} errors).");
+        }
     }
 }
