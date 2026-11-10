@@ -483,7 +483,7 @@ public sealed class ActionMenuService
                     {
                         MenuId = menu.Id,
                         State = MenuStates.Error,
-                        Text = ErrorText(error.Code),
+                        Text = _localizer[ConnectorErrorLabels.ApplyKeyFor(error.Code)],
                         CanRetry = error.Code == ConnectorRewriteTarget.TimeoutCode,
                         Result = text,
                     },

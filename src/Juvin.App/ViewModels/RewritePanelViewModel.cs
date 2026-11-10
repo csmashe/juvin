@@ -399,7 +399,7 @@ public sealed partial class RewritePanelViewModel : ObservableObject
         }
         else
         {
-            Notice = ErrorText(error.Code);
+            Notice = _localizer[ConnectorErrorLabels.ApplyKeyFor(error.Code)];
         }
     }
 

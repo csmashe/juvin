@@ -471,6 +471,22 @@ public sealed class ActionMenuServiceTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task AnApplyThatFailsInTheEditor_SaysTheDraftWasLeftAsItWas()
+    {
+        var menuId = await OpenMenuAsync();
+        Choose(menuId, "clearer");
+        await NextAsync("menu.update");
+        var apply = await NextAsync("apply.request");
+
+        Reply(apply, """{"ok":false,"error":{"code":"internal","message":"The editor rejected the edit command."}}""", "apply.response");
+
+        var update = await NextAsync("menu.update");
+        Assert.Equal("error", update.GetProperty("state").GetString());
+        Assert.Equal(_localizer["Panel.Error.ApplyFailed"], update.GetProperty("text").GetString());
+        Assert.Equal("reply 1", update.GetProperty("result").GetString());
+    }
+
+    [Fact]
     public async Task AProviderFailure_SendsARetryableErrorAndNeverFallsBack()
     {
         _local.Failure = new ProviderException(ProviderFailureKind.Unreachable, "The local model server did not respond in time.");
