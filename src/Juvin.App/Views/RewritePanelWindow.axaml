@@ -12,8 +12,10 @@
         WindowDecorations="None"
         Topmost="True"
         ShowInTaskbar="False"
-        CanResize="False">
+        CanResize="False"
+        Focusable="True">
 
+    <!-- Focusable so activation takes keyboard focus even when no control here had it; on X11 Avalonia would leave it in another Juvin window. -->
     <Window.KeyBindings>
         <KeyBinding Gesture="Escape" Command="{Binding CloseCommand}" />
     </Window.KeyBindings>
