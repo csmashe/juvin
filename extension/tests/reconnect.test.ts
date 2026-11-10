@@ -24,6 +24,7 @@ vi.mock("webextension-polyfill", () => ({
 }));
 
 const { ACTIVITY_THROTTLE_MS, BACKOFF_MINUTES, RECONNECT_ALARM, Reconnector, isHostMissing } = await import("../src/background/reconnect");
+const { VERSION_REJECTED } = await import("../src/background/connection");
 
 class FakeConnection {
   state: Status = { connected: false, connecting: false };
@@ -33,8 +34,16 @@ class FakeConnection {
     return this.state;
   }
 
+  /** Like the real connection, opens a port only when there is none. */
   ensureConnected(): Promise<void> {
-    this.attempts++;
+    if (this.state.connected) {
+      return Promise.resolve();
+    }
+
+    if (!this.state.connecting) {
+      this.attempts++;
+    }
+
     return Promise.reject(new Error("Native host has exited."));
   }
 }
@@ -120,10 +129,22 @@ describe("Reconnector", () => {
     expect(connection.attempts).toBe(0);
   });
 
+  it("picks up the backoff from an alarm left by a background that was unloaded", async () => {
+    alarms.set(RECONNECT_ALARM, { name: RECONNECT_ALARM, scheduledTime: 0, periodInMinutes: 2, delayInMinutes: 2 });
+    const fresh = new Reconnector(connection, () => now);
+
+    await fresh.failed("Native host has exited.");
+    expect(alarms.get(RECONNECT_ALARM)?.periodInMinutes).toBe(2);
+
+    fresh.alarm(alarms.get(RECONNECT_ALARM)!);
+    expect(alarms.get(RECONNECT_ALARM)?.periodInMinutes).toBe(5);
+    expect(connection.attempts).toBe(1);
+  });
+
   it("tries once per throttle window on browser activity", () => {
     reconnector.activity("tab");
     reconnector.activity("window");
-    reconnector.activity("tab-loaded");
+    reconnector.activity("editor");
     expect(connection.attempts).toBe(1);
 
     now += ACTIVITY_THROTTLE_MS - 1;
@@ -135,6 +156,26 @@ describe("Reconnector", () => {
     expect(connection.attempts).toBe(2);
   });
 
+  it("shares the throttle window with the alarm, explicit connects, and failures", async () => {
+    await reconnector.failed("Native host has exited.");
+    reconnector.activity("tab");
+    expect(connection.attempts).toBe(0);
+
+    now += ACTIVITY_THROTTLE_MS;
+    fire();
+    reconnector.activity("tab");
+    expect(connection.attempts).toBe(1);
+
+    now += ACTIVITY_THROTTLE_MS;
+    await reconnector.connect("popup").catch(() => undefined);
+    expect(connection.attempts).toBe(2);
+    reconnector.activity("window");
+    expect(connection.attempts).toBe(2);
+
+    await reconnector.connect("command").catch(() => undefined);
+    expect(connection.attempts).toBe(3);
+  });
+
   it("does not try on activity while connected or connecting", () => {
     connection.state = { connected: true, connecting: false };
     reconnector.activity("tab");
@@ -144,7 +185,7 @@ describe("Reconnector", () => {
     expect(connection.attempts).toBe(0);
   });
 
-  it("does not retry while the native host is not registered", async () => {
+  it("stops the alarm but keeps throttled activity attempts while the native host is not registered", async () => {
     await reconnector.failed("Native host has exited.");
     await reconnector.failed("Specified native messaging host not found.");
     expect(alarms.size).toBe(0);
@@ -152,6 +193,22 @@ describe("Reconnector", () => {
     connection.state = { connected: false, connecting: false, lastError: "No such native application com.juvin.host" };
     reconnector.activity("tab");
     expect(connection.attempts).toBe(0);
+
+    now += ACTIVITY_THROTTLE_MS;
+    reconnector.activity("tab");
+    expect(connection.attempts).toBe(1);
+    await reconnector.failed("No such native application com.juvin.host");
+    expect(alarms.size).toBe(0);
+  });
+
+  it("stops the alarm when the app rejects the protocol version", async () => {
+    await reconnector.failed("Native host has exited.");
+    await reconnector.failed(VERSION_REJECTED);
+    expect(alarms.size).toBe(0);
+
+    now += ACTIVITY_THROTTLE_MS;
+    reconnector.activity("window");
+    expect(connection.attempts).toBe(1);
   });
 
   it("tells a missing or forbidden host from one that could not reach the app", () => {
@@ -164,7 +221,7 @@ describe("Reconnector", () => {
       expect(isHostMissing(reason), reason).toBe(true);
     }
 
-    for (const reason of [undefined, "Native host has exited.", "Juvin did not answer. Is the Juvin app running?", "The connection to Juvin closed.", "Error when communicating with the native messaging host."]) {
+    for (const reason of [undefined, "Native host has exited.", "Juvin did not answer. Is the Juvin app running?", "The connection to Juvin closed.", "Error when communicating with the native messaging host.", "Failed to start native messaging host.", "An unexpected error occurred", VERSION_REJECTED]) {
       expect(isHostMissing(reason), reason).toBe(false);
     }
   });

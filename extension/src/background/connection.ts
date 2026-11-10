@@ -8,6 +8,8 @@ const CONNECT_TIMEOUT_MS = 30_000;
 const PING_TIMEOUT_MS = 5_000;
 const BADGE_COLOR = "#F5A623";
 
+export const VERSION_REJECTED = "This version of the Juvin extension does not work with the installed Juvin app. Update both.";
+
 /** Sends a reply on the connection that delivered the request; a no-op once that connection is gone. */
 export type Reply = (message: OutgoingMessage) => void;
 
@@ -133,7 +135,6 @@ export class Connection {
       this.dropped(port, p.error?.message ?? browser.runtime.lastError?.message ?? "The connection to Juvin closed.");
     });
 
-    log("connect.start", { host: HOST_NAME });
     const manifest = browser.runtime.getManifest();
     const identity = await browserIdentity();
     if (this.port === port) {
@@ -143,6 +144,15 @@ export class Connection {
 
   private receive(raw: unknown, generation: number): void {
     const parsed = parseIncoming(raw);
+    // The app answers a hello it cannot speak with an unsupported-version error, in its own version, then closes.
+    const code = parsed.ok ? (parsed.message.type === "error" ? parsed.message.error.code : undefined) : parsed.reply.error.code;
+    if (code === "unsupported-version" && !this.config && this.port && generation === this.generation_) {
+      const port = this.port;
+      this.dropped(port, VERSION_REJECTED);
+      port.disconnect();
+      return;
+    }
+
     if (!parsed.ok) {
       warn("receive.invalid", { code: parsed.reply.error.code });
       if (parsed.replyDue) {
