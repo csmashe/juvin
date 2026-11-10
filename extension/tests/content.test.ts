@@ -1076,6 +1076,89 @@ describe("applyReplacement", () => {
         expect(calls).toEqual([["insertHTML", " bbb ", " one<br>two "]]);
       });
 
+      it.each([
+        ["a no-break space", "aaa\u00a0 bbb \u00a0ccc"],
+        ["a tab", "aaa\t bbb \tccc"],
+        ["a zero-width space", "aaa\u200b bbb \u200bccc"],
+        ["a doubled space", "aaa  bbb  ccc"],
+        ["a line break", "aaa<br> bbb <br>ccc"],
+      ])("keeps the captured range in Gecko when the space has %s beyond it", async (_, html) => {
+        const { registry, request } = await richCapture(html, 5, 8);
+        const { exec, calls } = recording();
+        const result = await applyReplacement(document, registry, { ...request, text: "**XYZ**" }, exec, undefined, true);
+        expect(result).toEqual({ ok: true });
+        expect(calls).toEqual([["insertHTML", "bbb", "<b>XYZ</b>"]]);
+      });
+
+      it.each([
+        ["in a bold", "<b>aaa </b>bbb ccc", "<b>aaa </b>XYZ ccc"],
+        ["in a link", `<a href="https://e.example/">aaa </a>bbb ccc`, `<a href="https://e.example/">aaa </a>XYZ ccc`],
+        ["in a styled span", `<span style="color:red">aaa </span>bbb ccc`, `<span style="color:red">aaa </span>XYZ ccc`],
+        ["in a read-only chip", `<span contenteditable="false">Ana </span>bbb ccc`, `<span contenteditable="false">Ana </span>XYZ ccc`],
+      ])("leaves out a space %s before the phrase in Gecko, so the text does not go into it", async (_, html, after) => {
+        const { editor, registry, request } = await richCapture(html, 4, 7);
+        const { exec, calls } = recording();
+        const result = await applyReplacement(document, registry, { ...request, text: "XYZ" }, exec, undefined, true);
+        expect(result).toEqual({ ok: true });
+        expect(calls).toEqual([["insertHTML", "bbb ", "XYZ "]]);
+        expect(editor.innerHTML).toBe(after);
+      });
+
+      it("leaves out the spaces outside a bold phrase in Gecko", async () => {
+        const { registry, request } = await richCapture("aaa <b>bbb</b> ccc", 4, 7);
+        const { exec, calls } = recording();
+        await applyReplacement(document, registry, { ...request, text: "**XYZ**" }, exec, undefined, true);
+        expect(calls[0]?.slice(0, 2)).toEqual(["insertHTML", "bbb"]);
+      });
+
+      it("leaves out a space in a bold after the phrase in Gecko", async () => {
+        const { editor, registry, request } = await richCapture("aaa bbb<b> ccc</b>", 4, 7);
+        const { exec, calls } = recording();
+        const result = await applyReplacement(document, registry, { ...request, text: "XYZ" }, exec, undefined, true);
+        expect(result).toEqual({ ok: true });
+        expect(calls).toEqual([["insertHTML", " bbb", " XYZ"]]);
+        expect(editor.innerHTML).toBe("aaa XYZ<b> ccc</b>");
+      });
+
+      it.each([
+        ["with a space beyond it", `aaa bbb <img src="x.png"> ccc`, " bbb", " <b>XYZ</b>"],
+        ["right before the next word", `aaa bbb <img src="x.png">ccc`, " bbb ", " <b>XYZ</b> "],
+      ])("keeps an image after the phrase's space %s in Gecko", async (_, html, selected, value) => {
+        const { editor, registry, request } = await richCapture(html, 4, 7);
+        const { exec, calls } = recording();
+        const result = await applyReplacement(document, registry, { ...request, text: "**XYZ**" }, exec, undefined, true);
+        expect(result).toEqual({ ok: true });
+        expect(calls).toEqual([["insertHTML", selected, value]]);
+        expect(editor.querySelector("img")).not.toBeNull();
+      });
+
+      it("keeps the captured range in Gecko when the rewrite starts and ends with a space", async () => {
+        const { registry, request } = await richCapture("aaa bbb ccc", 4, 7);
+        const { exec, calls } = recording();
+        await applyReplacement(document, registry, { ...request, text: " **XYZ** " }, exec, undefined, true);
+        expect(calls[0]).toEqual(["insertHTML", "bbb", " <b>XYZ</b> "]);
+      });
+
+      it("undoes a widened edit that drops a space in Gecko", async () => {
+        const { editor, registry, request } = await richCapture("aaa bbb ccc", 4, 7);
+        const original = editor.innerHTML;
+        const commands: string[] = [];
+        const exec: ExecCommand = (doc, command, value) => {
+          commands.push(command);
+          if (command === "undo") {
+            editor.innerHTML = original;
+            return true;
+          }
+
+          return fakeExec(doc, command, value?.trimEnd());
+        };
+
+        const result = await applyReplacement(document, registry, { ...request, text: "**XYZ**" }, exec, undefined, true);
+        expect(result).toMatchObject({ ok: false, error: { code: "internal" } });
+        expect(commands).toEqual(["insertHTML", "undo"]);
+        expect(editor.innerHTML).toBe(original);
+      });
+
       it("keeps the captured range for a list in Gecko", async () => {
         const { registry, request } = await richCapture("aaa bbb ccc", 4, 7);
         const { exec, calls } = recording();
@@ -2057,6 +2140,42 @@ describe("Outlook adapter", () => {
     expect(result).toEqual({ ok: true });
     expect(commands).toEqual(["insertText Ana"]);
     expect(readPlainText(editor).text).toBe("hi Ana\nsounds good");
+  });
+
+  it("puts the text and the space after it back when the key press also takes the space", async () => {
+    document.body.innerHTML = EDITOR.replace("hi ana", "hi ana ok");
+    const editor = document.getElementById("reply")!;
+    const { registry, hash } = await captured();
+    const takesSpace = (): void => {
+      const range = document.getSelection()!.getRangeAt(0);
+      range.setEnd(range.endContainer, range.endOffset + 1);
+      outlookKeyPress();
+    };
+
+    const values: (string | undefined)[] = [];
+    const exec: ExecCommand = (doc, command, value) => (values.push(value), fakeExec(doc, command, value));
+    const result = await applyReplacement(document, registry, { editorId: "e-1", expectedHash: hash, start: 3, end: 6, text: "Ana" }, exec, takesSpace);
+    expect(result).toMatchObject({ ok: false, error: { code: "internal" } });
+    expect(values).toEqual(["ana "]);
+    expect(readPlainText(editor).text).toBe("hi ana ok\nsounds good");
+  });
+
+  it("puts the text back with the spaces beside it when the editor rejects an edit that took them in Gecko", async () => {
+    document.body.innerHTML = EDITOR.replace("hi ana", "hi ana ok");
+    const editor = document.getElementById("reply")!;
+    const registry = new EditorRegistry(() => "e-1");
+    const captured = await capture(registry);
+    if (!captured.ok) {
+      throw new Error("capture failed");
+    }
+
+    const values: (string | undefined)[] = [];
+    const rejectRewrite: ExecCommand = (doc, command, value) => (values.push(value), command !== "insertHTML" && fakeExec(doc, command, value));
+    const request = { editorId: "e-1", expectedHash: captured.capture.editor.hash, start: 3, end: 6, text: "Ana", format: "markdown" as const, expectedFormatHash: captured.capture.selection.formatHash! };
+    const result = await applyReplacement(document, registry, request, rejectRewrite, outlookKeyPress, true);
+    expect(result).toMatchObject({ ok: false, error: { code: "internal" } });
+    expect(values).toEqual([" Ana ", " ana "]);
+    expect(readPlainText(editor).text).toBe("hi ana ok\nsounds good");
   });
 
   it("makes the editor record an undo point with a key press over the selection", () => {

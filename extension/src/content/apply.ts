@@ -2,11 +2,11 @@ import { inGecko } from "../shared/engine";
 import type { ApplyErrorCode } from "../shared/protocol";
 import type { ApplyResult } from "../shared/runtime-messages";
 import { editorText } from "./capture";
-import { isEditable, isPlainEditor, isTextArea, type Editor, type EditorRegistry, type Offsets } from "./editor-registry";
+import { isEditable, isEditableHost, isPlainEditor, isTextArea, type Editor, type EditorRegistry, type Offsets } from "./editor-registry";
 import { hashText } from "./hash";
 import { embeddedContent, expectFormatting, formatRuns, formatSignature, formattingSnapshot, type FormatRun } from "./formatting";
 import { markdownToElement, stripMarkdown } from "./markdown";
-import { isBlock, offsetsToRange, readPlainText } from "./plain-text";
+import { isBlock, offsetsToRange, readPlainText, type PlainText } from "./plain-text";
 
 /** Runs an editing command; injectable because jsdom has no execCommand. */
 export type ExecCommand = (doc: Document, command: "insertText" | "insertHTML" | "delete" | "undo" | "redo", value?: string) => boolean;
@@ -72,17 +72,52 @@ function insertionFor(doc: Document, editor: Editor, text: string, markdown: boo
   return { command: plain.length > 0 ? "insertText" : "delete", value: plain, rendered: plain, block: isPlainEditor(editor) ? undefined : block.outerHTML };
 }
 
+function textNodeAt(plain: PlainText, offset: number): Text | undefined {
+  for (const segment of plain.segments) {
+    if (segment.kind === "text" && segment.start <= offset && offset < segment.start + segment.node.data.length) {
+      return segment.node;
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * True when the character at `space` is editable text in the same inline formatting as the one at `edge`: the same
+ * parent, or a sibling element just like it, as when an editor gives each run of a line a span of its own.
+ */
+function sameFormatting(plain: PlainText, space: number, edge: number): boolean {
+  const parent = textNodeAt(plain, space)?.parentElement;
+  const other = textNodeAt(plain, edge)?.parentElement;
+  const host = parent?.closest("[contenteditable]");
+  if (!parent || !other || !host || !isEditableHost(host)) {
+    return false;
+  }
+
+  return parent === other || (parent.parentNode === other.parentNode && parent.cloneNode(false).isEqualNode(other.cloneNode(false)));
+}
+
+const isVisible = (char: string | undefined): boolean => char !== undefined && /[^\s\u200b]/.test(char);
+
 /**
  * The range to select and the value to insert. Gecko turns a space next to where insertHTML splits a text node
- * into a no-break space, so there inline HTML also replaces the spaces beside the range and inserts them again.
+ * into a no-break space, so there inline HTML also replaces a single space beside the range and inserts it again.
  * Chrome would drop such a space at the edge of a line, so it gets the range as captured.
  */
 function editTarget(editor: Editor, before: string, offsets: Offsets, insertion: Insertion, gecko: boolean): Offsets & { value: string } {
-  const space = (index: number, start: number, end: number): string =>
-    gecko && insertion.inline && before[index] === " " && embeddedContent(editor, start, end).length === 0 ? " " : "";
-  const lead = space(offsets.start - 1, offsets.start - 1, offsets.end);
-  const trail = space(offsets.end, offsets.start, offsets.end + 1);
-  return { start: offsets.start - lead.length, end: offsets.end + trail.length, value: lead + insertion.value + trail };
+  if (!gecko || !insertion.inline) {
+    return { ...offsets, value: insertion.value };
+  }
+
+  const { start, end } = offsets;
+  const plain = readPlainText(editor);
+  const lead =
+    before[start - 1] === " " && isVisible(before[start - 2]) && !/^\s/.test(insertion.rendered) &&
+    sameFormatting(plain, start - 1, start) && embeddedContent(editor, start - 1, end).length === 0;
+  const trail =
+    before[end] === " " && isVisible(before[end + 1]) && !/\s$/.test(insertion.rendered) &&
+    sameFormatting(plain, end, end - 1) && embeddedContent(editor, start, end + 1).length === 0;
+  return { start: lead ? start - 1 : start, end: trail ? end + 1 : end, value: (lead ? " " : "") + insertion.value + (trail ? " " : "") };
 }
 
 /**
