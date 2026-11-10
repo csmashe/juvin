@@ -273,7 +273,7 @@
   "General.CloseToTrayHint": "Closing the window keeps Juvin running in the system tray.",
   "General.NoTrayHint": "No system tray was found, so closing the window exits Juvin.",
   "General.Quit": "Quit Juvin",
-  "General.QuitHint": "Stops Juvin completely, including its tray icon and shortcut, until you start it again.",
+  "General.QuitHint": "Stops Juvin and its shortcut until you open it again.",
   "General.QuitButton": "Quit",
   "General.MoreLabel": "LANGUAGE AND UPDATES",
   "General.Language": "Language",

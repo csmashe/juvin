@@ -2,7 +2,7 @@ using Juvin.Platform;
 
 namespace Juvin.App.Services;
 
-/// <summary>Forwards exit requests from platform code to the app, which owns the desktop lifetime.</summary>
+/// <summary>Forwards exit requests to the app, which runs the normal shutdown on the UI thread.</summary>
 public sealed class AppExitService : IAppExit
 {
     public event Action? ExitRequested;
