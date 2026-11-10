@@ -1,7 +1,8 @@
+import { inGecko } from "../shared/engine";
 import type { ApplyErrorCode } from "../shared/protocol";
 import type { ApplyResult } from "../shared/runtime-messages";
 import { editorText } from "./capture";
-import { isEditable, isPlainEditor, isTextArea, type Editor, type EditorRegistry } from "./editor-registry";
+import { isEditable, isPlainEditor, isTextArea, type Editor, type EditorRegistry, type Offsets } from "./editor-registry";
 import { hashText } from "./hash";
 import { embeddedContent, expectFormatting, formatRuns, formatSignature, formattingSnapshot, type FormatRun } from "./formatting";
 import { markdownToElement, stripMarkdown } from "./markdown";
@@ -43,6 +44,8 @@ interface Insertion {
   runs?: FormatRun[];
   /** For a rich editor, the same content as HTML wrapped in a block of its own. */
   block?: string;
+  /** HTML with no list, which can take the spaces around it. */
+  inline?: boolean;
 }
 
 /** Markdown becomes HTML built from the subset in a rich editor and stripped text in a textarea. */
@@ -51,7 +54,14 @@ function insertionFor(doc: Document, editor: Editor, text: string, markdown: boo
     const container = markdownToElement(doc, text);
     const rendered = readPlainText(container).text;
     if (rendered.length > 0) {
-      return { command: "insertHTML", value: container.innerHTML, rendered, runs: formatRuns(container, 0, rendered.length), block: container.outerHTML };
+      return {
+        command: "insertHTML",
+        value: container.innerHTML,
+        rendered,
+        runs: formatRuns(container, 0, rendered.length),
+        block: container.outerHTML,
+        inline: container.querySelector("ul, ol") === null,
+      };
     }
   }
 
@@ -60,6 +70,19 @@ function insertionFor(doc: Document, editor: Editor, text: string, markdown: boo
   // As HTML, a run of spaces would collapse to one, so each space that would be lost becomes a no-break space, as insertText does.
   plain.split("\n").forEach((line, index) => block.append(...(index > 0 ? [doc.createElement("br")] : []), line.replace(/^ | (?= )| $/g, "\u00a0")));
   return { command: plain.length > 0 ? "insertText" : "delete", value: plain, rendered: plain, block: isPlainEditor(editor) ? undefined : block.outerHTML };
+}
+
+/**
+ * The range to select and the value to insert. Gecko turns a space next to where insertHTML splits a text node
+ * into a no-break space, so there inline HTML also replaces the spaces beside the range and inserts them again.
+ * Chrome would drop such a space at the edge of a line, so it gets the range as captured.
+ */
+function editTarget(editor: Editor, before: string, offsets: Offsets, insertion: Insertion, gecko: boolean): Offsets & { value: string } {
+  const space = (index: number, start: number, end: number): string =>
+    gecko && insertion.inline && before[index] === " " && embeddedContent(editor, start, end).length === 0 ? " " : "";
+  const lead = space(offsets.start - 1, offsets.start - 1, offsets.end);
+  const trail = space(offsets.end, offsets.start, offsets.end + 1);
+  return { start: offsets.start - lead.length, end: offsets.end + trail.length, value: lead + insertion.value + trail };
 }
 
 /**
@@ -161,6 +184,7 @@ export async function applyReplacement(
   request: { editorId: string; expectedHash: string; start: number; end: number; text: string; format?: "markdown"; expectedFormatHash?: string },
   exec: ExecCommand = browserExecCommand,
   recordUndoPoint?: (editor: HTMLElement) => void,
+  gecko = inGecko,
 ): Promise<ApplyResult> {
   const editor = registry.find(request.editorId);
   if (!editor) {
@@ -228,16 +252,17 @@ export async function applyReplacement(
       return failure("internal", "The page has no selection object.");
     }
 
+    const target = editTarget(editor, before, offsets, insertion, gecko);
     const select = (): void => {
       selection.removeAllRanges();
-      selection.addRange(offsetsToRange(editor, readPlainText(editor), offsets.start, offsets.end));
+      selection.addRange(offsetsToRange(editor, readPlainText(editor), target.start, target.end));
     };
     const breaks = new Set(editor.querySelectorAll("br"));
     select();
     if (recordUndoPoint) {
       recordUndoPoint(editor);
       const now = editorText(editor);
-      const placeholder = before.slice(0, offsets.start) + "\u200b" + before.slice(offsets.end);
+      const placeholder = before.slice(0, target.start) + "\u200b" + before.slice(target.end);
       if (now === before) {
         select();
       } else if (selection.toString() !== "\u200b" || now !== placeholder) {
@@ -245,7 +270,7 @@ export async function applyReplacement(
       }
     }
 
-    accepted = exec(doc, insertion.command, insertion.value);
+    accepted = exec(doc, insertion.command, target.value);
 
     // A whole line inserted as its own block needs no <br>; the retry is one edit, so one Undo still reverts it.
     const wholeLine =
