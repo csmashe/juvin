@@ -1979,7 +1979,7 @@ describe("Outlook adapter", () => {
     expect(readPlainText(editor).text).toBe("hi ana\nsounds good");
   });
 
-  it("puts the text back with the space before it when the editor rejects an edit that took the space in Gecko", async () => {
+  it("puts the text and the space before it back as plain text when the editor rejects HTML after an edit that took the space in Gecko", async () => {
     document.body.innerHTML = EDITOR;
     const editor = document.getElementById("reply")!;
     const registry = new EditorRegistry(() => "e-1");
@@ -1988,12 +1988,12 @@ describe("Outlook adapter", () => {
       throw new Error("capture failed");
     }
 
-    const values: (string | undefined)[] = [];
-    const rejectRewrite: ExecCommand = (doc, command, value) => (values.push(value), command !== "insertHTML" && fakeExec(doc, command, value));
+    const commands: string[] = [];
+    const rejectHtml: ExecCommand = (doc, command, value) => (commands.push(`${command} ${value}`), command !== "insertHTML" && fakeExec(doc, command, value));
     const request = { editorId: "e-1", expectedHash: captured.capture.editor.hash, start: 3, end: 6, text: "Ana", format: "markdown" as const, expectedFormatHash: captured.capture.selection.formatHash! };
-    const result = await applyReplacement(document, registry, request, rejectRewrite, outlookKeyPress, true);
+    const result = await applyReplacement(document, registry, request, rejectHtml, outlookKeyPress, true);
     expect(result).toMatchObject({ ok: false, error: { code: "internal" } });
-    expect(values).toEqual([" Ana", " ana"]);
+    expect(commands).toEqual(["insertHTML  Ana", "insertHTML  ana", "insertText  ana"]);
     expect(readPlainText(editor).text).toBe("hi ana\nsounds good");
   });
 
@@ -2160,7 +2160,7 @@ describe("Outlook adapter", () => {
     expect(readPlainText(editor).text).toBe("hi ana ok\nsounds good");
   });
 
-  it("puts the text back with the spaces beside it when the editor rejects an edit that took them in Gecko", async () => {
+  it("puts the text back with the spaces beside it as escaped HTML when the editor rejects an edit that took them in Gecko", async () => {
     document.body.innerHTML = EDITOR.replace("hi ana", "hi ana ok");
     const editor = document.getElementById("reply")!;
     const registry = new EditorRegistry(() => "e-1");
@@ -2169,13 +2169,33 @@ describe("Outlook adapter", () => {
       throw new Error("capture failed");
     }
 
-    const values: (string | undefined)[] = [];
-    const rejectRewrite: ExecCommand = (doc, command, value) => (values.push(value), command !== "insertHTML" && fakeExec(doc, command, value));
+    const commands: string[] = [];
+    const rejectRewrite: ExecCommand = (doc, command, value) => (commands.push(`${command} ${value}`), commands.length > 1 && fakeExec(doc, command, value));
     const request = { editorId: "e-1", expectedHash: captured.capture.editor.hash, start: 3, end: 6, text: "Ana", format: "markdown" as const, expectedFormatHash: captured.capture.selection.formatHash! };
     const result = await applyReplacement(document, registry, request, rejectRewrite, outlookKeyPress, true);
     expect(result).toMatchObject({ ok: false, error: { code: "internal" } });
-    expect(values).toEqual([" Ana ", " ana "]);
+    expect(commands).toEqual(["insertHTML  Ana ", "insertHTML  ana "]);
     expect(readPlainText(editor).text).toBe("hi ana ok\nsounds good");
+  });
+
+  it("puts the words and the spaces an edit took back as escaped text when the edit comes out wrong in Gecko", async () => {
+    document.body.innerHTML = EDITOR.replace("hi ana", "hi a&amp;b ok");
+    const editor = document.getElementById("reply")!;
+    const registry = new EditorRegistry(() => "e-1");
+    const captured = await capture(registry);
+    if (!captured.ok) {
+      throw new Error("capture failed");
+    }
+
+    const commands: string[] = [];
+    const wrongEdit: ExecCommand = (doc, command, value) =>
+      (commands.push(`${command} ${value}`), command !== "undo" && fakeExec(doc, command, commands.length === 1 ? " Anna " : value));
+    const request = { editorId: "e-1", expectedHash: captured.capture.editor.hash, start: 3, end: 6, text: "Ana", format: "markdown" as const, expectedFormatHash: captured.capture.selection.formatHash! };
+    const result = await applyReplacement(document, registry, request, wrongEdit, undefined, true);
+    expect(result).toMatchObject({ ok: false, error: { code: "internal" } });
+    expect(commands).toEqual(["insertHTML  Ana ", "undo undefined", "insertHTML  a&amp;b "]);
+    expect(readPlainText(editor).text).toBe("hi a&b ok\nsounds good");
+    expect(document.getSelection()!.toString()).toBe("a&b");
   });
 
   it("makes the editor record an undo point with a key press over the selection", () => {
