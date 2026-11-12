@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Runtime.Versioning;
 using System.Text;
 using System.Text.Json;
@@ -499,7 +500,7 @@ public sealed class AtomicJsonStore<T>
         var preservedPath =
             path
             + ".broken-"
-            + DateTime.UtcNow.ToString("yyyyMMddHHmmss")
+            + DateTime.UtcNow.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture)
             + "-"
             + Guid.NewGuid().ToString("N");
         WriteCorruptCopy(path, preservedPath, corruptBytes);

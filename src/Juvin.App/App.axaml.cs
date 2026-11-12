@@ -66,7 +66,7 @@ public class App : Application
         var main = services.GetRequiredService<MainWindow>();
         // A login start stays in the tray. The lifetime shows MainWindow before its loop runs, so it is assigned once the loop starts.
         var backgroundStart = desktop.Args?.Contains(ILoginItem.BackgroundArgument) == true;
-        var startHidden = backgroundStart && tray.IsTrayAvailable && settings.Current.HasCompletedOnboarding;
+        var startHidden = backgroundStart && settings.Current.HasCompletedOnboarding;
         if (startHidden)
         {
             Dispatcher.UIThread.Post(() => desktop.MainWindow = main);
@@ -76,10 +76,10 @@ public class App : Application
             desktop.MainWindow = main;
         }
 
-        // At login the tray host may start after the app, sometimes well after.
+        // At login the tray host may start well after the app, so a hidden start waits for it before showing.
         if (backgroundStart && !tray.IsTrayAvailable)
         {
-            _ = RefreshTrayLaterAsync(tray);
+            _ = RefreshTrayLaterAsync(tray, startHidden ? main : null);
         }
 
         // The rewrite panel stays open while hidden, so it must not keep the app alive.
@@ -347,8 +347,11 @@ public class App : Application
         main.Close();
     }
 
-    /// <summary>A tray host that starts after a login start is picked up within the first minute.</summary>
-    private static async Task RefreshTrayLaterAsync(TrayIconService tray)
+    /// <summary>
+    ///     A tray host that starts after a login start is picked up within the first minute; without one,
+    ///     <paramref name="hiddenWindow" /> is shown so the app stays reachable.
+    /// </summary>
+    private async Task RefreshTrayLaterAsync(TrayIconService tray, MainWindow? hiddenWindow)
     {
         for (var attempt = 0; attempt < TrayRecheckAttempts; attempt++)
         {
@@ -357,6 +360,11 @@ public class App : Application
             {
                 return;
             }
+        }
+
+        if (hiddenWindow is not null && !_exiting)
+        {
+            hiddenWindow.Show();
         }
     }
 
