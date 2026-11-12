@@ -388,6 +388,7 @@ public sealed class ConnectorSession : IAsyncDisposable
         }
         finally
         {
+            // ReSharper disable once CSharpWarnings::CS8601 -- false positive on a discarded out value
             _pending.TryRemove(id, out _);
         }
     }
