@@ -12,6 +12,7 @@ using Juvin.App.ViewModels.Sections;
 using Juvin.App.Views;
 using Juvin.Core.Interfaces;
 using Juvin.Core.Localization;
+using Juvin.Core.Providers;
 using Juvin.Platform;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -174,6 +175,8 @@ public class App : Application
             {
                 Trace.WriteLine("[App] The action menu close was not sent in time.");
             }
+
+            services.GetRequiredService<ProcessRunner>().Shutdown();
 
             _socketLifetime.Cancel();
             services.GetRequiredService<ILocalSocketServer>().StopAsync().GetAwaiter().GetResult();
