@@ -1104,11 +1104,25 @@ describe("applyReplacement", () => {
         expect(editor.innerHTML).toBe(after);
       });
 
-      it("leaves out the spaces outside a bold phrase in Gecko", async () => {
-        const { registry, request } = await richCapture("aaa <b>bbb</b> ccc", 4, 7);
+      it.each([
+        ["a bold phrase", "aaa <b>bbb</b> ccc", 4, 7, " bbb ", "aaa XYZ ccc"],
+        ["a phrase whose first words Gmail marks for grammar", `aaa <span data-ddnwab="Nsi_1_0" class="Q6ibn ng">bbb ccc</span> ddd eee`, 4, 15, " bbb ccc ddd ", "aaa XYZ eee"],
+        ["a phrase whose last word Gmail marks for grammar", `aaa bbb <span data-ddnwab="Nsi_1_0" class="Q6ibn ng">ccc</span> ddd`, 4, 11, " bbb ccc ", "aaa XYZ ddd"],
+        ["nested spans inside the phrase", `aaa <span><span>bbb</span> ccc</span> ddd`, 4, 11, " bbb ccc ", "aaa XYZ ddd"],
+      ])("takes the spaces beside %s in Gecko, since the edit removes its wrappers either way", async (_, html, start, end, selected, text) => {
+        const { editor, registry, request } = await richCapture(html, start, end);
+        const { exec, calls } = recording();
+        const result = await applyReplacement(document, registry, { ...request, text: "**XYZ**" }, exec, undefined, true);
+        expect(result).toEqual({ ok: true });
+        expect(calls).toEqual([["insertHTML", selected, " <b>XYZ</b> "]]);
+        expect(readPlainText(editor).text).toBe(text);
+      });
+
+      it("leaves out a space outside a span that goes on past the phrase in Gecko", async () => {
+        const { registry, request } = await richCapture(`aaa <span class="g">bbb ccc</span> ddd`, 4, 7);
         const { exec, calls } = recording();
         await applyReplacement(document, registry, { ...request, text: "**XYZ**" }, exec, undefined, true);
-        expect(calls[0]?.slice(0, 2)).toEqual(["insertHTML", "bbb"]);
+        expect(calls[0]).toEqual(["insertHTML", "bbb ", "<b>XYZ</b> "]);
       });
 
       it("leaves out a space in a bold after the phrase in Gecko", async () => {
