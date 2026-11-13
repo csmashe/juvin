@@ -6,7 +6,7 @@ import { isEditable, isEditableHost, isPlainEditor, isTextArea, type Editor, typ
 import { hashText } from "./hash";
 import { embeddedContent, expectFormatting, formatRuns, formatSignature, formattingSnapshot, type FormatRun } from "./formatting";
 import { markdownToElement, stripMarkdown } from "./markdown";
-import { isBlock, offsetsToRange, readPlainText, type PlainText } from "./plain-text";
+import { isBlock, offsetsToRange, readPlainText, segmentText, type PlainText } from "./plain-text";
 
 /** Runs an editing command; injectable because jsdom has no execCommand. */
 export type ExecCommand = (doc: Document, command: "insertText" | "insertHTML" | "delete" | "undo" | "redo", value?: string) => boolean;
@@ -82,11 +82,27 @@ function textNodeAt(plain: PlainText, offset: number): Text | undefined {
   return undefined;
 }
 
+/** True when every inline element from the text at `edge` up to `ancestor` lies wholly in `range`, so the edit removes it either way. */
+function coveredUpTo(plain: PlainText, edge: number, ancestor: Element, range: Offsets): boolean {
+  const covered = (element: Element): boolean =>
+    plain.segments.every(
+      (segment) => segment.kind === "break" || !element.contains(segment.node) || (range.start <= segment.start && segment.start + segmentText(segment).length <= range.end),
+    );
+  for (let element = textNodeAt(plain, edge)?.parentElement; element !== ancestor; element = element.parentElement) {
+    if (!element || isBlock(element) || !covered(element)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 /**
  * True when the character at `space` is editable text in the same inline formatting as the one at `edge`: the same
- * parent, or a sibling element just like it, as when an editor gives each run of a line a span of its own.
+ * parent, a sibling element just like it, as when an editor gives each run of a line a span of its own, or an ancestor
+ * whose elements around the edge lie wholly in `range`, as when Gmail marks words of the phrase for grammar.
  */
-function sameFormatting(plain: PlainText, space: number, edge: number): boolean {
+function sameFormatting(plain: PlainText, space: number, edge: number, range: Offsets): boolean {
   const parent = textNodeAt(plain, space)?.parentElement;
   const other = textNodeAt(plain, edge)?.parentElement;
   const host = parent?.closest("[contenteditable]");
@@ -94,7 +110,11 @@ function sameFormatting(plain: PlainText, space: number, edge: number): boolean 
     return false;
   }
 
-  return parent === other || (parent.parentNode === other.parentNode && parent.cloneNode(false).isEqualNode(other.cloneNode(false)));
+  return (
+    parent === other ||
+    (parent.parentNode === other.parentNode && parent.cloneNode(false).isEqualNode(other.cloneNode(false))) ||
+    coveredUpTo(plain, edge, parent, range)
+  );
 }
 
 const isVisible = (char: string | undefined): boolean => char !== undefined && /[^\s\u200b]/.test(char);
@@ -119,10 +139,10 @@ function editTarget(editor: Editor, before: string, offsets: Offsets, insertion:
   const plain = readPlainText(editor);
   const lead =
     before[start - 1] === " " && isVisible(before[start - 2]) && !/^\s/.test(insertion.rendered) &&
-    sameFormatting(plain, start - 1, start) && embeddedContent(editor, start - 1, end).length === 0;
+    sameFormatting(plain, start - 1, start, { start: start - 1, end }) && embeddedContent(editor, start - 1, end).length === 0;
   const trail =
     before[end] === " " && isVisible(before[end + 1]) && !/\s$/.test(insertion.rendered) &&
-    sameFormatting(plain, end, end - 1) && embeddedContent(editor, start, end + 1).length === 0;
+    sameFormatting(plain, end, end - 1, { start, end: end + 1 }) && embeddedContent(editor, start, end + 1).length === 0;
   const bare = [start, end - 1].every((offset) => {
     const parent = textNodeAt(plain, offset)?.parentElement;
     return !!parent && (parent === editor || isBlock(parent));
