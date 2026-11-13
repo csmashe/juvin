@@ -1,11 +1,12 @@
+import { inGecko } from "../shared/engine";
 import type { ApplyErrorCode } from "../shared/protocol";
 import type { ApplyResult } from "../shared/runtime-messages";
 import { editorText } from "./capture";
-import { isEditable, isPlainEditor, isTextArea, type Editor, type EditorRegistry } from "./editor-registry";
+import { isEditable, isEditableHost, isPlainEditor, isTextArea, type Editor, type EditorRegistry, type Offsets } from "./editor-registry";
 import { hashText } from "./hash";
 import { embeddedContent, expectFormatting, formatRuns, formatSignature, formattingSnapshot, type FormatRun } from "./formatting";
 import { markdownToElement, stripMarkdown } from "./markdown";
-import { isBlock, offsetsToRange, readPlainText } from "./plain-text";
+import { isBlock, offsetsToRange, readPlainText, segmentText, type PlainText } from "./plain-text";
 
 /** Runs an editing command; injectable because jsdom has no execCommand. */
 export type ExecCommand = (doc: Document, command: "insertText" | "insertHTML" | "delete" | "undo" | "redo", value?: string) => boolean;
@@ -43,6 +44,8 @@ interface Insertion {
   runs?: FormatRun[];
   /** For a rich editor, the same content as HTML wrapped in a block of its own. */
   block?: string;
+  /** HTML with no list, which can take the spaces around it. */
+  inline?: boolean;
 }
 
 /** Markdown becomes HTML built from the subset in a rich editor and stripped text in a textarea. */
@@ -51,7 +54,14 @@ function insertionFor(doc: Document, editor: Editor, text: string, markdown: boo
     const container = markdownToElement(doc, text);
     const rendered = readPlainText(container).text;
     if (rendered.length > 0) {
-      return { command: "insertHTML", value: container.innerHTML, rendered, runs: formatRuns(container, 0, rendered.length), block: container.outerHTML };
+      return {
+        command: "insertHTML",
+        value: container.innerHTML,
+        rendered,
+        runs: formatRuns(container, 0, rendered.length),
+        block: container.outerHTML,
+        inline: container.querySelector("ul, ol") === null,
+      };
     }
   }
 
@@ -60,6 +70,84 @@ function insertionFor(doc: Document, editor: Editor, text: string, markdown: boo
   // As HTML, a run of spaces would collapse to one, so each space that would be lost becomes a no-break space, as insertText does.
   plain.split("\n").forEach((line, index) => block.append(...(index > 0 ? [doc.createElement("br")] : []), line.replace(/^ | (?= )| $/g, "\u00a0")));
   return { command: plain.length > 0 ? "insertText" : "delete", value: plain, rendered: plain, block: isPlainEditor(editor) ? undefined : block.outerHTML };
+}
+
+function textNodeAt(plain: PlainText, offset: number): Text | undefined {
+  for (const segment of plain.segments) {
+    if (segment.kind === "text" && segment.start <= offset && offset < segment.start + segment.node.data.length) {
+      return segment.node;
+    }
+  }
+
+  return undefined;
+}
+
+/** True when every inline element from the text at `edge` up to `ancestor` lies wholly in `range`, so the edit removes it either way. */
+function coveredUpTo(plain: PlainText, edge: number, ancestor: Element, range: Offsets): boolean {
+  const covered = (element: Element): boolean =>
+    plain.segments.every(
+      (segment) => segment.kind === "break" || !element.contains(segment.node) || (range.start <= segment.start && segment.start + segmentText(segment).length <= range.end),
+    );
+  for (let element = textNodeAt(plain, edge)?.parentElement; element !== ancestor; element = element.parentElement) {
+    if (!element || isBlock(element) || !covered(element)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * True when the character at `space` is editable text in the same inline formatting as the one at `edge`: the same
+ * parent, a sibling element just like it, as when an editor gives each run of a line a span of its own, or an ancestor
+ * whose elements around the edge lie wholly in `range`, as when Gmail marks words of the phrase for grammar.
+ */
+function sameFormatting(plain: PlainText, space: number, edge: number, range: Offsets): boolean {
+  const parent = textNodeAt(plain, space)?.parentElement;
+  const other = textNodeAt(plain, edge)?.parentElement;
+  const host = parent?.closest("[contenteditable]");
+  if (!parent || !other || !host || !isEditableHost(host)) {
+    return false;
+  }
+
+  return (
+    parent === other ||
+    (parent.parentNode === other.parentNode && parent.cloneNode(false).isEqualNode(other.cloneNode(false))) ||
+    coveredUpTo(plain, edge, parent, range)
+  );
+}
+
+const isVisible = (char: string | undefined): boolean => char !== undefined && /[^\s\u200b]/.test(char);
+
+interface EditTarget extends Offsets {
+  value: string;
+  /** True when both ends of the range sit directly in a block, with no inline formatting to keep on a restore. */
+  bare: boolean;
+}
+
+/**
+ * The range to select and the value to insert. Gecko turns a space next to where insertHTML splits a text node
+ * into a no-break space, so there inline HTML also replaces a single space beside the range and inserts it again.
+ * Chrome would drop such a space at the edge of a line, so it gets the range as captured.
+ */
+function editTarget(editor: Editor, before: string, offsets: Offsets, insertion: Insertion, gecko: boolean): EditTarget {
+  if (!gecko || !insertion.inline) {
+    return { ...offsets, value: insertion.value, bare: false };
+  }
+
+  const { start, end } = offsets;
+  const plain = readPlainText(editor);
+  const lead =
+    before[start - 1] === " " && isVisible(before[start - 2]) && !/^\s/.test(insertion.rendered) &&
+    sameFormatting(plain, start - 1, start, { start: start - 1, end }) && embeddedContent(editor, start - 1, end).length === 0;
+  const trail =
+    before[end] === " " && isVisible(before[end + 1]) && !/\s$/.test(insertion.rendered) &&
+    sameFormatting(plain, end, end - 1, { start, end: end + 1 }) && embeddedContent(editor, start, end + 1).length === 0;
+  const bare = [start, end - 1].every((offset) => {
+    const parent = textNodeAt(plain, offset)?.parentElement;
+    return !!parent && (parent === editor || isBlock(parent));
+  });
+  return { start: lead ? start - 1 : start, end: trail ? end + 1 : end, value: (lead ? " " : "") + insertion.value + (trail ? " " : ""), bare };
 }
 
 /**
@@ -102,8 +190,11 @@ function holdSelection(doc: Document, editor: Editor): () => void {
  * Puts back the text the editor changed since `before`, through the editor's own command over the part that differs,
  * then selects the captured range again; when the editor still differs, the selection goes back where it was.
  * The range comes back as plain text by design: losing a link beats losing the sentence, so do not swap this for an Undo.
+ * Spaces the edit took beside the range go back with the words as escaped HTML, since Gecko's insertText turns them
+ * into no-break spaces; not when a space borders the part, which insertHTML would turn instead, nor in inline
+ * formatting, which insertHTML would leave out while insertText keeps it.
  */
-function restoreText(doc: Document, editor: Editor, before: string, offsets: { start: number; end: number }, exec: ExecCommand): void {
+function restoreText(doc: Document, editor: Editor, before: string, offsets: Offsets, exec: ExecCommand, target: EditTarget): void {
   const select = (start: number, end: number): void => {
     if (isTextArea(editor)) {
       editor.setSelectionRange(start, end);
@@ -126,6 +217,12 @@ function restoreText(doc: Document, editor: Editor, before: string, offsets: { s
       suffix++;
     }
 
+    const widened = target.start < offsets.start || target.end > offsets.end;
+    if (widened) {
+      prefix = Math.min(prefix, target.start);
+      suffix = Math.min(suffix, before.length - target.end);
+    }
+
     const restoreSelection = holdSelection(doc, editor);
     const missing = before.slice(prefix, before.length - suffix);
     // Trailing line breaks go in after the words, so the editor shapes them like the line they end, as Firefox's
@@ -134,7 +231,17 @@ function restoreText(doc: Document, editor: Editor, before: string, offsets: { s
     let replaced = true;
     if (words.length > 0 || prefix < now.length - suffix) {
       select(prefix, now.length - suffix);
-      replaced = exec(doc, words.length > 0 ? "insertText" : "delete", words);
+      const spaced = widened && target.bare && words.length > 0 && !words.includes("\n") && now[prefix - 1] !== " " && now[now.length - suffix] !== " ";
+      if (spaced) {
+        const escaped = doc.createElement("div");
+        escaped.textContent = words;
+        exec(doc, "insertHTML", escaped.innerHTML);
+        replaced = editorText(editor) !== now;
+      }
+
+      if (!spaced || !replaced) {
+        replaced = exec(doc, words.length > 0 ? "insertText" : "delete", words);
+      }
     }
 
     if (replaced && words !== missing && editorText(editor) !== before) {
@@ -161,6 +268,7 @@ export async function applyReplacement(
   request: { editorId: string; expectedHash: string; start: number; end: number; text: string; format?: "markdown"; expectedFormatHash?: string },
   exec: ExecCommand = browserExecCommand,
   recordUndoPoint?: (editor: HTMLElement) => void,
+  gecko = inGecko,
 ): Promise<ApplyResult> {
   const editor = registry.find(request.editorId);
   if (!editor) {
@@ -201,9 +309,11 @@ export async function applyReplacement(
     return failure("draft-changed", "The draft changed since it was captured.");
   }
 
+  // Outlook's undo-point key press does not leave the expected placeholder over a widened range, so it keeps the captured one.
+  const target = editTarget(editor, before, offsets, insertion, gecko && !recordUndoPoint);
   // From here on Apply may have changed the editor, so every refusal first puts the draft back as it was.
   const refuse = (message: string): ApplyResult => {
-    restoreText(doc, editor, before, offsets, exec);
+    restoreText(doc, editor, before, offsets, exec, target);
     return failure("internal", message);
   };
 
@@ -230,14 +340,14 @@ export async function applyReplacement(
 
     const select = (): void => {
       selection.removeAllRanges();
-      selection.addRange(offsetsToRange(editor, readPlainText(editor), offsets.start, offsets.end));
+      selection.addRange(offsetsToRange(editor, readPlainText(editor), target.start, target.end));
     };
     const breaks = new Set(editor.querySelectorAll("br"));
     select();
     if (recordUndoPoint) {
       recordUndoPoint(editor);
       const now = editorText(editor);
-      const placeholder = before.slice(0, offsets.start) + "\u200b" + before.slice(offsets.end);
+      const placeholder = before.slice(0, target.start) + "\u200b" + before.slice(target.end);
       if (now === before) {
         select();
       } else if (selection.toString() !== "\u200b" || now !== placeholder) {
@@ -245,7 +355,7 @@ export async function applyReplacement(
       }
     }
 
-    accepted = exec(doc, insertion.command, insertion.value);
+    accepted = exec(doc, insertion.command, target.value);
 
     // A whole line inserted as its own block needs no <br>; the retry is one edit, so one Undo still reverts it.
     const wholeLine =
