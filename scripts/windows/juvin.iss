@@ -105,13 +105,33 @@ Filename: "{app}\juvin.exe"; Description: "{cm:LaunchProgram,Juvin}"; Flags: pos
 const
   RunKey = 'Software\Microsoft\Windows\CurrentVersion\Run';
 
+// A browser's juvin-host.exe outlives Juvin by about a second, and the extension starts it again to
+// reconnect; each copy exits on its own within a few seconds, so delete it once it lets go.
+procedure DeleteNativeHost;
+var
+  HostExe: String;
+  Tries: Integer;
+begin
+  HostExe := ExpandConstant('{app}\juvin-host.exe');
+  Tries := 0;
+  while FileExists(HostExe) and not DeleteFile(HostExe) and (Tries < 100) do
+  begin
+    Sleep(100);
+    Tries := Tries + 1;
+  end;
+end;
+
 // The app writes this value when Launch at login is on. It is removed only while it still names the
 // installed exe, so a value someone else wrote under the same name is left alone.
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   Value: String;
 begin
-  if (CurUninstallStep = usUninstall) and RegQueryStringValue(HKCU, RunKey, 'Juvin', Value)
+  if CurUninstallStep <> usUninstall then
+    Exit;
+
+  DeleteNativeHost;
+  if RegQueryStringValue(HKCU, RunKey, 'Juvin', Value)
     and (Pos(Lowercase('"' + ExpandConstant('{app}\juvin.exe') + '"'), Lowercase(Value)) = 1) then
     RegDeleteValue(HKCU, RunKey, 'Juvin');
 end;
