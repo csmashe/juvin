@@ -1,6 +1,6 @@
 # Checks the installer from build-windows-installer.ps1 on this machine: a silent per-user install,
 # the installed files, shortcut, and registry entries, a run of juvin-host and juvin-cli, a start of
-# the app until its control pipe answers --trigger, and a silent uninstall.
+# the app until its control pipe answers --trigger, and a silent uninstall while juvin-host is still running.
 #
 # Usage: scripts\smoke-test-windows-installer.ps1 <version> [package-dir]
 # Juvin must not be installed or running. The app uses %LOCALAPPDATA%\Juvin; when that folder did
@@ -202,6 +202,12 @@ try {
         New-Item -Path $runKey | Out-Null
     }
     Set-ItemProperty -Path $runKey -Name 'Juvin' -Value "`"$installDir\juvin.exe`" --background"
+
+    # Stands in for a browser's juvin-host still running as the uninstall starts; with no app it retries for two seconds.
+    $lingeringHost = Start-Process -FilePath (Join-Path $installDir 'juvin-host.exe') -PassThru -WindowStyle Hidden
+    if ($lingeringHost.HasExited) {
+        Fail 'juvin-host exited before the uninstall started'
+    }
 
     # The uninstaller hands over to a copy of itself in %TEMP% and returns at once, so wait for the folder.
     $uninstallRun = Invoke-Program (Join-Path $installDir 'unins000.exe') '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' 120
