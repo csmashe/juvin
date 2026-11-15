@@ -30,6 +30,8 @@ public sealed class CodexCliProvider : IModelProvider
         "hooks",
     ];
 
+    private const string TooOldMessage = "The Codex CLI is too old for Juvin. Update it and check again.";
+
     private static readonly TimeSpan s_defaultTimeout = TimeSpan.FromMinutes(3);
     private static readonly TimeSpan s_probeTimeout = TimeSpan.FromSeconds(30);
 
@@ -94,25 +96,22 @@ public sealed class CodexCliProvider : IModelProvider
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(s_probeTimeout);
+        var models = _model is null ? [] : new[] { new ModelInfo(_model, _model, null, false) };
+        string? versionText = null;
         try
         {
             var version = await _runner.RunAsync(_binary, ["--version"], null, null, timeout.Token);
-            var versionText = version.ExitCode == 0 ? FirstLine(version.StandardOutput) : null;
-            var models = _model is null ? [] : new[] { new ModelInfo(_model, _model, null, false) };
+            versionText = version.ExitCode == 0 ? FirstLine(version.StandardOutput) : null;
 
             // An older Codex passes the version and sign-in checks but lacks the flags every rewrite uses.
-            var help = await _runner.RunAsync(_binary, ["exec", "--help"], null, null, timeout.Token);
-            if (
-                help.ExitCode != 0
-                || s_requiredExecFlags.Any(flag => !help.StandardOutput.Contains(flag, StringComparison.Ordinal))
-                || await FeaturesAsync(_binary, timeout.Token) is null
-                || await McpServersAsync(_binary, timeout.Token) is not { } mcpServers
-            )
+            var help = Checked(await _runner.RunAsync(_binary, ["exec", "--help"], null, null, timeout.Token), "exec --help");
+            if (s_requiredExecFlags.Any(flag => !help.StandardOutput.Contains(flag, StringComparison.Ordinal)))
             {
-                return new ProviderStatus(ProviderStatusKind.Incompatible, "Provider.Status.CodexNeedsUpdate", models, versionText);
+                throw CheckFailure.NeedsUpdate();
             }
 
-            if (!mcpServers.All(CanDisable))
+            await FeaturesAsync(_binary, timeout.Token);
+            if (!(await McpServersAsync(_binary, timeout.Token)).All(CanDisable))
             {
                 return new ProviderStatus(ProviderStatusKind.Incompatible, "Provider.Status.CodexMcpServerName", models, versionText);
             }
@@ -120,12 +119,23 @@ public sealed class CodexCliProvider : IModelProvider
             var login = await _runner.RunAsync(_binary, ["login", "status"], null, null, timeout.Token);
 
             // Codex 0.162 prints "Logged in using ChatGPT" to stderr; accept either stream.
-            var signedIn =
-                login.ExitCode == 0
-                && (login.StandardOutput + login.StandardError).Contains("Logged in", StringComparison.Ordinal);
-            return signedIn
-                ? new ProviderStatus(ProviderStatusKind.Ready, "Provider.Status.Ready", models, versionText)
-                : new ProviderStatus(ProviderStatusKind.NotSignedIn, "Provider.Status.NotSignedIn", models, versionText);
+            var loginOutput = login.StandardOutput + login.StandardError;
+            if (login.ExitCode == 0 && loginOutput.Contains("Logged in", StringComparison.Ordinal))
+            {
+                return new ProviderStatus(ProviderStatusKind.Ready, "Provider.Status.Ready", models, versionText);
+            }
+
+            // Codex exits 1 with "Not logged in" when signed out; any other failure is not about sign-in.
+            if (login.ExitCode != 0 && !loginOutput.Contains("Not logged in", StringComparison.OrdinalIgnoreCase))
+            {
+                throw CheckFailure.Failed("login status", login);
+            }
+
+            return new ProviderStatus(ProviderStatusKind.NotSignedIn, "Provider.Status.NotSignedIn", models, versionText);
+        }
+        catch (CheckFailure ex)
+        {
+            return new ProviderStatus(ex.StatusKind, ex.MessageKey, models, versionText, ex.MessageArgs);
         }
         catch (Exception ex) when (ex is Win32Exception or ArgumentException)
         {
@@ -156,7 +166,9 @@ public sealed class CodexCliProvider : IModelProvider
             _binary
             ?? throw new ProviderException(
                 ProviderFailureKind.Configuration,
-                "The Codex CLI was not found. Install it or set its path in Models."
+                _binaryConfigured
+                    ? "No Codex CLI at the location set in Models. Fix the location, or clear it to find codex on your PATH."
+                    : "The Codex CLI was not found. Install it or set its path in Models."
             );
         var model = request.Model ?? _model;
         var arguments = await ExecArgumentsAsync(binary, model, ct);
@@ -239,15 +251,19 @@ public sealed class CodexCliProvider : IModelProvider
 
     private async Task<List<string>> ExecArgumentsAsync(string binary, string? model, CancellationToken ct)
     {
-        IReadOnlySet<string>? features;
-        IReadOnlyList<string>? mcpServers;
+        IReadOnlySet<string> features;
+        IReadOnlyList<string> mcpServers;
         using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct))
         {
             timeout.CancelAfter(s_probeTimeout);
             try
             {
                 features = await FeaturesAsync(binary, timeout.Token);
-                mcpServers = features is null ? null : await McpServersAsync(binary, timeout.Token);
+                mcpServers = await McpServersAsync(binary, timeout.Token);
+            }
+            catch (CheckFailure ex)
+            {
+                throw new ProviderException(ex.FailureKind, ex.Message, ex);
             }
             catch (Exception ex) when (ex is Win32Exception or ArgumentException)
             {
@@ -257,11 +273,6 @@ public sealed class CodexCliProvider : IModelProvider
             {
                 throw new ProviderException(ProviderFailureKind.Unreachable, "Codex did not respond and was stopped.", ex);
             }
-        }
-
-        if (features is null || mcpServers is null)
-        {
-            throw TooOld();
         }
 
         List<string> arguments =
@@ -305,29 +316,30 @@ public sealed class CodexCliProvider : IModelProvider
     }
 
     /// <summary>
-    ///     The feature names the installed Codex reports, cached per instance; null when it cannot
-    ///     list them or has no shell tool to turn off, which means it is too old to run safely.
+    ///     The feature names the installed Codex reports, cached per instance. A list without the
+    ///     shell tool to turn off means Codex is too old to run safely.
     /// </summary>
-    private async Task<IReadOnlySet<string>?> FeaturesAsync(string binary, CancellationToken ct)
+    private async Task<IReadOnlySet<string>> FeaturesAsync(string binary, CancellationToken ct)
     {
         if (_features is not null)
         {
             return _features;
         }
 
-        var result = await _runner.RunAsync(binary, ["features", "list"], null, null, ct);
-        if (result.ExitCode != 0)
-        {
-            return null;
-        }
-
+        const string command = "features list";
+        var result = Checked(await _runner.RunAsync(binary, ["features", "list"], null, null, ct), command);
         var names = result.StandardOutput
             .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(line => line.Split((char[]?)null, 2, StringSplitOptions.RemoveEmptyEntries)[0])
             .ToHashSet(StringComparer.Ordinal);
+        if (names.Count == 0)
+        {
+            throw CheckFailure.Unreadable(command, result);
+        }
+
         if (!names.Contains("shell_tool"))
         {
-            return null;
+            throw CheckFailure.NeedsUpdate();
         }
 
         _features = names;
@@ -336,38 +348,30 @@ public sealed class CodexCliProvider : IModelProvider
 
     /// <summary>
     ///     The names of every MCP server the Codex configuration lists, enabled or not, cached per
-    ///     instance; null when Codex cannot list them.
+    ///     instance.
     /// </summary>
-    private async Task<IReadOnlyList<string>?> McpServersAsync(string binary, CancellationToken ct)
+    private async Task<IReadOnlyList<string>> McpServersAsync(string binary, CancellationToken ct)
     {
         if (_mcpServers is not null)
         {
             return _mcpServers;
         }
 
-        var result = await _runner.RunAsync(binary, ["mcp", "list", "--json"], null, null, ct);
-        if (result.ExitCode != 0)
-        {
-            return null;
-        }
-
+        const string command = "mcp list --json";
+        var result = Checked(await _runner.RunAsync(binary, ["mcp", "list", "--json"], null, null, ct), command);
         try
         {
             using var document = JsonDocument.Parse(result.StandardOutput);
             if (document.RootElement.ValueKind != JsonValueKind.Array)
             {
-                return null;
+                throw CheckFailure.Unreadable(command, result);
             }
 
             List<string> names = [];
+            // ReSharper disable once ForeachCanBeConvertedToQueryUsingAnotherGetEnumerator -- a throw inside a LINQ selector reads worse than the loop
             foreach (var server in document.RootElement.EnumerateArray())
             {
-                if (GetString(server, "name") is not { } name)
-                {
-                    return null;
-                }
-
-                names.Add(name);
+                names.Add(GetString(server, "name") ?? throw CheckFailure.Unreadable(command, result));
             }
 
             _mcpServers = names;
@@ -375,16 +379,99 @@ public sealed class CodexCliProvider : IModelProvider
         }
         catch (JsonException)
         {
-            return null;
+            throw CheckFailure.Unreadable(command, result);
         }
+    }
+
+    /// <summary>
+    ///     Returns a check's result when it exited cleanly. A command-line usage error means this
+    ///     Codex lacks the command or flag, so it is too old; any other failure is reported as is.
+    /// </summary>
+    private static ProcessResult Checked(ProcessResult result, string command)
+    {
+        if (result.ExitCode == 0)
+        {
+            return result;
+        }
+
+        if (
+            result.StandardError.Contains("unrecognized subcommand", StringComparison.Ordinal)
+            || result.StandardError.Contains("unexpected argument", StringComparison.Ordinal)
+        )
+        {
+            throw CheckFailure.NeedsUpdate();
+        }
+
+        throw CheckFailure.Failed(command, result);
     }
 
     /// <summary>The name lands in a TOML key path, so only a bare key is passed.</summary>
     private static bool CanDisable(string server) =>
         server.Length > 0 && server.All(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '-');
 
-    private static ProviderException TooOld() =>
-        new(ProviderFailureKind.Incompatible, "The Codex CLI is too old for Juvin. Update it and check again.");
+    private static ProviderException TooOld() => new(ProviderFailureKind.Incompatible, TooOldMessage);
+
+    /// <summary>A check of the installed Codex that did not pass, as a probe status and a rewrite failure.</summary>
+    private sealed class CheckFailure : Exception
+    {
+        private CheckFailure(
+            ProviderStatusKind statusKind,
+            ProviderFailureKind failureKind,
+            string messageKey,
+            IReadOnlyList<object>? messageArgs,
+            string message
+        )
+            : base(message)
+        {
+            StatusKind = statusKind;
+            FailureKind = failureKind;
+            MessageKey = messageKey;
+            MessageArgs = messageArgs;
+        }
+
+        public ProviderStatusKind StatusKind { get; }
+        public ProviderFailureKind FailureKind { get; }
+        public string MessageKey { get; }
+        public IReadOnlyList<object>? MessageArgs { get; }
+
+        public static CheckFailure NeedsUpdate() =>
+            new(
+                ProviderStatusKind.Incompatible,
+                ProviderFailureKind.Incompatible,
+                "Provider.Status.CodexNeedsUpdate",
+                null,
+                TooOldMessage
+            );
+
+        public static CheckFailure Failed(string command, ProcessResult result)
+        {
+            Log("failed", command, result);
+            return new CheckFailure(
+                ProviderStatusKind.Unreachable,
+                ProviderFailureKind.ProcessFailed,
+                "Provider.Status.CodexCommandFailed",
+                [command, result.ExitCode],
+                $"The Codex CLI could not run codex {command} (exit code {result.ExitCode}). Run that command in a terminal to see why."
+            );
+        }
+
+        public static CheckFailure Unreadable(string command, ProcessResult result)
+        {
+            Log("unreadable", command, result);
+            return new CheckFailure(
+                ProviderStatusKind.Unreachable,
+                ProviderFailureKind.Protocol,
+                "Provider.Status.CodexCommandUnreadable",
+                [command],
+                $"The Codex CLI ran codex {command} but printed nothing Juvin can read. Run that command in a terminal to see why."
+            );
+        }
+
+        private static void Log(string outcome, string command, ProcessResult result) =>
+            Trace.WriteLine(
+                $"[CodexCliProvider] Check {outcome}: command={command}, exit={result.ExitCode}, stdoutChars={result.StandardOutput.Length}, stderrChars={result.StandardError.Length}"
+            );
+    }
 
     internal static string? ResolveBinary(string? configured, string? pathVariable, bool isWindows)
     {
