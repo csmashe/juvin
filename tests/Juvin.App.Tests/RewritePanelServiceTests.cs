@@ -84,6 +84,73 @@ public sealed class RewritePanelServiceTests
         Assert.False(_viewModel.CanRecapture);
     }
 
+    [Fact]
+    public async Task TheHotkey_IsAimedAtTheShownCapturesBrowserOnlyWhileThePanelHasFocus()
+    {
+        await using var session = new ConnectorSession(new StreamConnectorChannel(new MemoryStream()), () => throw new InvalidOperationException());
+        var aims = new List<ConnectorSession?>();
+        var service = new RewritePanelService(_viewModel, () => { }, () => { }, action => action(), aims.Add);
+        service.Start();
+
+        service.Show(new ConnectorRewriteTarget(session), 1, Declined("no-selection"));
+        service.SetActive(true);
+        service.SetActive(false);
+        service.SetActive(true);
+        _viewModel.CloseCommand.Execute(null);
+
+        Assert.Equal([null, session, null, session, null], aims);
+    }
+
+    [Fact]
+    public async Task TheHotkey_IsAimedAgainWhenThePanelIsShownAgainStillReportingFocus()
+    {
+        await using var session = new ConnectorSession(new StreamConnectorChannel(new MemoryStream()), () => throw new InvalidOperationException());
+        ConnectorSession? aim = null;
+        var service = new RewritePanelService(_viewModel, () => { }, () => { }, action => action(), aimed => aim = aimed);
+        service.Start();
+        service.Show(new ConnectorRewriteTarget(session), 1, Declined("no-selection"));
+        service.SetActive(true);
+        _viewModel.CloseCommand.Execute(null);
+
+        service.Show(new ConnectorRewriteTarget(session), 2, Declined("no-selection"));
+
+        Assert.Same(session, aim);
+    }
+
+    [Fact]
+    public async Task TheHotkey_IsNotAimedWhenThePanelIsShownAgainAfterLosingFocus()
+    {
+        await using var session = new ConnectorSession(new StreamConnectorChannel(new MemoryStream()), () => throw new InvalidOperationException());
+        var aims = new List<ConnectorSession?>();
+        var service = new RewritePanelService(_viewModel, () => { }, () => { }, action => action(), aims.Add);
+        service.Start();
+        service.Show(new ConnectorRewriteTarget(session), 1, Declined("no-selection"));
+        service.SetActive(true);
+        _viewModel.CloseCommand.Execute(null);
+        service.SetActive(false);
+
+        service.Show(new ConnectorRewriteTarget(session), 2, Declined("no-selection"));
+        var aimedOnShow = aims[^1];
+        service.SetActive(true);
+
+        Assert.Null(aimedOnShow);
+        Assert.Same(session, aims[^1]);
+    }
+
+    [Fact]
+    public async Task TheHotkey_IsNotAimedAtABrowserForACaptureNoBrowserAnswered()
+    {
+        await using var session = new ConnectorSession(new StreamConnectorChannel(new MemoryStream()), () => throw new InvalidOperationException());
+        ConnectorSession? aim = null;
+        var service = new RewritePanelService(_viewModel, () => { }, () => { }, action => action(), aimed => aim = aimed);
+        service.Show(new ConnectorRewriteTarget(session), 1, Declined("no-selection"));
+        service.SetActive(true);
+
+        service.Show(null, 2, Declined(ConnectorService.BrowserNotFocusedCode));
+
+        Assert.Null(aim);
+    }
+
     [Theory]
     [InlineData("browser-not-focused", true)]
     [InlineData("timeout", false)]
@@ -91,6 +158,8 @@ public sealed class RewritePanelServiceTests
     [InlineData("no-selection", true)]
     public void AnsweredByBrowser_OnlyABrowsersOwnAnswerCounts(string code, bool expected) =>
         Assert.Equal(expected, ConnectorService.AnsweredByBrowser(new ContextResult(null, new ConnectorError(code, "x"))));
+
+    private static ContextResult Declined(string code) => new(null, new ConnectorError(code, "Declined."));
 
     private static ContextResult Capture(string subject)
     {

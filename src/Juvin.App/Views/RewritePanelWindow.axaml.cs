@@ -20,7 +20,7 @@ namespace Juvin.App.Views;
 /// <remarks>
 ///     Checked on GNOME Wayland (XWayland): a shown-again window comes back at the right place,
 ///     but Mutter drops its above, skip-taskbar, and sticky states on hide and Avalonia does not
-///     send them again, so <see cref="ShowPanel" /> re-asserts all three after every show.
+///     send them again, so <see cref="ShowPanel" /> re-asserts all three on every show.
 /// </remarks>
 public partial class RewritePanelWindow : Window
 {
@@ -61,18 +61,15 @@ public partial class RewritePanelWindow : Window
         _support?.BeforeShow();
         if (!IsVisible)
         {
+            ReassertStates();
             Show();
         }
 
         Activate();
-        // Once mapped: the window manager may have moved it and has dropped the states it had.
+        // Once mapped: the window manager may have moved it.
         Dispatcher.UIThread.Post(() =>
         {
             Place();
-            Topmost = false;
-            Topmost = true;
-            ShowInTaskbar = true;
-            ShowInTaskbar = false;
             var handle = TryGetPlatformHandle();
             _support?.ShowOnAllWorkspaces(handle?.Handle ?? 0, handle?.HandleDescriptor, Title ?? "");
         });
@@ -99,6 +96,19 @@ public partial class RewritePanelWindow : Window
         }
 
         base.OnClosing(e);
+    }
+
+    /// <remarks>
+    ///     Avalonia sends only a state that changes, hence the toggles. Before the show, X11 gets them in the unmapped
+    ///     window's <c>_NET_WM_STATE</c>, read by the window manager on map; after it, that read-modify-write could
+    ///     drop the focused state KWin had just written, and Avalonia then never reports the panel active.
+    /// </remarks>
+    private void ReassertStates()
+    {
+        Topmost = false;
+        Topmost = true;
+        ShowInTaskbar = true;
+        ShowInTaskbar = false;
     }
 
     /// <remarks>Fits the height to the working area, up to the designed <see cref="MaxPanelHeight" />, so the buttons stay on screen.</remarks>

@@ -45,6 +45,7 @@ public sealed class ConnectorService
     private readonly TimeProvider _time;
     private long? _lastCaptureStart;
     private long _latestCapture;
+    private volatile ConnectorSession? _panelSession;
 
     public ConnectorService(
         IConnectorSocketServer server,
@@ -206,12 +207,25 @@ public sealed class ConnectorService
     }
 
     /// <summary>
+    ///     Set while the rewrite panel has focus and shows a capture this browser answered, null otherwise. No browser
+    ///     has focus then, so the desktop hotkey captures from this one. Callable from any thread.
+    /// </summary>
+    public void SetFocusedPanelSession(ConnectorSession? session) => _panelSession = session;
+
+    /// <summary>
     ///     Captures for the desktop hotkey, which has no originating browser: asks every connected
     ///     extension at once and reports the first capture, else an error other than
     ///     <c>browser-not-focused</c> when one exists. Never throws.
     /// </summary>
     public async Task TriggerCaptureAsync()
     {
+        if (_panelSession is { } panelSession && Clients.Contains(panelSession))
+        {
+            Trace.WriteLine("[ConnectorService] Hotkey capture from the browser behind the focused panel.");
+            await CaptureAsync(panelSession);
+            return;
+        }
+
         if (!TryStartCapture(out var number))
         {
             return;
