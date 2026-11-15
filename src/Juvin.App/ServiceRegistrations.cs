@@ -41,7 +41,8 @@ public static class ServiceRegistrations
 
         // Probes use this client and selector; rewrites have their own with a longer timeout.
         services.AddSingleton(_ => ModelHttpClient.Create(TimeSpan.FromSeconds(30)));
-        services.AddSingleton<IProcessRunner>(sp => new ProcessRunner(sp.GetRequiredService<IToolSearchPaths>().GetDirectories));
+        services.AddSingleton(sp => new ProcessRunner(sp.GetRequiredService<IToolSearchPaths>().GetDirectories));
+        services.AddSingleton<IProcessRunner>(sp => sp.GetRequiredService<ProcessRunner>());
         services.AddSingleton(sp =>
             ProviderSelector.CreateDefault(
                 sp.GetRequiredService<HttpClient>(),

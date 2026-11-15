@@ -32,12 +32,12 @@ public sealed class LinuxNativeHostRegistrar : INativeHostRegistrar
     private readonly IProcessRunner _processRunner;
     private readonly IReadOnlyList<LinuxBrowser> _browsers;
 
-    public LinuxNativeHostRegistrar(Func<string?> locateHost, Localizer localizer)
+    public LinuxNativeHostRegistrar(Func<string?> locateHost, Localizer localizer, IProcessRunner processRunner)
         : this(
             locateHost,
             localizer,
             LinuxBrowserPaths.FromEnvironment(),
-            new ProcessRunner(),
+            processRunner,
             LinuxProcessPath.RunsFromAppImage(Environment.GetEnvironmentVariable, Environment.ProcessPath),
             JuvinEnvironment.DataPath,
             TimeSpan.FromSeconds(30)
