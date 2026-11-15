@@ -77,7 +77,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
     private int _captureArrivals;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsCodexMode), nameof(ModeHint))]
+    [NotifyPropertyChangedFor(nameof(IsCodexMode), nameof(ModeHint), nameof(ShowModelPanel))]
     private ProcessingModeOption? _selectedMode;
 
     [ObservableProperty]
@@ -231,7 +231,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
     public bool HasPullCommand => !string.IsNullOrWhiteSpace(PullCommand);
     public bool HasServerUrlError => !string.IsNullOrWhiteSpace(ServerUrlError);
     public bool HasServerNameHint => ModelProbeService.IsUnlistedHostName(ServerUrl);
-    public bool ShowModelPanel => !IsDetecting && (HasRecommendation || HasModelAdvice || NoServerFound);
+    public bool ShowModelPanel => !IsCodexMode && !IsDetecting && (HasRecommendation || HasModelAdvice || NoServerFound);
     public string NextLabel => _localizer[IsLastStep ? "Common.Finish" : "Common.Next"];
     public string StepText => _localizer.Format("Wizard.StepText", StepIndex + 1, StepCount);
 

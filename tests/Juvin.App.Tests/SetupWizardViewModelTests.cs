@@ -634,6 +634,32 @@ public sealed class SetupWizardViewModelTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task ModeStep_HidesTheLocalModelPanel_InCodexMode()
+    {
+        var vm = await CreateOnModeStepAsync();
+        Assert.True(vm.ShowModelPanel);
+        var panelNotifications = 0;
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(SetupWizardViewModel.ShowModelPanel))
+            {
+                panelNotifications++;
+            }
+        };
+
+        vm.SelectedMode = vm.ModeOptions.Single(option => option.Mode == ProcessingMode.Codex);
+
+        Assert.True(vm.NoServerFound);
+        Assert.False(vm.ShowModelPanel);
+        Assert.Equal(1, panelNotifications);
+
+        vm.SelectedMode = vm.ModeOptions.Single(option => option.Mode == ProcessingMode.Local);
+
+        Assert.True(vm.ShowModelPanel);
+        Assert.Equal(2, panelNotifications);
+    }
+
+    [Fact]
     public void WelcomeStep_CrashReportsSwitch_StartsFromTheSettingAndSavesChanges()
     {
         _settings.Update(s => s with { CrashReportingEnabled = false });
