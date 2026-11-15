@@ -18,6 +18,8 @@ public sealed partial class X11PanelWindowSupport : IPanelWindowSupport
     private const long NetWmStateAdd = 1;
     private const long SourceApplication = 1;
     private const long AllDesktops = 0xFFFFFFFF;
+    private const int RevertToPointerRoot = 1;
+    private const nint CurrentTime = 0;
 
     // EWMH requires both masks on the root window for _NET_WM_STATE and _NET_WM_DESKTOP requests.
     private const long SubstructureNotifyMask = 1L << 19;
@@ -60,6 +62,36 @@ public sealed partial class X11PanelWindowSupport : IPanelWindowSupport
 
     // The window manager gives focus back to the window below the hidden panel.
     public void Hide(Action hideWindow) => hideWindow();
+
+    /// <summary>
+    ///     Gives the X input focus to the mapped <paramref name="window" />, where XWayland delivers the keys
+    ///     the compositor routes to it. Traces any failure.
+    /// </summary>
+    internal static void FocusWindow(nint window)
+    {
+        try
+        {
+            var display = XOpenDisplay(null);
+            if (display == 0)
+            {
+                return;
+            }
+
+            try
+            {
+                _ = XSetInputFocus(display, window, RevertToPointerRoot, CurrentTime);
+                _ = XFlush(display);
+            }
+            finally
+            {
+                _ = XCloseDisplay(display);
+            }
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or ExternalException)
+        {
+            Trace.WriteLine($"[X11PanelWindowSupport] Could not focus the panel ({ex.GetType().Name}).");
+        }
+    }
 
     private static void SendHints(nint window)
     {
@@ -136,6 +168,9 @@ public sealed partial class X11PanelWindowSupport : IPanelWindowSupport
         nint eventMask,
         nint eventSend
     );
+
+    [LibraryImport(Lib)]
+    private static partial int XSetInputFocus(nint display, nint focus, int revertTo, nint time);
 
     [LibraryImport(Lib)]
     private static partial int XFlush(nint display);
