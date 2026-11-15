@@ -96,6 +96,8 @@ internal sealed class FakeProviders
 
     public ProviderStatus Codex { get; set; } = new(ProviderStatusKind.NotInstalled, "Provider.Status.NotInstalled", []);
 
+    public bool IsMac { get; set; }
+
     /// <summary>When set, every local probe waits for it, so a test can act while a check is running.</summary>
     public TaskCompletionSource? LocalProbeGate { get; set; }
 
@@ -115,6 +117,7 @@ internal sealed class FakeProviders
                 ),
                 _ => new FakeModelProvider(ProcessingMode.Codex, Codex)
             ),
-            localizer
+            localizer,
+            IsMac
         );
 }

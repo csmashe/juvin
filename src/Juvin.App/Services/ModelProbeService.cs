@@ -17,13 +17,18 @@ public sealed class ModelProbeService
 
     private static readonly string[] s_localNameSuffixes = [".local", ".lan", ".home", ".internal", ".arpa"];
 
+    private readonly bool _isMac;
     private readonly Localizer _localizer;
     private readonly ProviderSelector _providers;
 
-    public ModelProbeService(ProviderSelector providers, Localizer localizer)
+    /// <param name="providers">Selects the provider to probe.</param>
+    /// <param name="localizer">Supplies the shown text.</param>
+    /// <param name="isMac">Whether failures carry the macOS Local Network hint; defaults to the current OS.</param>
+    public ModelProbeService(ProviderSelector providers, Localizer localizer, bool? isMac = null)
     {
         _providers = providers;
         _localizer = localizer;
+        _isMac = isMac ?? OperatingSystem.IsMacOS();
     }
 
     public static Uri CodexInstallGuideUrl { get; } = new("https://developers.openai.com/codex/cli");
@@ -104,6 +109,17 @@ public sealed class ModelProbeService
         return host.Contains('.') && !s_localNameSuffixes.Any(suffix => host.EndsWith(suffix, StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>
+    ///     macOS asks before the app may reach the local network, and until the user allows it a server
+    ///     there looks unreachable. Its socket error does not tell a refusal apart from a server that is down.
+    /// </summary>
+    public static bool MayNeedLocalNetworkPermission(ProviderStatus status, string url, bool isMac) =>
+        isMac && status.MessageKey == "Provider.Status.Unreachable" && IsThisDevice(url) == false;
+
+    /// <summary>The text for a probe of <paramref name="url" /> that did not reach the server.</summary>
+    public string DescribeUnreachable(ProviderStatus status, string url) =>
+        _localizer[MayNeedLocalNetworkPermission(status, url, _isMac) ? "Models.Status.UnreachableLocalNetworkMac" : status.MessageKey];
+
     public string LocationLabel(string url) =>
         IsThisDevice(url) switch
         {
@@ -139,11 +155,11 @@ public sealed class ModelProbeService
     public string ModelCount(int count) =>
         count == 1 ? _localizer["Models.ModelCountOne"] : _localizer.Format("Models.ModelCount", count);
 
-    public string DescribeLocal(ProviderStatus status)
+    public string DescribeLocal(ProviderStatus status, string url)
     {
         if (!IsReachable(status))
         {
-            return _localizer[status.MessageKey];
+            return DescribeUnreachable(status, url);
         }
 
         var connected = _localizer.Format("Models.Status.Connected", ServerName(status), ModelCount(status.Models.Count));

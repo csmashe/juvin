@@ -714,7 +714,7 @@ public sealed partial class SetupWizardViewModel : ObservableObject, IDisposable
         {
             return row.Url is ModelProbeService.OllamaUrl or ModelProbeService.LmStudioUrl
                 ? _localizer.Format("Wizard.Mode.NotRunning", row.Title)
-                : _localizer[status.MessageKey];
+                : _probes.DescribeUnreachable(status, row.Url!);
         }
 
         var name = row.Url == ModelProbeService.LmStudioUrl ? row.Title : _probes.ServerName(status);

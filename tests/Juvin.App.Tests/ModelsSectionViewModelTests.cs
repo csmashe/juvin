@@ -44,6 +44,20 @@ public sealed class ModelsSectionViewModelTests
         Assert.Contains("Ollama 0.12.3", vm.LocalStatus);
     }
 
+    [Theory]
+    [InlineData(true, "Models.Status.UnreachableLocalNetworkMac")]
+    [InlineData(false, "Provider.Status.Unreachable")]
+    public async Task AnUnreachableLanServer_IsExplainedForTheOs(bool isMac, string expectedKey)
+    {
+        _providers.IsMac = isMac;
+        var vm = Create();
+
+        vm.CommitLocalServerUrlCommand.Execute("http://10.0.3.20:11434");
+        await vm.CheckLocalCommand.ExecuteAsync(null);
+
+        Assert.Equal(new Localizer()[expectedKey], vm.LocalStatus);
+    }
+
     [Fact]
     public void AnInvalidServerUrl_IsNotSaved()
     {

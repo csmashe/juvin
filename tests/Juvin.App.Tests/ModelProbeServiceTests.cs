@@ -1,6 +1,7 @@
 using Juvin.App.Services;
 using Juvin.App.Tests.Fakes;
 using Juvin.Core.Localization;
+using Juvin.Core.Providers;
 
 namespace Juvin.App.Tests;
 
@@ -19,6 +20,35 @@ public sealed class ModelProbeServiceTests
     public void LocationLabel_NamesLoopbackAsThisDevice(string url, string expected)
     {
         Assert.Equal(expected, _service.LocationLabel(url));
+    }
+
+    [Theory]
+    [InlineData("http://10.0.3.20:11434", true, "Provider.Status.Unreachable", true)]
+    [InlineData("http://nas:11434", true, "Provider.Status.Unreachable", true)]
+    [InlineData("http://localhost:11434", true, "Provider.Status.Unreachable", false)]
+    [InlineData("http://127.0.0.1:1234/v1", true, "Provider.Status.Unreachable", false)]
+    [InlineData("http://10.0.3.20:11434", false, "Provider.Status.Unreachable", false)]
+    [InlineData("http://10.0.3.20:11434", true, "Provider.Status.BadResponse", false)]
+    [InlineData("http://10.0.3.20:11434", true, "Provider.Status.NoModel", false)]
+    [InlineData("not a url", true, "Provider.Status.Unreachable", false)]
+    public void MayNeedLocalNetworkPermission_OnlyForAnUnreachableLanServerOnMac(string url, bool isMac, string messageKey, bool expected)
+    {
+        var status = new ProviderStatus(ProviderStatusKind.Unreachable, messageKey, []);
+
+        Assert.Equal(expected, ModelProbeService.MayNeedLocalNetworkPermission(status, url, isMac));
+    }
+
+    [Fact]
+    public void DescribeLocal_OnMac_TellsHowToAllowTheLocalNetwork()
+    {
+        var localizer = new Localizer();
+        var mac = new FakeProviders { IsMac = true }.CreateService(localizer);
+        var unreachable = new ProviderStatus(ProviderStatusKind.Unreachable, "Provider.Status.Unreachable", []);
+
+        Assert.Equal(localizer["Models.Status.UnreachableLocalNetworkMac"], mac.DescribeLocal(unreachable, "http://10.0.3.20:11434"));
+        Assert.Equal(localizer["Provider.Status.Unreachable"], mac.DescribeLocal(unreachable, "http://localhost:11434"));
+        Assert.Equal(localizer["Provider.Status.Unreachable"], _service.DescribeLocal(unreachable, "http://10.0.3.20:11434"));
+        Assert.Contains("Ollama 0.12.3", mac.DescribeLocal(FakeProviders.Reachable("0.12.3"), "http://10.0.3.20:11434"));
     }
 
     [Fact]
