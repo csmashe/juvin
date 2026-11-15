@@ -333,6 +333,18 @@ public sealed class CodexCliProviderTests : IDisposable
     }
 
     [Fact]
+    public void ResolveBinary_PrefersAConfiguredFileOverTheCodexInstallerDirectory()
+    {
+        var installer = Directory.CreateDirectory(_temp.File("installer")).FullName;
+        var custom = Directory.CreateDirectory(_temp.File("custom")).FullName;
+        File.WriteAllText(Path.Join(installer, "codex"), "");
+        var configured = Path.Join(custom, "codex");
+        File.WriteAllText(configured, "");
+
+        Assert.Equal(configured, CodexCliProvider.ResolveBinary(configured, SearchPath.Append("", [installer]), isWindows: false));
+    }
+
+    [Fact]
     public void ResolveBinary_SearchesPathThenTheSavedPathThenTheInstallDirectories()
     {
         var onPath = Directory.CreateDirectory(_temp.File("path")).FullName;

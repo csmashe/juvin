@@ -1,12 +1,14 @@
 using System.Diagnostics;
 using System.Security;
+using Juvin.Core.Providers;
 using Microsoft.Win32;
 
 namespace Juvin.Platform.Windows;
 
 /// <summary>
-///     The PATH saved in the registry, which an installer such as Codex's or npm's updates while the app
-///     keeps the PATH it started with, then the Codex installer's and npm's default directories.
+///     The Codex installer's own directory, so its binary wins over a shim of the same name, the PATH
+///     saved in the registry, which an installer such as Codex's or npm's updates while the app keeps the
+///     PATH it started with, then the Codex installer's and npm's default directories.
 /// </summary>
 public sealed class WindowsToolSearchPaths : IToolSearchPaths
 {
@@ -14,6 +16,7 @@ public sealed class WindowsToolSearchPaths : IToolSearchPaths
     private const string UserEnvironmentKey = "Environment";
 
     private readonly string _appData;
+    private readonly string? _codexBin;
     private readonly string _localAppData;
     private readonly RegistryKey _machineRoot;
     private readonly RegistryKey _userRoot;
@@ -23,7 +26,8 @@ public sealed class WindowsToolSearchPaths : IToolSearchPaths
             Registry.LocalMachine,
             Registry.CurrentUser,
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            CodexStandaloneInstall.CurrentBinDirectory()
         )
     {
     }
@@ -32,17 +36,20 @@ public sealed class WindowsToolSearchPaths : IToolSearchPaths
     /// <param name="userRoot">Stands in for <c>HKEY_CURRENT_USER</c>.</param>
     /// <param name="localAppData">Stands in for the local application data folder.</param>
     /// <param name="appData">Stands in for the roaming application data folder.</param>
-    internal WindowsToolSearchPaths(RegistryKey machineRoot, RegistryKey userRoot, string localAppData, string appData)
+    /// <param name="codexBin">Stands in for the Codex installer's own directory.</param>
+    internal WindowsToolSearchPaths(RegistryKey machineRoot, RegistryKey userRoot, string localAppData, string appData, string? codexBin)
     {
         _machineRoot = machineRoot;
         _userRoot = userRoot;
         _localAppData = localAppData;
         _appData = appData;
+        _codexBin = codexBin;
     }
 
     /// <summary>Machine entries before user ones, the order Windows gives a new process.</summary>
     public IReadOnlyList<string> GetDirectories() =>
         [
+            .. _codexBin is null ? [] : new[] { _codexBin },
             .. SavedPath(_machineRoot, MachineEnvironmentKey),
             .. SavedPath(_userRoot, UserEnvironmentKey),
             .. InstallDirectories(_localAppData, _appData),
