@@ -23,4 +23,7 @@ internal static class ConnectorErrorLabels
             ConnectorRewriteTarget.TooLargeCode => "Panel.Error.TooLarge",
             _ => "Panel.Error.Unknown",
         };
+
+    /// <summary>As <see cref="KeyFor"/>, but an internal failure of an apply says the extension left the draft as it was.</summary>
+    public static string ApplyKeyFor(string? code) => code == "internal" ? "Panel.Error.ApplyFailed" : KeyFor(code);
 }

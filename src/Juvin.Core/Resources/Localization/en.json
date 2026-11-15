@@ -421,6 +421,7 @@
   "Panel.Error.BrowserNotFocused": "Focus the browser with your draft and press the shortcut again.",
   "Panel.Error.EditorGone": "The draft editor is no longer on the page. Copy the rewrite instead.",
   "Panel.Error.UnsupportedContent": "The selection holds an image or other content Juvin cannot rewrite. Copy the rewrite instead.",
+  "Panel.Error.ApplyFailed": "Juvin could not apply the rewrite. Check your draft, then copy the rewrite instead.",
   "Panel.Error.Disconnected": "The browser disconnected. Copy the rewrite, or press the shortcut again in the browser.",
   "Panel.Error.Timeout": "The browser did not answer in time. Try again.",
   "Panel.Error.TooLarge": "The rewrite is too large to send to the browser. Copy it instead.",

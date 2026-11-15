@@ -324,6 +324,19 @@ public sealed class RewritePanelViewModelTests
     }
 
     [Fact]
+    public async Task AnApplyThatFailsInTheEditor_SaysTheDraftWasLeftAsItWas()
+    {
+        _target.ApplyError = new ConnectorError("internal", "The editor rejected the edit command.");
+        var vm = Create();
+        await LoadAndRunAsync(vm, Capture());
+
+        await vm.ApplyCommand.ExecuteAsync(null);
+
+        Assert.False(vm.IsDraftChanged);
+        Assert.Equal(_localizer["Panel.Error.ApplyFailed"], vm.Notice);
+    }
+
+    [Fact]
     public async Task AProviderFailure_ShowsTheMessageAndIsNotRetried()
     {
         _local.Failure = new ProviderException(ProviderFailureKind.Unreachable, "The local model server did not respond in time.");
