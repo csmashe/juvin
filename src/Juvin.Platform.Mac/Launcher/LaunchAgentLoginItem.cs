@@ -14,7 +14,7 @@ namespace Juvin.Platform.Mac.Launcher;
 /// </summary>
 public sealed class LaunchAgentLoginItem : ILoginItem
 {
-    private const string Label = "com.juvin.app";
+    private const string Label = MacAppRelauncher.BundleIdentifier;
     private const string ManagedKey = "<key>JuvinManaged</key>";
 
     private const string PlistTemplate = """
