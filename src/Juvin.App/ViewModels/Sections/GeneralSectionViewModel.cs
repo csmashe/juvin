@@ -14,6 +14,7 @@ public sealed partial class GeneralSectionViewModel : ObservableObject
     private readonly ISettingsService _settings;
     private readonly Localizer _localizer;
     private readonly ILoginItem _loginItem;
+    private readonly IAppExit _appExit;
     private bool _applyingSettings;
 
     [ObservableProperty]
@@ -42,10 +43,11 @@ public sealed partial class GeneralSectionViewModel : ObservableObject
     [ObservableProperty]
     private bool _isTrayAvailable;
 
-    public GeneralSectionViewModel(ISettingsService settings, TrayIconService tray, ILoginItem loginItem, Localizer localizer)
+    public GeneralSectionViewModel(ISettingsService settings, TrayIconService tray, ILoginItem loginItem, IAppExit appExit, Localizer localizer)
     {
         _settings = settings;
         _loginItem = loginItem;
+        _appExit = appExit;
         _localizer = localizer;
         IsTrayAvailable = tray.IsTrayAvailable;
         tray.AvailabilityChanged += (_, _) => IsTrayAvailable = tray.IsTrayAvailable;
@@ -87,6 +89,10 @@ public sealed partial class GeneralSectionViewModel : ObservableObject
     // The text box saves on focus loss; Enter commits through this.
     [RelayCommand]
     private void CommitSenderName(string? text) => SenderName = text ?? "";
+
+    // Some tray hosts, such as swaybar, show the icon but never its menu, so the tray Exit is unreachable there.
+    [RelayCommand]
+    private void Quit() => _appExit.RequestExit();
 
     // The switch is disabled until the OS answers, so two changes never race.
     private async Task ChangeLaunchAtLoginAsync(bool enable)

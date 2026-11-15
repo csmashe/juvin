@@ -91,6 +91,18 @@
                         <Border Classes="section-row divided" IsVisible="{Binding !IsTrayAvailable}">
                             <TextBlock Classes="row-hint" Margin="0" Text="{loc:Str General.NoTrayHint}" />
                         </Border>
+                        <Border Classes="section-row divided">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Classes="row-title" Text="{loc:Str General.Quit}" />
+                                    <TextBlock Classes="row-hint" Text="{loc:Str General.QuitHint}" />
+                                </StackPanel>
+                                <Button Grid.Column="1"
+                                        VerticalAlignment="Center"
+                                        Content="{loc:Str General.QuitButton}"
+                                        Command="{Binding QuitCommand}" />
+                            </Grid>
+                        </Border>
                     </StackPanel>
                 </Border>
             </StackPanel>
