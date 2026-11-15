@@ -28,6 +28,10 @@ public sealed class FakeNativeHostRegistrar : INativeHostRegistrar
         return [.. Browsers];
     }
 
+    public void RefreshStaleHostCopies()
+    {
+    }
+
     public HostRegistration CheckRegistration(BrowserTarget browser) =>
         States.GetValueOrDefault(browser.Id, HostRegistration.NotRegistered);
 

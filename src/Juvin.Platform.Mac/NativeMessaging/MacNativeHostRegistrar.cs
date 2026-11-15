@@ -56,6 +56,11 @@ public sealed class MacNativeHostRegistrar : INativeHostRegistrar
 
     public IReadOnlyList<SandboxEndpoint> SandboxEndpoints => [];
 
+    /// <summary>Not needed: every manifest points at the installed host, never at a copy.</summary>
+    public void RefreshStaleHostCopies()
+    {
+    }
+
     public IReadOnlyList<BrowserTarget> DetectBrowsers()
     {
         return

@@ -20,6 +20,14 @@ public interface INativeHostRegistrar
     /// </summary>
     Task RegisterAsync(BrowserTarget browser, CancellationToken ct);
 
+    /// <summary>
+    ///     Brings copies of the host that existing registrations point at up to date with the
+    ///     installed host, so an upgrade does not leave them stale. Creates no registration and
+    ///     touches no manifest. A copy that cannot be written is logged and left as it is. A no-op
+    ///     where manifests point at the installed host itself.
+    /// </summary>
+    void RefreshStaleHostCopies();
+
     // ReSharper disable once UnusedMemberInSuper.Global -- exercised by the registrar tests; the UI exposes it with uninstall
     // ReSharper disable once UnusedParameter.Global -- contract; the Linux registrar's sandbox copy honours it
     Task UnregisterAsync(BrowserTarget browser, CancellationToken ct);
