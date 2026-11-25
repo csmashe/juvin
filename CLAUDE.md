@@ -33,6 +33,7 @@ The solution is `Juvin.slnx` at the repo root. The protocol between the app and 
 - Each release: publish it on GitHub (a full release, so it shows as Latest), then add its notes as `docs/releases/<tag>/RELEASE_NOTES.md` and push them to `main`.
 - `npm test` - Run extension tests
 - Load `extension/dist/chrome` as an unpacked extension, or `npx web-ext run --source-dir dist/firefox`; the app must be running and the host registered. See `extension/README.md`.
+- `node scripts/dev/check-site-capture.mjs firefox|chrome` (from the repo root) - Check capture against real Gmail and Outlook in a running, signed-in browser started on a profile copy; drafts only, discarded afterwards. See `extension/README.md`.
 
 ### Brand assets
 - `assets/brand/` holds the mark, icons, and lockups; its README explains each file. Regenerate PNGs from the SVGs, never edit PNGs by hand.
