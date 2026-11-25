@@ -57,6 +57,24 @@ The rewrite shortcut is `Ctrl+Shift+F`, the Control key on macOS too (`MacCtrl+S
 
 `npx web-ext lint --source-dir dist/firefox` checks the Firefox build.
 
+## Check capture on real Gmail and Outlook
+
+The unit tests and the test page cannot notice Gmail or Outlook changing their pages. `scripts/dev/check-site-capture.mjs` (Node 24, no dependencies, the app not needed) loads the built extension into a running, signed-in browser, opens a draft on each site, types a marker, selects part of it, and captures it the way the shortcut does. A site fails when the generic fallback or "visible text only" answered, the selection came back changed, or a reply saw no messages; a page that leaves the site is reported as a likely sign-out. It prints counts and pass or fail only, refuses a page that already shows a draft, types only into the draft or reply it opened itself, removes the marker, discards the draft (a site fails when that cannot be confirmed), and never sends anything.
+
+Run it on a copy of a signed-in profile, never the profile in use, and headless: a browser window that is covered or on another workspace draws no frames, so Gmail's compose and Outlook's dialogs never finish opening or closing (the script checks for this first).
+
+```sh
+# Firefox or Zen (Flatpak Zen reads only paths under ~/.var/app/app.zen_browser.zen, so put the copy and dist/firefox there)
+MOZ_REMOTE_ALLOW_SYSTEM_ACCESS=1 firefox -headless -marionette -remote-allow-system-access -no-remote -profile <copy> &
+node scripts/dev/check-site-capture.mjs firefox --site gmail --site "outlook=<conversation URL>"
+
+# Chrome (it refuses remote debugging on its default profile folder)
+google-chrome --headless=new --remote-debugging-port=9222 --enable-unsafe-extension-debugging --remote-allow-origins=* --user-data-dir=<copy> &
+node scripts/dev/check-site-capture.mjs chrome
+```
+
+`--site gmail` checks a new draft from the Compose button; `--site gmail=<conversation URL>` presses Reply in that conversation instead, which also exercises reading the thread. Without `--site` both sites get a new draft. `--port` picks the Marionette or DevTools port (2828 and 9222 by default), and `--extension` the build to load (`extension/dist/<browser>` by default). It exits 1 when a site fails. The buttons are found by their English labels. A Zen profile copy also restores Zen's own tabs unless its `zen-sessions*` files are left out.
+
 ## Layout
 
 - `src/background/`: native messaging connection and its quiet reconnect after the app restarts (an alarm that backs off from 30 seconds to every 5 minutes, plus window focus, tab switches, and editor focus at most once every 30 seconds; a missing host or a rejected protocol version stops the alarm but not the activity attempts), routing of `context.request` and `apply.request` to tabs, opening the test page for `testpage.request`, thread trimming to the frame cap.
